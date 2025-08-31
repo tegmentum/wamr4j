@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+
+<suppressions>
+  <!-- Suppress all checks for generated code -->
+  <suppress checks=".*" files=".*[/\\]generated[/\\].*\.java"/>
+  
+  <!-- Suppress all checks for auto-generated Maven directories -->
+  <suppress checks=".*" files=".*[/\\]target[/\\].*\.java"/>
+  
+  <!-- Suppress magic number checks in test files -->
+  <suppress checks="MagicNumber" files=".*[/\\]test[/\\].*\.java"/>
+  
+  <!-- Suppress Javadoc checks in test files -->
+  <suppress checks="MissingJavadocType" files=".*[/\\]test[/\\].*\.java"/>
+  <suppress checks="MissingJavadocMethod" files=".*[/\\]test[/\\].*\.java"/>
+  <suppress checks="JavadocMethod" files=".*[/\\]test[/\\].*\.java"/>
+  
+  <!-- Suppress utility class constructor check for test utility classes -->
+  <suppress checks="HideUtilityClassConstructor" files=".*[/\\]test[/\\].*TestUtils?\.java"/>
+  
+  <!-- Suppress final parameter checks for JNI native method declarations -->
+  <suppress checks="FinalParameters" files=".*[/\\]jni[/\\].*\.java" lines="1-9999"/>
+  
+  <!-- Suppress final parameter checks for Panama foreign function declarations -->
+  <suppress checks="FinalParameters" files=".*[/\\]panama[/\\].*\.java" lines="1-9999"/>
+  
+  <!-- Allow longer parameter lists for native method bindings -->
+  <suppress checks="ParameterNumber" files=".*[/\\](jni|panama)[/\\].*\.java"/>
+  
+  <!-- Allow longer method length for complex native bindings -->
+  <suppress checks="MethodLength" files=".*[/\\](jni|panama)[/\\].*Native.*\.java"/>
+  
+  <!-- Suppress visibility checks for JNI callback fields -->
+  <suppress checks="VisibilityModifier" files=".*[/\\]jni[/\\].*\.java"/>
+  
+  <!-- Suppress unused import warnings for benchmark annotation processors -->
+  <suppress checks="UnusedImports" files=".*[/\\]benchmarks[/\\].*\.java"/>
+  
+  <!-- Allow empty catch blocks in resource cleanup -->
+  <suppress checks="EmptyBlock" files=".*\.java" lines="1-9999" message="Empty catch block"/>
+  
+  <!-- Suppress checks for module-info.java files -->
+  <suppress checks=".*" files="module-info\.java"/>
+  
+  <!-- Allow abbreviations in JNI and Panama packages for native API consistency -->
+  <suppress checks="AbbreviationAsWordInName" files=".*[/\\](jni|panama)[/\\].*\.java"/>
+  
+  <!-- Allow magic numbers in version constants -->
+  <suppress checks="MagicNumber" files=".*Version.*\.java"/>
+  
+  <!-- Allow star imports in test files for static imports from testing libraries -->
+  <suppress checks="AvoidStarImport" files=".*[/\\]test[/\\].*\.java"/>
+  
+  <!-- Suppress line length for long URLs in Javadoc -->
+  <suppress checks="LineLength" files=".*\.java" message=".*http://.*|.*https://.*|.*ftp://.*"/>
+</suppressions>
