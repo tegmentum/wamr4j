@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Parent Configuration -->
+    <parent>
+        <groupId>ai.tegmentum.wamr4j</groupId>
+        <artifactId>wamr4j-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <!-- Project Coordinates -->
+    <artifactId>wamr4j-native</artifactId>
+    <packaging>jar</packaging>
+
+    <!-- Project Information -->
+    <name>WAMR4J Native Library</name>
+    <description>Shared Rust native library with JNI and Panama FFI exports for WAMR WebAssembly runtime</description>
+
+    <!-- Properties -->
+    <properties>
+        <!-- Rust Configuration -->
+        <rust.target.dir>${project.basedir}/target</rust.target.dir>
+        <rust.src.dir>${project.basedir}/src</rust.src.dir>
+        <wamr.version>2.4.1</wamr.version>
+        
+        <!-- Cross-compilation targets -->
+        <rust.target.linux-x86_64>x86_64-unknown-linux-gnu</rust.target.linux-x86_64>
+        <rust.target.linux-aarch64>aarch64-unknown-linux-gnu</rust.target.linux-aarch64>
+        <rust.target.osx-x86_64>x86_64-apple-darwin</rust.target.osx-x86_64>
+        <rust.target.osx-aarch64>aarch64-apple-darwin</rust.target.osx-aarch64>
+        <rust.target.windows-x86_64>x86_64-pc-windows-gnu</rust.target.windows-x86_64>
+    </properties>
+
+    <!-- Dependencies -->
+    <dependencies>
+        <!-- Test Dependencies (for native library testing) -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- Build Configuration -->
+    <build>
+        <plugins>
+            <!-- Skip default compilation (we use Cargo) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <skipMain>true</skipMain>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+            <!-- Custom build process for Rust/WAMR (will be configured in future tasks) -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.1</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+            <!-- Package native libraries into JAR -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <classesDirectory>${project.build.directory}/native-libs</classesDirectory>
+                </configuration>
+            </plugin>
+
+            <!-- Skip Javadoc generation for native module -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+            <!-- Skip source JAR for native module -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <configuration>
+                    <skipSource>true</skipSource>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- Platform-Specific Build Profiles -->
+    <profiles>
+        <!-- Native Cross-Compilation Profile -->
+        <profile>
+            <id>native-all</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <executions>
+                            <!-- Build for all supported platforms -->
+                            <execution>
+                                <id>cargo-build-all-targets</id>
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>bash</executable>
+                                    <arguments>
+                                        <argument>-c</argument>
+                                        <argument>
+                                            cargo build --release --target ${rust.target.linux-x86_64} ;
+                                            cargo build --release --target ${rust.target.linux-aarch64} ;
+                                            cargo build --release --target ${rust.target.osx-x86_64} ;
+                                            cargo build --release --target ${rust.target.osx-aarch64} ;
+                                            cargo build --release --target ${rust.target.windows-x86_64}
+                                        </argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>
