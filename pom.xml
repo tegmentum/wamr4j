@@ -285,7 +285,8 @@
                     <artifactId>maven-checkstyle-plugin</artifactId>
                     <version>${checkstyle-plugin.version}</version>
                     <configuration>
-                        <configLocation>google_checks.xml</configLocation>
+                        <configLocation>checkstyle.xml</configLocation>
+                        <suppressionsLocation>checkstyle-suppressions.xml</suppressionsLocation>
                         <violationSeverity>${checkstyle.violationSeverity}</violationSeverity>
                         <failsOnError>true</failsOnError>
                         <failOnViolation>true</failOnViolation>
@@ -322,13 +323,46 @@
                     <version>${spotless-plugin.version}</version>
                     <configuration>
                         <java>
-                            <googleJavaFormat/>
+                            <!-- Use Google Java Format with AOSP style (4-space indentation) -->
+                            <googleJavaFormat>
+                                <style>AOSP</style>
+                            </googleJavaFormat>
+                            <!-- License header management -->
+                            <licenseHeader>
+                                <file>spotless-license-header.txt</file>
+                            </licenseHeader>
+                            <!-- Import organization -->
                             <removeUnusedImports/>
                             <importOrder>
-                                <order>java,javax,org,com,ai.tegmentum</order>
+                                <order>java|javax,org,com,ai.tegmentum</order>
                             </importOrder>
+                            <!-- Format annotations consistently -->
                             <formatAnnotations/>
+                            <!-- Remove trailing whitespace -->
+                            <trimTrailingWhitespace/>
+                            <!-- Ensure files end with newline -->
+                            <endWithNewline/>
                         </java>
+                        <!-- Format XML files -->
+                        <xml>
+                            <includes>
+                                <include>pom.xml</include>
+                                <include>src/**/*.xml</include>
+                                <include>*.xml</include>
+                            </includes>
+                            <trimTrailingWhitespace/>
+                            <endWithNewline/>
+                        </xml>
+                        <!-- Format properties files -->
+                        <formats>
+                            <format>
+                                <includes>
+                                    <include>src/**/*.properties</include>
+                                </includes>
+                                <trimTrailingWhitespace/>
+                                <endWithNewline/>
+                            </format>
+                        </formats>
                     </configuration>
                     <executions>
                         <execution>
@@ -528,14 +562,41 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-checkstyle-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>checkstyle-validation</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
                     </plugin>
                     <plugin>
                         <groupId>com.diffplug.spotless</groupId>
                         <artifactId>spotless-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>spotless-check</id>
+                                <phase>validate</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
                     </plugin>
                     <plugin>
                         <groupId>com.github.spotbugs</groupId>
                         <artifactId>spotbugs-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>spotbugs-check</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>
