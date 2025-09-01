@@ -36,7 +36,7 @@ pub struct RuntimeConfig {
 // =============================================================================
 
 /// WebAssembly value types
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WasmValue {
     I32(i32),
     I64(i64),

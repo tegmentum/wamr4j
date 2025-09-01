@@ -14,9 +14,15 @@
  * limitations under the License.
  */
 
-//! Minimal shared native library for cross-compilation testing
+//! Shared native library for wamr4j JNI and Panama FFI bindings
 
 use std::os::raw::{c_char, c_int};
+
+// Module declarations
+pub mod ffi;
+pub mod runtime;
+pub mod utils;
+pub mod wamr_wrapper;
 
 /// Test function to verify cross-compilation works
 #[no_mangle]

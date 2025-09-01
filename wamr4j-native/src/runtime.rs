@@ -20,15 +20,7 @@
 //! including initialization, configuration, and resource management
 //! for the WAMR WebAssembly runtime.
 
-use crate::wamr_wrapper::{WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory, WamrError, WasmValue, WasmType};
-
-/// Configuration for WAMR runtime initialization
-#[derive(Debug, Clone)]
-pub struct RuntimeConfig {
-    pub stack_size: usize,
-    pub heap_size: usize,
-    pub max_thread_num: u32,
-}
+use crate::wamr_wrapper::{WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory, WamrError, WasmValue, WasmType, RuntimeConfig};
 
 impl Default for RuntimeConfig {
     fn default() -> Self {

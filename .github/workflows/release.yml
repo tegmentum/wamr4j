@@ -289,6 +289,12 @@ jobs:
       run: |
         echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode | gpg --batch --import
         gpg --list-secret-keys --keyid-format LONG
+        
+        # Verify GPG key is properly imported
+        if ! gpg --list-secret-keys | grep -q "sec"; then
+          echo "ERROR: GPG private key not found"
+          exit 1
+        fi
 
     - name: Configure Maven settings
       run: |
@@ -305,11 +311,53 @@ jobs:
         </settings>
         EOF
 
+    - name: Pre-deployment validation
+      run: |
+        # Verify all required artifacts are built
+        echo "Checking for required artifacts..."
+        ./mvnw clean package -B -P release -P native-all-platforms \
+          -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }}
+        
+        # List generated artifacts
+        echo "Generated artifacts:"
+        find . -name "*.jar" -o -name "*.asc" | sort
+
+    - name: Artifact security validation
+      run: |
+        # Verify JAR files are not corrupted
+        echo "Verifying JAR integrity..."
+        find . -name "*.jar" -type f -exec jar -tf {} \; > /dev/null
+        
+        # Verify GPG signatures exist and are valid
+        echo "Verifying GPG signatures..."
+        find . -name "*.asc" -type f | while read -r sig_file; do
+          base_file="${sig_file%.asc}"
+          if [ -f "$base_file" ]; then
+            echo "Verifying signature for $base_file"
+            gpg --verify "$sig_file" "$base_file"
+          fi
+        done
+
     - name: Deploy to Maven Central
       run: |
-        ./mvnw clean deploy -B -P release -P native-all-platforms \
-          -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }}
+        ./mvnw deploy -B -P release -P native-all-platforms \
+          -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }} \
+          -DskipTests=true \
+          --no-transfer-progress
+
+    - name: Post-deployment validation
+      run: |
+        echo "Validating deployment to OSSRH staging..."
+        # Wait for staging repository to be available
+        sleep 30
+        
+        # List staging repositories (requires nexus-staging-maven-plugin)
+        ./mvnw nexus-staging:rc-list -P release \
+          -DnexusUrl=https://s01.oss.sonatype.org/ \
+          -DserverId=ossrh
 
     - name: Notify completion
       run: |
         echo "Release ${{ needs.validate-release.outputs.version }} published successfully to Maven Central"
+        echo "Artifacts are staged and ready for manual release approval at:"
+        echo "https://s01.oss.sonatype.org/"
