@@ -23,21 +23,12 @@ use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ptr;
 
-// Placeholder import for runtime config - will be updated when runtime.rs is integrated
+/// Configuration for WAMR runtime initialization
+#[derive(Debug, Clone)]
 pub struct RuntimeConfig {
     pub stack_size: usize,
     pub heap_size: usize,
     pub max_thread_num: u32,
-}
-
-impl Clone for RuntimeConfig {
-    fn clone(&self) -> Self {
-        Self {
-            stack_size: self.stack_size,
-            heap_size: self.heap_size,
-            max_thread_num: self.max_thread_num,
-        }
-    }
 }
 
 // =============================================================================
