@@ -25,7 +25,6 @@ use std::os::raw::{c_char, c_int, c_long, c_uchar, c_void};
 use std::ptr;
 
 use crate::runtime::{
-    RuntimeConfig,
     runtime_init, runtime_init_with_config, runtime_is_valid,
     module_compile, module_validate, module_get_size,
     instance_create, instance_is_valid,
@@ -39,7 +38,7 @@ use crate::utils::{
 };
 use crate::wamr_wrapper::{
     WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory,
-    WasmValue, WasmType, WamrError,
+    WasmValue, WasmType, WamrError, RuntimeConfig,
 };
 
 // =============================================================================
