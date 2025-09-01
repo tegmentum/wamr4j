@@ -1,0 +1,69 @@
+version: 2
+updates:
+  # Java/Maven dependencies
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "yourusername"  # Update with actual maintainer
+    assignees:
+      - "yourusername"  # Update with actual maintainer
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "java"
+    ignore:
+      # Ignore major version updates for critical dependencies
+      - dependency-name: "org.apache.maven.plugins:*"
+        update-types: ["version-update:semver-major"]
+
+  # Rust/Cargo dependencies
+  - package-ecosystem: "cargo"
+    directory: "/wamr4j-native"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "yourusername"
+    assignees:
+      - "yourusername"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "rust"
+    ignore:
+      # Ignore patch updates for WAMR to control upgrades manually
+      - dependency-name: "wamr-sys"
+        update-types: ["version-update:semver-patch", "version-update:semver-minor"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "yourusername"
+    assignees:
+      - "yourusername"
+    commit-message:
+      prefix: "ci"
+      prefix-development: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"

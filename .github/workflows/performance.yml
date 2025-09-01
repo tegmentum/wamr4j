@@ -1,0 +1,230 @@
+name: Performance Monitoring
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run performance benchmarks weekly on Sundays at 3:00 AM UTC
+    - cron: '0 3 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel performance runs
+
+env:
+  MAVEN_OPTS: '-Xmx4g -Xms2g'
+  RUST_LOG: info
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            platform: windows-x86_64
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            platform: macos-aarch64
+            target: aarch64-apple-darwin
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '23'
+        cache: maven
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          ~/.m2/repository/
+          wamr4j-native/target/
+        key: ${{ runner.os }}-perf-${{ hashFiles('**/Cargo.lock', '**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-perf-
+
+    - name: Build optimized release
+      run: |
+        cd wamr4j-native
+        cargo build --release --target ${{ matrix.target }}
+
+    - name: Build benchmark module
+      run: |
+        ./mvnw clean compile -B -pl wamr4j-benchmarks
+
+    - name: Run performance benchmarks
+      run: |
+        ./mvnw exec:java -pl wamr4j-benchmarks \
+          -Dexec.mainClass="ai.tegmentum.wamr4j.benchmarks.WamrBenchmark" \
+          -Dexec.args="--output-format=json --output-file=benchmark-results-${{ matrix.platform }}.json"
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results-${{ matrix.platform }}
+        path: benchmark-results-*.json
+        retention-days: 90
+
+  analyze-performance:
+    name: Analyze Performance Results
+    needs: benchmark
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download benchmark results
+      uses: actions/download-artifact@v4
+      with:
+        path: benchmark-results/
+
+    - name: Set up Python for analysis
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install analysis dependencies
+      run: |
+        pip install matplotlib pandas numpy scipy
+
+    - name: Create performance analysis script
+      run: |
+        cat > analyze_performance.py << 'EOF'
+        #!/usr/bin/env python3
+        import json
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from pathlib import Path
+        import sys
+
+        def load_benchmark_data():
+            results = {}
+            benchmark_dir = Path('benchmark-results')
+            
+            for platform_dir in benchmark_dir.iterdir():
+                if platform_dir.is_dir():
+                    platform = platform_dir.name.replace('benchmark-results-', '')
+                    for json_file in platform_dir.glob('*.json'):
+                        try:
+                            with open(json_file) as f:
+                                data = json.load(f)
+                                results[platform] = data
+                        except Exception as e:
+                            print(f"Error loading {json_file}: {e}")
+            
+            return results
+
+        def create_performance_report(results):
+            report = []
+            report.append("# Performance Analysis Report")
+            report.append(f"Generated: {pd.Timestamp.now()}")
+            report.append("")
+            
+            for platform, data in results.items():
+                report.append(f"## Platform: {platform}")
+                
+                if 'benchmarks' in data:
+                    for bench in data['benchmarks']:
+                        name = bench.get('name', 'Unknown')
+                        mean = bench.get('mean', {}).get('estimate', 0)
+                        unit = bench.get('mean', {}).get('unit', 'ns')
+                        
+                        report.append(f"- **{name}**: {mean:.2f} {unit}")
+                
+                report.append("")
+            
+            # Check for regressions
+            report.append("## Regression Analysis")
+            report.append("Performance regression detection requires historical data.")
+            report.append("Future implementation will compare against baseline measurements.")
+            report.append("")
+            
+            return "\n".join(report)
+
+        def main():
+            results = load_benchmark_data()
+            
+            if not results:
+                print("No benchmark data found")
+                return 1
+            
+            report = create_performance_report(results)
+            
+            # Save report
+            with open('performance-report.md', 'w') as f:
+                f.write(report)
+            
+            print("Performance analysis completed")
+            print(f"Found results for platforms: {list(results.keys())}")
+            
+            return 0
+
+        if __name__ == "__main__":
+            sys.exit(main())
+        EOF
+
+    - name: Run performance analysis
+      run: |
+        python analyze_performance.py
+
+    - name: Upload performance report
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-report
+        path: performance-report.md
+        retention-days: 90
+
+    - name: Comment on PR (if applicable)
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          try {
+            const report = fs.readFileSync('performance-report.md', 'utf8');
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Performance Benchmark Results\n\n${report}`
+            });
+          } catch (error) {
+            console.log('Could not post performance report:', error);
+          }
+
+    - name: Check for performance regressions
+      run: |
+        echo "Performance regression check placeholder"
+        echo "Future implementation will:"
+        echo "1. Compare current results with baseline"
+        echo "2. Identify significant performance changes"
+        echo "3. Fail the build if regressions exceed threshold"
+        echo "4. Store historical performance data"
