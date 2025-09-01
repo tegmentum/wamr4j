@@ -88,16 +88,22 @@ impl WindowsOptimizations {
             true
         }
         #[cfg(not(target_os = "windows"))]
-        false
+        {
+            false
+        }
     }
 
     /// Check if memory optimization features are supported
     fn check_memory_optimization_support() -> bool {
         // Windows memory optimization is generally available
         #[cfg(target_os = "windows")]
-        true
+        {
+            true
+        }
         #[cfg(not(target_os = "windows"))]
-        false
+        {
+            false
+        }
     }
 
     /// Apply Windows memory management optimizations
