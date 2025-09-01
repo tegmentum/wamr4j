@@ -287,7 +287,7 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
             }
             return buffer;
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to get memory buffer", e);
+            throw new IllegalStateException("Failed to get memory buffer", e);
         }
     }
 

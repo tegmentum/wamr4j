@@ -108,11 +108,11 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
                     try {
                         signature = nativeGetFunctionSignature(nativeHandle);
                         if (signature == null) {
-                            throw new RuntimeException("Failed to get function signature");
+                            throw new IllegalStateException("Failed to get function signature");
                         }
                         cachedSignature = signature;
                     } catch (final Exception e) {
-                        throw new RuntimeException("Failed to get function signature for: " + functionName, e);
+                        throw new IllegalStateException("Failed to get function signature for: " + functionName, e);
                     }
                 }
             }
