@@ -72,11 +72,11 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
 
     @Override
     public WebAssemblyInstance instantiate() throws RuntimeException {
-        return instantiate(Map.of());
+        return instantiate(null);
     }
 
     @Override
-    public WebAssemblyInstance instantiate(final Map<String, Object> imports) throws RuntimeException {
+    public WebAssemblyInstance instantiate(final Map<String, Map<String, Object>> imports) throws RuntimeException {
         if (imports == null) {
             throw new IllegalArgumentException("Imports map cannot be null");
         }
@@ -164,15 +164,31 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
     }
 
     @Override
-    public Map<String, FunctionSignature> getExportSignatures() {
+    public FunctionSignature getExportFunctionSignature(final String functionName) {
+        if (functionName == null) {
+            throw new IllegalArgumentException("Function name cannot be null");
+        }
         ensureNotClosed();
         
         try {
             // Placeholder implementation - would require native support
-            return Map.of();
+            return null;
         } catch (final Exception e) {
-            LOGGER.warning("Failed to get export signatures: " + e.getMessage());
-            return Map.of();
+            LOGGER.warning("Failed to get export signature for " + functionName + ": " + e.getMessage());
+            return null;
+        }
+    }
+    
+    @Override
+    public boolean validateImports(final Map<String, Map<String, Object>> imports) {
+        ensureNotClosed();
+        
+        try {
+            // Placeholder implementation - would require native validation support
+            return true;
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to validate imports: " + e.getMessage());
+            return false;
         }
     }
 
