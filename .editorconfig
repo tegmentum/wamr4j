@@ -1,0 +1,77 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+# All files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+# Java files
+[*.java]
+indent_size = 2
+max_line_length = 120
+continuation_indent_size = 4
+
+# Maven POM files
+[pom.xml]
+indent_size = 4
+
+# XML files (except POM)
+[*.xml]
+indent_size = 2
+
+# Properties files
+[*.properties]
+indent_size = 2
+
+# YAML files
+[*.{yml,yaml}]
+indent_size = 2
+
+# JSON files
+[*.json]
+indent_size = 2
+
+# Markdown files
+[*.md]
+indent_size = 2
+trim_trailing_whitespace = false
+
+# Shell scripts
+[*.sh]
+indent_size = 2
+
+# Rust files (for native module)
+[*.rs]
+indent_size = 4
+max_line_length = 100
+
+# Cargo.toml files
+[Cargo.toml]
+indent_size = 2
+
+# CMake files
+[{CMakeLists.txt,*.cmake}]
+indent_size = 2
+
+# C/C++ files
+[*.{c,h,cpp,hpp,cc}]
+indent_size = 2
+max_line_length = 100
+
+# Dockerfile
+[Dockerfile*]
+indent_size = 2
+
+# GitHub Actions workflow files
+[.github/workflows/*.{yml,yaml}]
+indent_size = 2
+
+# Ignore files
+[.gitignore]
+indent_size = 2
