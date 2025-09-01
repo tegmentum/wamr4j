@@ -87,12 +87,38 @@
                 </executions>
             </plugin>
 
+            <!-- Copy native libraries to resources -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-native-libraries</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/native/macos-arm64</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/target/release</directory>
+                                    <includes>
+                                        <include>libwamr4j_native.dylib</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- Package native libraries into JAR -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <configuration>
-                    <classesDirectory>${project.build.directory}/native-libs</classesDirectory>
+                    <classesDirectory>${project.build.outputDirectory}</classesDirectory>
                 </configuration>
             </plugin>
 
