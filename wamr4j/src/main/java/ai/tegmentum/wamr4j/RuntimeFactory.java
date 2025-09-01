@@ -293,11 +293,17 @@ public final class RuntimeFactory {
             final String version = System.getProperty("java.version");
             if (version.startsWith("1.")) {
                 // Java 8 and below use 1.x format
-                return Integer.parseInt(version.substring(2, 3));
+                final int legacyVersionIndex = 3;
+                return Integer.parseInt(version.substring(2, legacyVersionIndex));
             } else {
                 // Java 9+ use x.y.z format
                 final int dotIndex = version.indexOf('.');
-                final int endIndex = dotIndex > 0 ? dotIndex : version.length();
+                final int endIndex;
+                if (dotIndex > 0) {
+                    endIndex = dotIndex;
+                } else {
+                    endIndex = version.length();
+                }
                 return Integer.parseInt(version.substring(0, endIndex));
             }
         } catch (final Exception e) {

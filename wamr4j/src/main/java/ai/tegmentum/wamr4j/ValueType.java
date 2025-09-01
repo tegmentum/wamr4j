@@ -121,7 +121,7 @@ public enum ValueType {
             case F32:
                 // Allow float and numeric types that can be converted to float
                 return value instanceof Float
-                        || (value instanceof Number && !(value instanceof Double));
+                        || value instanceof Number && !(value instanceof Double);
 
             case F64:
                 // Allow all numeric types
