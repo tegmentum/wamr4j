@@ -13,12 +13,15 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 jni = "0.21"
 libc = "0.2"
-# wamr-rust-sdk = { git = "https://github.com/bytecodealliance/wamr-rust-sdk" }
-# TODO: Re-enable WAMR SDK once LLVM configuration is set up
 
 [build-dependencies]
 cc = "1.0"
 cmake = "0.1"
+bindgen = { version = "0.68", optional = true }
+
+[features]
+default = []
+bindgen = ["dep:bindgen"]
 
 # Cross-compilation targets
 [target.x86_64-unknown-linux-gnu]
