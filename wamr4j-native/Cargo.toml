@@ -12,12 +12,9 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 jni = "0.21"
-wamr-sys = "2.4.1"
 libc = "0.2"
-
-[dependencies.wamr-sys]
-version = "2.4.1"
-features = ["wasi"]
+# wamr-rust-sdk = { git = "https://github.com/bytecodealliance/wamr-rust-sdk" }
+# TODO: Re-enable WAMR SDK once LLVM configuration is set up
 
 [build-dependencies]
 cc = "1.0"

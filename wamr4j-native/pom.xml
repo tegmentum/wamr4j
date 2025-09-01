@@ -63,14 +63,28 @@
                 </configuration>
             </plugin>
 
-            <!-- Custom build process for Rust/WAMR (will be configured in future tasks) -->
+            <!-- Custom build process for Rust/WAMR -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.1</version>
-                <configuration>
-                    <skip>true</skip>
-                </configuration>
+                <executions>
+                    <execution>
+                        <id>cargo-build</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>cargo</executable>
+                            <arguments>
+                                <argument>build</argument>
+                                <argument>--release</argument>
+                            </arguments>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- Package native libraries into JAR -->

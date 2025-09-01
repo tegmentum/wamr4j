@@ -151,7 +151,7 @@ pub extern "C" fn wamr_call_function(
 
     unsafe {
         let function_ref = &*(function as *const WamrFunction);
-        // Placeholder implementation - actual argument conversion needed
+        // For now, call with empty args - proper argument conversion needed
         match call_function(function_ref, &[]) {
             Ok(_) => 0,
             Err(_) => -1,
