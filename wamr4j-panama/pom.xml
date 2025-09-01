@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Parent Configuration -->
+    <parent>
+        <groupId>ai.tegmentum.wamr4j</groupId>
+        <artifactId>wamr4j-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <!-- Project Coordinates -->
+    <artifactId>wamr4j-panama</artifactId>
+    <packaging>jar</packaging>
+
+    <!-- Project Information -->
+    <name>WAMR4J Panama Implementation</name>
+    <description>Panama Foreign Function Interface bindings for WAMR WebAssembly runtime (Java 23+ required)</description>
+
+    <!-- Dependencies -->
+    <dependencies>
+        <!-- API Dependency -->
+        <dependency>
+            <groupId>ai.tegmentum.wamr4j</groupId>
+            <artifactId>wamr4j</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Native Library Dependency -->
+        <dependency>
+            <groupId>ai.tegmentum.wamr4j</groupId>
+            <artifactId>wamr4j-native</artifactId>
+            <version>${project.version}</version>
+            <classifier>${native.platform.classifier}</classifier>
+        </dependency>
+
+        <!-- Test Dependencies -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- API Test Support -->
+        <dependency>
+            <groupId>ai.tegmentum.wamr4j</groupId>
+            <artifactId>wamr4j</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- Build Configuration -->
+    <build>
+        <plugins>
+            <!-- Panama requires special JVM arguments -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgs>
+                        <arg>--enable-preview</arg>
+                        <arg>--add-modules</arg>
+                        <arg>java.base</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>@{argLine} --enable-native-access=ALL-UNNAMED --enable-preview</argLine>
+                    <systemPropertyVariables>
+                        <java.library.path>${project.build.directory}/native-libs</java.library.path>
+                        <wamr4j.runtime>panama</wamr4j.runtime>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- Java 23+ Profile -->
+    <profiles>
+        <profile>
+            <id>java23+</id>
+            <activation>
+                <jdk>[23,)</jdk>
+            </activation>
+            <properties>
+                <maven.compiler.source>23</maven.compiler.source>
+                <maven.compiler.target>23</maven.compiler.target>
+                <maven.compiler.release>23</maven.compiler.release>
+            </properties>
+        </profile>
+    </profiles>
+</project>
