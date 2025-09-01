@@ -65,7 +65,8 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
         return 0;
     }
 
-    let bytes = match env.convert_byte_array(wasm_bytes) {
+    let byte_array = unsafe { JByteArray::from_raw(wasm_bytes) };
+    let bytes = match env.convert_byte_array(byte_array) {
         Ok(bytes) => bytes,
         Err(_) => return 0,
     };
@@ -127,5 +128,5 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
     }
 }
 
-/// Additional JNI bindings for other WebAssembly operations would be implemented here
-/// following the same pattern...
+// Additional JNI bindings for other WebAssembly operations would be implemented here
+// following the same pattern...
