@@ -49,8 +49,16 @@ public final class FunctionSignature {
      * @param returnTypes the return types, may be null or empty (for void functions)
      */
     public FunctionSignature(final ValueType[] parameterTypes, final ValueType[] returnTypes) {
-        this.parameterTypes = parameterTypes != null ? parameterTypes.clone() : new ValueType[0];
-        this.returnTypes = returnTypes != null ? returnTypes.clone() : new ValueType[0];
+        if (parameterTypes != null) {
+            this.parameterTypes = parameterTypes.clone();
+        } else {
+            this.parameterTypes = new ValueType[0];
+        }
+        if (returnTypes != null) {
+            this.returnTypes = returnTypes.clone();
+        } else {
+            this.returnTypes = new ValueType[0];
+        }
     }
 
     /**
@@ -105,7 +113,12 @@ public final class FunctionSignature {
      * @return true if the arguments are compatible, false otherwise
      */
     public boolean isCompatible(final Object[] args) {
-        final Object[] arguments = args != null ? args : new Object[0];
+        final Object[] arguments;
+        if (args != null) {
+            arguments = args;
+        } else {
+            arguments = new Object[0];
+        }
 
         if (arguments.length != parameterTypes.length) {
             return false;

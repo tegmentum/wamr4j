@@ -23,6 +23,7 @@ import ai.tegmentum.wamr4j.exception.ValidationException;
 import ai.tegmentum.wamr4j.panama.internal.NativeLibraryLoader;
 import java.io.IOException;
 import java.lang.foreign.*;
+import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;

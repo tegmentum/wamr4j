@@ -22,6 +22,7 @@ import ai.tegmentum.wamr4j.WebAssemblyMemory;
 import ai.tegmentum.wamr4j.exception.RuntimeException;
 import ai.tegmentum.wamr4j.panama.internal.NativeLibraryLoader;
 import java.lang.foreign.*;
+import java.lang.invoke.MethodHandle;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
