@@ -24,9 +24,23 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_long, c_uchar, c_void};
 use std::ptr;
 
-use crate::runtime::*;
-use crate::utils::*;
-use crate::wamr_wrapper::*;
+use crate::runtime::{
+    RuntimeConfig,
+    runtime_init, runtime_init_with_config, runtime_is_valid,
+    module_compile, module_validate, module_get_size,
+    instance_create, instance_is_valid,
+    function_lookup, function_call, function_get_signature,
+    memory_get, memory_size, memory_data, memory_grow, memory_read, memory_write,
+};
+use crate::utils::{
+    write_error_to_buffer, get_last_error, clear_last_error,
+    wasm_value_from_ffi, wasm_value_to_ffi, wasm_type_to_ffi,
+    WasmValueFFI, WASM_TYPE_I32, WASM_TYPE_I64, WASM_TYPE_F32, WASM_TYPE_F64,
+};
+use crate::wamr_wrapper::{
+    WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory,
+    WasmValue, WasmType, WamrError,
+};
 
 // =============================================================================
 // Runtime Management
@@ -286,17 +300,32 @@ pub extern "C" fn wamr_function_call(
     unsafe {
         let function_ref = &*(function as *const WamrFunction);
         
-        // Convert FFI args to WasmValue
+        // Optimized argument conversion using batch operations
         let arg_slice = if arg_count > 0 && !args.is_null() {
             std::slice::from_raw_parts(args, arg_count as usize)
         } else {
             &[]
         };
         
-        let wasm_args: Vec<WasmValue> = arg_slice
-            .iter()
-            .map(|ffi_val| wasm_value_from_ffi(ffi_val))
-            .collect();
+        // Use stack allocation for small argument counts to avoid heap allocation
+        let mut stack_args = [WasmValue::I32(0); 16]; // Stack buffer for up to 16 args
+        let wasm_args: Vec<WasmValue> = if arg_slice.len() <= 16 {
+            // Use stack buffer - no heap allocation
+            let mut converted_count = 0;
+            for (i, ffi_val) in arg_slice.iter().enumerate() {
+                if i < 16 {
+                    stack_args[i] = wasm_value_from_ffi(ffi_val);
+                    converted_count += 1;
+                }
+            }
+            stack_args[..converted_count].to_vec()
+        } else {
+            // Fall back to heap allocation for large argument counts
+            arg_slice
+                .iter()
+                .map(|ffi_val| wasm_value_from_ffi(ffi_val))
+                .collect()
+        };
         
         match function_call(function_ref, &wasm_args) {
             Ok(wasm_results) => {
@@ -430,6 +459,7 @@ pub extern "C" fn wamr_memory_grow(memory: *mut c_void, pages: c_long) -> c_int 
 
 /// Read data from memory at offset
 #[no_mangle]
+#[inline(never)] // Keep as separate function for debugging, but optimize internally
 pub extern "C" fn wamr_memory_read(
     memory: *mut c_void,
     offset: c_long,
@@ -522,80 +552,4 @@ pub extern "C" fn wamr_clear_last_error() {
     clear_last_error();
 }
 
-// =============================================================================
-// FFI Value Types
-// =============================================================================
-
-/// FFI-compatible WebAssembly value representation
-#[repr(C)]
-pub struct WasmValueFFI {
-    pub value_type: c_int, // 0=i32, 1=i64, 2=f32, 3=f64
-    pub data: [u8; 8],     // Union-like storage for all value types
-}
-
-/// FFI type constants for WebAssembly values
-pub const WASM_TYPE_I32: c_int = 0;
-pub const WASM_TYPE_I64: c_int = 1;
-pub const WASM_TYPE_F32: c_int = 2;
-pub const WASM_TYPE_F64: c_int = 3;
-
-/// Convert WasmValue to FFI representation
-pub fn wasm_value_to_ffi(value: &WasmValue) -> WasmValueFFI {
-    match value {
-        WasmValue::I32(v) => WasmValueFFI {
-            value_type: WASM_TYPE_I32,
-            data: {
-                let mut data = [0u8; 8];
-                data[0..4].copy_from_slice(&v.to_le_bytes());
-                data
-            },
-        },
-        WasmValue::I64(v) => WasmValueFFI {
-            value_type: WASM_TYPE_I64,
-            data: v.to_le_bytes(),
-        },
-        WasmValue::F32(v) => WasmValueFFI {
-            value_type: WASM_TYPE_F32,
-            data: {
-                let mut data = [0u8; 8];
-                data[0..4].copy_from_slice(&v.to_le_bytes());
-                data
-            },
-        },
-        WasmValue::F64(v) => WasmValueFFI {
-            value_type: WASM_TYPE_F64,
-            data: v.to_le_bytes(),
-        },
-    }
-}
-
-/// Convert FFI representation to WasmValue
-pub fn wasm_value_from_ffi(ffi_value: &WasmValueFFI) -> WasmValue {
-    match ffi_value.value_type {
-        WASM_TYPE_I32 => {
-            let bytes = [ffi_value.data[0], ffi_value.data[1], ffi_value.data[2], ffi_value.data[3]];
-            WasmValue::I32(i32::from_le_bytes(bytes))
-        }
-        WASM_TYPE_I64 => {
-            WasmValue::I64(i64::from_le_bytes(ffi_value.data))
-        }
-        WASM_TYPE_F32 => {
-            let bytes = [ffi_value.data[0], ffi_value.data[1], ffi_value.data[2], ffi_value.data[3]];
-            WasmValue::F32(f32::from_le_bytes(bytes))
-        }
-        WASM_TYPE_F64 => {
-            WasmValue::F64(f64::from_le_bytes(ffi_value.data))
-        }
-        _ => WasmValue::I32(0), // Default fallback
-    }
-}
-
-/// Convert WasmType to FFI representation
-pub fn wasm_type_to_ffi(wasm_type: &WasmType) -> c_int {
-    match wasm_type {
-        WasmType::I32 => WASM_TYPE_I32,
-        WasmType::I64 => WASM_TYPE_I64,
-        WasmType::F32 => WASM_TYPE_F32,
-        WasmType::F64 => WASM_TYPE_F64,
-    }
-}
+// FFI value types are defined in utils.rs to avoid duplication

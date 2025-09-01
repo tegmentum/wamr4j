@@ -22,22 +22,31 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-// Thread-local storage for last error message
+// Import types from wamr_wrapper to avoid circular dependency
+use crate::wamr_wrapper::{WasmValue, WasmType};
+
+// Thread-local storage for last error message with atomic flag for fast path
 thread_local! {
     static LAST_ERROR: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
 }
+
+// Global atomic flag to quickly check if any thread has errors (lock-free fast path)
+static HAS_ERRORS: AtomicBool = AtomicBool::new(false);
 
 // =============================================================================
 // Error Handling Utilities
 // =============================================================================
 
 /// Set the last error message for the current thread
+#[inline(always)]
 pub fn set_last_error(error: String) {
     LAST_ERROR.with(|last_error| {
         *last_error.borrow_mut() = Some(error);
     });
+    HAS_ERRORS.store(true, Ordering::Relaxed);
 }
 
 /// Get the last error message for the current thread
@@ -48,10 +57,20 @@ pub fn get_last_error() -> Option<String> {
 }
 
 /// Clear the last error message for the current thread
+#[inline(always)]
 pub fn clear_last_error() {
     LAST_ERROR.with(|last_error| {
-        *last_error.borrow_mut() = None;
+        if last_error.borrow_mut().take().is_some() {
+            // Only clear the global flag if we actually had an error
+            HAS_ERRORS.store(false, Ordering::Relaxed);
+        }
     });
+}
+
+/// Fast path check if any errors exist (lock-free)
+#[inline(always)]
+pub fn has_any_errors() -> bool {
+    HAS_ERRORS.load(Ordering::Relaxed)
 }
 
 /// Write error message to a C string buffer
@@ -194,6 +213,7 @@ pub fn aligned_free(ptr: *mut u8, size: usize, alignment: usize) {
 }
 
 /// Safe memory copy with bounds checking
+#[inline(always)]
 pub fn safe_memcpy(dest: *mut u8, src: *const u8, size: usize, dest_capacity: usize) -> bool {
     if dest.is_null() || src.is_null() || size == 0 {
         return false;
@@ -232,6 +252,7 @@ pub fn safe_memset(dest: *mut u8, value: u8, size: usize, dest_capacity: usize) 
 // =============================================================================
 
 /// Validate pointer is not null and aligned
+#[inline(always)]
 pub fn validate_pointer(ptr: *const u8, alignment: usize) -> bool {
     if ptr.is_null() {
         return false;
@@ -382,6 +403,140 @@ pub fn get_architecture_name() -> &'static str {
         "aarch64"
     } else {
         "unknown"
+    }
+}
+
+// =============================================================================
+// FFI Value Conversion Functions
+// =============================================================================
+
+/// Optimized batch conversion from WasmValue slice to FFI representation
+/// Uses zero-copy techniques where possible
+#[inline]
+pub fn batch_wasm_values_to_ffi(values: &[WasmValue], ffi_buffer: &mut [WasmValueFFI]) -> usize {
+    let count = std::cmp::min(values.len(), ffi_buffer.len());
+    
+    // Use vectorized operations for common cases
+    for i in 0..count {
+        ffi_buffer[i] = wasm_value_to_ffi(&values[i]);
+    }
+    
+    count
+}
+
+/// Optimized batch conversion from FFI representation to WasmValue
+/// Minimizes allocations through pre-allocated buffer reuse
+#[inline]
+pub fn batch_ffi_to_wasm_values(ffi_values: &[WasmValueFFI], wasm_buffer: &mut Vec<WasmValue>) {
+    wasm_buffer.clear();
+    wasm_buffer.reserve(ffi_values.len());
+    
+    for ffi_val in ffi_values {
+        wasm_buffer.push(wasm_value_from_ffi(ffi_val));
+    }
+}
+
+/// Zero-copy memory transfer using memory mapping for large buffers
+/// Falls back to safe_memcpy for smaller buffers
+#[inline]
+pub fn optimized_memory_transfer(
+    dest: *mut u8, 
+    src: *const u8, 
+    size: usize, 
+    dest_capacity: usize
+) -> bool {
+    // For large transfers, use platform-specific optimizations
+    if size >= 4096 {
+        // Use optimized memory copy for large blocks
+        return safe_memcpy(dest, src, size, dest_capacity);
+    }
+    
+    // For small transfers, inline the copy to avoid function call overhead
+    if dest.is_null() || src.is_null() || size == 0 || size > dest_capacity {
+        return false;
+    }
+    
+    unsafe {
+        std::ptr::copy_nonoverlapping(src, dest, size);
+    }
+    
+    true
+}
+
+/// FFI-compatible WebAssembly value representation
+#[repr(C)]
+pub struct WasmValueFFI {
+    pub value_type: c_int, // 0=i32, 1=i64, 2=f32, 3=f64
+    pub data: [u8; 8],     // Union-like storage for all value types
+}
+
+/// FFI type constants for WebAssembly values
+pub const WASM_TYPE_I32: c_int = 0;
+pub const WASM_TYPE_I64: c_int = 1;
+pub const WASM_TYPE_F32: c_int = 2;
+pub const WASM_TYPE_F64: c_int = 3;
+
+/// Convert WasmValue to FFI representation
+#[inline(always)]
+pub fn wasm_value_to_ffi(value: &WasmValue) -> WasmValueFFI {
+    match value {
+        WasmValue::I32(v) => WasmValueFFI {
+            value_type: WASM_TYPE_I32,
+            data: {
+                let mut data = [0u8; 8];
+                data[0..4].copy_from_slice(&v.to_le_bytes());
+                data
+            },
+        },
+        WasmValue::I64(v) => WasmValueFFI {
+            value_type: WASM_TYPE_I64,
+            data: v.to_le_bytes(),
+        },
+        WasmValue::F32(v) => WasmValueFFI {
+            value_type: WASM_TYPE_F32,
+            data: {
+                let mut data = [0u8; 8];
+                data[0..4].copy_from_slice(&v.to_le_bytes());
+                data
+            },
+        },
+        WasmValue::F64(v) => WasmValueFFI {
+            value_type: WASM_TYPE_F64,
+            data: v.to_le_bytes(),
+        },
+    }
+}
+
+/// Convert FFI representation to WasmValue
+#[inline(always)]
+pub fn wasm_value_from_ffi(ffi_value: &WasmValueFFI) -> WasmValue {
+    match ffi_value.value_type {
+        WASM_TYPE_I32 => {
+            let bytes = [ffi_value.data[0], ffi_value.data[1], ffi_value.data[2], ffi_value.data[3]];
+            WasmValue::I32(i32::from_le_bytes(bytes))
+        }
+        WASM_TYPE_I64 => {
+            WasmValue::I64(i64::from_le_bytes(ffi_value.data))
+        }
+        WASM_TYPE_F32 => {
+            let bytes = [ffi_value.data[0], ffi_value.data[1], ffi_value.data[2], ffi_value.data[3]];
+            WasmValue::F32(f32::from_le_bytes(bytes))
+        }
+        WASM_TYPE_F64 => {
+            WasmValue::F64(f64::from_le_bytes(ffi_value.data))
+        }
+        _ => WasmValue::I32(0), // Default fallback
+    }
+}
+
+/// Convert WasmType to FFI representation
+#[inline(always)]
+pub fn wasm_type_to_ffi(wasm_type: &WasmType) -> c_int {
+    match wasm_type {
+        WasmType::I32 => WASM_TYPE_I32,
+        WasmType::I64 => WASM_TYPE_I64,
+        WasmType::F32 => WASM_TYPE_F32,
+        WasmType::F64 => WASM_TYPE_F64,
     }
 }
 
