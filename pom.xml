@@ -79,6 +79,10 @@
         <!-- Utility Dependencies -->
         <slf4j.version>2.0.9</slf4j.version>
 
+        <!-- Rust Maven Plugin -->
+        <rust-maven-plugin.version>1.2.0</rust-maven-plugin.version>
+        <os-maven-plugin.version>1.7.1</os-maven-plugin.version>
+        
         <!-- Cross-Platform Build Configuration -->
         <native.platform.classifier>${os.detected.name}-${os.detected.arch}</native.platform.classifier>
         
@@ -457,6 +461,34 @@
                         </execution>
                     </executions>
                 </plugin>
+
+                <!-- Rust Maven Plugin -->
+                <plugin>
+                    <groupId>org.questdb</groupId>
+                    <artifactId>rust-maven-plugin</artifactId>
+                    <version>${rust-maven-plugin.version}</version>
+                    <configuration>
+                        <path>.</path>
+                        <release>true</release>
+                        <verbose>true</verbose>
+                        <offline>false</offline>
+                    </configuration>
+                </plugin>
+
+                <!-- OS Detection Plugin -->
+                <plugin>
+                    <groupId>kr.motd.maven</groupId>
+                    <artifactId>os-maven-plugin</artifactId>
+                    <version>${os-maven-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <phase>initialize</phase>
+                            <goals>
+                                <goal>detect</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
             </plugins>
         </pluginManagement>
 
@@ -642,6 +674,8 @@
             </activation>
             <properties>
                 <native.platform.classifier>linux-x86_64</native.platform.classifier>
+                <rust.target>x86_64-unknown-linux-gnu</rust.target>
+                <native.library.name>libwamr4j_native.so</native.library.name>
             </properties>
         </profile>
 
@@ -655,6 +689,8 @@
             </activation>
             <properties>
                 <native.platform.classifier>linux-aarch64</native.platform.classifier>
+                <rust.target>aarch64-unknown-linux-gnu</rust.target>
+                <native.library.name>libwamr4j_native.so</native.library.name>
             </properties>
         </profile>
 
@@ -667,7 +703,9 @@
                 </os>
             </activation>
             <properties>
-                <native.platform.classifier>osx-x86_64</native.platform.classifier>
+                <native.platform.classifier>darwin-x86_64</native.platform.classifier>
+                <rust.target>x86_64-apple-darwin</rust.target>
+                <native.library.name>libwamr4j_native.dylib</native.library.name>
             </properties>
         </profile>
 
@@ -680,7 +718,9 @@
                 </os>
             </activation>
             <properties>
-                <native.platform.classifier>osx-aarch64</native.platform.classifier>
+                <native.platform.classifier>darwin-aarch64</native.platform.classifier>
+                <rust.target>aarch64-apple-darwin</rust.target>
+                <native.library.name>libwamr4j_native.dylib</native.library.name>
             </properties>
         </profile>
 
@@ -694,6 +734,25 @@
             </activation>
             <properties>
                 <native.platform.classifier>windows-x86_64</native.platform.classifier>
+                <rust.target>x86_64-pc-windows-msvc</rust.target>
+                <native.library.name>wamr4j_native.dll</native.library.name>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>windows-aarch64</id>
+            <properties>
+                <native.platform.classifier>windows-aarch64</native.platform.classifier>
+                <rust.target>aarch64-pc-windows-msvc</rust.target>
+                <native.library.name>wamr4j_native.dll</native.library.name>
+            </properties>
+        </profile>
+
+        <!-- Cross-compilation profiles for building all platforms -->
+        <profile>
+            <id>native-all-platforms</id>
+            <properties>
+                <rust.targets>x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-apple-darwin,aarch64-apple-darwin,x86_64-pc-windows-msvc,aarch64-pc-windows-msvc</rust.targets>
             </properties>
         </profile>
     </profiles>
