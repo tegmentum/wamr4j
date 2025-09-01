@@ -48,13 +48,38 @@ pub fn bytes_to_vec(ptr: *const c_uchar, len: c_long) -> Option<Vec<u8>> {
 /// Panama-specific error handling utilities
 pub fn error_to_code(error: &WamrError) -> c_int {
     match error {
+        // Runtime errors
         WamrError::RuntimeCreationFailed => -1001,
-        WamrError::CompilationFailed => -1002,
-        WamrError::InstantiationFailed => -1003,
-        WamrError::FunctionNotFound => -1004,
-        WamrError::MemoryNotFound => -1005,
-        WamrError::InvalidArguments => -1006,
-        WamrError::NativeError(_) => -1999,
+        WamrError::RuntimeNotInitialized => -1002,
+        WamrError::RuntimeConfigurationError(_) => -1003,
+        
+        // Compilation errors
+        WamrError::CompilationFailed => -1010,
+        WamrError::InvalidWasmBytecode => -1011,
+        WamrError::UnsupportedWasmFeature(_) => -1012,
+        
+        // Instantiation errors
+        WamrError::InstantiationFailed => -1020,
+        WamrError::InsufficientMemory => -1021,
+        WamrError::LinkingError(_) => -1022,
+        
+        // Function call errors
+        WamrError::FunctionNotFound => -1030,
+        WamrError::FunctionSignatureMismatch => -1031,
+        WamrError::InvalidArguments => -1032,
+        WamrError::ExecutionFailed(_) => -1033,
+        
+        // Memory errors
+        WamrError::MemoryNotFound => -1040,
+        WamrError::MemoryAccessViolation => -1041,
+        WamrError::MemoryGrowthFailed => -1042,
+        WamrError::InvalidMemoryOffset => -1043,
+        
+        // General errors
+        WamrError::NullPointer => -1050,
+        WamrError::BufferTooSmall => -1051,
+        WamrError::InvalidUTF8 => -1052,
+        WamrError::NativeError(_) => -1099,
     }
 }
 
