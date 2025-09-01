@@ -1,0 +1,66 @@
+# Cross-compilation configuration for wamr4j-native
+# Supports all 6 target platforms: Linux/Windows/macOS x86_64 and ARM64
+
+[build]
+# Default target-dir for consistency
+target-dir = "target"
+
+[target.x86_64-unknown-linux-gnu]
+# Linux x86_64 - most common development platform
+linker = "x86_64-linux-gnu-gcc"
+rustflags = [
+    "-C", "target-cpu=x86-64",
+    "-C", "link-arg=-Wl,--gc-sections",
+    "-C", "link-arg=-static-libgcc",
+    "-C", "target-feature=+crt-static"
+]
+
+[target.aarch64-unknown-linux-gnu]
+# Linux ARM64 - growing server platform
+linker = "aarch64-linux-gnu-gcc"
+rustflags = [
+    "-C", "target-cpu=generic",
+    "-C", "target-feature=+neon",
+    "-C", "link-arg=-Wl,--gc-sections",
+    "-C", "link-arg=-static-libgcc",
+    "-C", "target-feature=+crt-static"
+]
+
+[target.x86_64-pc-windows-msvc]
+# Windows x86_64 MSVC - primary Windows platform
+rustflags = [
+    "-C", "target-cpu=x86-64",
+    "-C", "target-feature=+crt-static"
+]
+
+[target.aarch64-pc-windows-msvc]
+# Windows ARM64 MSVC - modern ARM Windows
+rustflags = [
+    "-C", "target-cpu=generic",
+    "-C", "target-feature=+neon",
+    "-C", "target-feature=+crt-static"
+]
+
+[target.x86_64-apple-darwin]
+# macOS Intel x86_64 - legacy Mac platform
+linker = "clang"
+rustflags = [
+    "-C", "target-cpu=x86-64",
+    "-C", "link-arg=-mmacosx-version-min=10.15",
+    "-C", "link-arg=-Wl,-dead_strip"
+]
+
+[target.aarch64-apple-darwin]
+# macOS ARM64 (Apple Silicon) - most common Mac development platform
+linker = "clang"
+rustflags = [
+    "-C", "target-cpu=apple-m1",
+    "-C", "target-feature=+neon",
+    "-C", "link-arg=-mmacosx-version-min=11.0",
+    "-C", "link-arg=-Wl,-dead_strip"
+]
+
+# Environment variables for cross-compilation
+[env]
+# Use system's pkg-config for native dependencies
+PKG_CONFIG_ALLOW_CROSS = "1"
