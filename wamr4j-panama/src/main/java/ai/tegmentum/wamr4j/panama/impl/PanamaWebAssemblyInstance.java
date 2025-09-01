@@ -162,4 +162,15 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
             throw new IllegalStateException("WebAssembly instance has been closed");
         }
     }
+    
+    @Override
+    public boolean hasMemory() {
+        ensureNotClosed();
+        try {
+            getMemory();
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
 }
