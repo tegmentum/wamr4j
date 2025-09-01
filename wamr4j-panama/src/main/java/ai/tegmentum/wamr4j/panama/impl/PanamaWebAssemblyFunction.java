@@ -80,7 +80,7 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
     }
 
     @Override
-    public FunctionSignature getSignature() throws RuntimeException {
+    public FunctionSignature getSignature() {
         ensureNotClosed();
         
         try {
@@ -91,7 +91,6 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
             if (getSignatureFunc.equals(MemorySegment.NULL)) {
                 // Fallback to unknown signature
                 return FunctionSignature.builder()
-                    .name(name)
                     .build();
             }
             
@@ -101,7 +100,6 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
             final MemorySegment signaturePtr = (MemorySegment) getSignature.invoke(nativeHandle);
             if (signaturePtr.equals(MemorySegment.NULL)) {
                 return FunctionSignature.builder()
-                    .name(name)
                     .build();
             }
             
@@ -204,5 +202,10 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
     private Object[] convertResultsFromNative(final MemorySegment resultsBuffer) {
         // Placeholder implementation - actual conversion depends on return types
         return new Object[0];
+    }
+    
+    @Override
+    public boolean isValid() {
+        return !closed.get() && nativeHandle != null && !nativeHandle.equals(MemorySegment.NULL);
     }
 }

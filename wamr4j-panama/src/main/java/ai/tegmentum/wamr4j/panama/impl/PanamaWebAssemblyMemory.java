@@ -68,7 +68,7 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     }
 
     @Override
-    public long size() throws RuntimeException {
+    public int size() {
         ensureNotClosed();
         
         try {
@@ -85,7 +85,7 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
                 throw new RuntimeException("Invalid memory size returned: " + size);
             }
             
-            return size;
+            return (int) size;
         } catch (final RuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Throwable e) {
@@ -315,5 +315,10 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
                 String.format("Memory access out of bounds: offset=%d, size=%d, memorySize=%d", 
                     offset, size, memorySize));
         }
+    }
+    
+    @Override
+    public boolean isValid() {
+        return !closed.get() && nativeHandle != null && !nativeHandle.equals(MemorySegment.NULL);
     }
 }
