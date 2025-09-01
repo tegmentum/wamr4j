@@ -1,0 +1,315 @@
+name: Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Pre-release'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  MAVEN_OPTS: '-Xmx2g -Xms1g'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-release:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Determine version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "push" ]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+          IS_PRERELEASE=false
+        else
+          VERSION="${{ github.event.inputs.version }}"
+          IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+        fi
+        
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "is_prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
+        
+        # Validate version format
+        if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+          echo "Invalid version format: ${VERSION}"
+          exit 1
+        fi
+
+    - name: Validate changelog
+      run: |
+        if [ ! -f CHANGELOG.md ]; then
+          echo "CHANGELOG.md not found"
+          exit 1
+        fi
+        
+        # Check if version is mentioned in changelog
+        if ! grep -q "${{ steps.version.outputs.version }}" CHANGELOG.md; then
+          echo "Version ${{ steps.version.outputs.version }} not found in CHANGELOG.md"
+          exit 1
+        fi
+
+  build-release:
+    name: Build Release Artifacts
+    needs: validate-release
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            targets: 'x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu'
+          - os: windows-latest
+            platform: windows
+            targets: 'x86_64-pc-windows-msvc,aarch64-pc-windows-msvc'
+          - os: macos-latest
+            platform: macos
+            targets: 'x86_64-apple-darwin,aarch64-apple-darwin'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '23'
+        cache: maven
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.targets }}
+
+    - name: Setup cross-compilation (Linux)
+      if: matrix.platform == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+        echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+        echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+    - name: Update version in POM files
+      run: |
+        ./mvnw versions:set -DnewVersion=${{ needs.validate-release.outputs.version }} -B
+        ./mvnw versions:commit -B
+
+    - name: Build native libraries
+      run: |
+        cd wamr4j-native
+        IFS=',' read -ra TARGETS <<< "${{ matrix.targets }}"
+        for target in "${TARGETS[@]}"; do
+          echo "Building for target: $target"
+          cargo build --release --target "$target"
+        done
+
+    - name: Run tests
+      run: |
+        ./mvnw clean test -B -P native-all-platforms
+
+    - name: Build JAR artifacts
+      run: |
+        ./mvnw clean package -B -P native-all-platforms -DskipTests
+
+    - name: Create release archive
+      run: |
+        mkdir -p release-artifacts
+        cp -r target/*.jar release-artifacts/ 2>/dev/null || true
+        cp -r wamr4j*/target/*.jar release-artifacts/ 2>/dev/null || true
+        
+        # Create platform-specific native library archive
+        tar -czf release-artifacts/wamr4j-native-${{ matrix.platform }}-${{ needs.validate-release.outputs.version }}.tar.gz \
+          -C wamr4j-native/target/ . \
+          --exclude="*.d" --exclude="*.rlib" --exclude="debug" \
+          2>/dev/null || true
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-${{ matrix.platform }}
+        path: release-artifacts/
+        retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: [validate-release, build-release]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: all-artifacts/
+
+    - name: Organize release artifacts
+      run: |
+        mkdir -p final-release/
+        
+        # Collect all JAR files
+        find all-artifacts/ -name "*.jar" -exec cp {} final-release/ \;
+        
+        # Collect all native library archives
+        find all-artifacts/ -name "*.tar.gz" -exec cp {} final-release/ \;
+        
+        # List final artifacts
+        ls -la final-release/
+
+    - name: Generate release notes
+      run: |
+        cat > release-notes.md << 'EOF'
+        # Release ${{ needs.validate-release.outputs.version }}
+        
+        ## What's New
+        
+        This release includes:
+        - Cross-platform native libraries for Linux, Windows, and macOS
+        - Both x86_64 and ARM64 architectures supported
+        - JNI and Panama Foreign Function API implementations
+        - Comprehensive test suite and benchmarks
+        
+        ## Supported Platforms
+        
+        - Linux x86_64 and ARM64
+        - Windows x86_64 and ARM64
+        - macOS x86_64 and ARM64 (Apple Silicon)
+        
+        ## Installation
+        
+        Add the following dependency to your Maven project:
+        
+        ```xml
+        <dependency>
+            <groupId>ai.tegmentum</groupId>
+            <artifactId>wamr4j</artifactId>
+            <version>${{ needs.validate-release.outputs.version }}</version>
+        </dependency>
+        ```
+        
+        ## Documentation
+        
+        See the [README](README.md) for usage examples and API documentation.
+        
+        ## Changelog
+        
+        For detailed changes, see [CHANGELOG.md](CHANGELOG.md).
+        EOF
+
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ needs.validate-release.outputs.version }}
+        release_name: Release ${{ needs.validate-release.outputs.version }}
+        body_path: release-notes.md
+        draft: false
+        prerelease: ${{ needs.validate-release.outputs.is_prerelease }}
+
+    - name: Upload release assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: final-release/
+        asset_name: wamr4j-${{ needs.validate-release.outputs.version }}-all-platforms
+        asset_content_type: application/zip
+
+  publish-maven:
+    name: Publish to Maven Central
+    needs: [validate-release, create-release]
+    runs-on: ubuntu-latest
+    if: github.repository == 'yourusername/wamr4j'  # Update with actual repo
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '23'
+        cache: maven
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: |
+          x86_64-unknown-linux-gnu
+          aarch64-unknown-linux-gnu
+          x86_64-pc-windows-msvc
+          aarch64-pc-windows-msvc
+          x86_64-apple-darwin
+          aarch64-apple-darwin
+
+    - name: Setup cross-compilation
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+        echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+    - name: Update version
+      run: |
+        ./mvnw versions:set -DnewVersion=${{ needs.validate-release.outputs.version }} -B
+        ./mvnw versions:commit -B
+
+    - name: Configure GPG signing
+      run: |
+        echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 --decode | gpg --batch --import
+        gpg --list-secret-keys --keyid-format LONG
+
+    - name: Configure Maven settings
+      run: |
+        mkdir -p ~/.m2
+        cat > ~/.m2/settings.xml << 'EOF'
+        <settings>
+          <servers>
+            <server>
+              <id>ossrh</id>
+              <username>${{ secrets.OSSRH_USERNAME }}</username>
+              <password>${{ secrets.OSSRH_PASSWORD }}</password>
+            </server>
+          </servers>
+        </settings>
+        EOF
+
+    - name: Deploy to Maven Central
+      run: |
+        ./mvnw clean deploy -B -P release -P native-all-platforms \
+          -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }}
+
+    - name: Notify completion
+      run: |
+        echo "Release ${{ needs.validate-release.outputs.version }} published successfully to Maven Central"
