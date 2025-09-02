@@ -533,4 +533,53 @@ unsigned int wasm_runtime_get_app_addr_range(const void* module_inst,
     if (p_app_end_offset) *p_app_end_offset = 65536; // 1 page
     return 65536;
 }
+
+// Additional API functions for extended functionality
+unsigned int wasm_runtime_get_app_heap_size(const void* module_inst) {
+    return 65536; // 1 page default
+}
+
+int wasm_runtime_validate_module(const unsigned char* buf, unsigned int size, 
+                                 char* error_buf, unsigned int error_buf_size) {
+    if (!buf || size < 8) {
+        if (error_buf && error_buf_size > 0) {
+            strncpy(error_buf, "Invalid WebAssembly bytecode", error_buf_size - 1);
+            error_buf[error_buf_size - 1] = '\0';
+        }
+        return 0; // Validation failed
+    }
+    // Check WASM magic number
+    if (buf[0] != 0x00 || buf[1] != 0x61 || buf[2] != 0x73 || buf[3] != 0x6D) {
+        if (error_buf && error_buf_size > 0) {
+            strncpy(error_buf, "Invalid WASM magic number", error_buf_size - 1);
+            error_buf[error_buf_size - 1] = '\0';
+        }
+        return 0; // Validation failed
+    }
+    return 1; // Validation succeeded
+}
+
+int wasm_runtime_get_function_signature(const void* function, 
+                                        unsigned int* param_count, 
+                                        unsigned int* result_count) {
+    if (!function) return -1;
+    
+    // Return placeholder signature information
+    if (param_count) *param_count = 1;  // 1 parameter
+    if (result_count) *result_count = 1; // 1 result
+    return 0; // Success
+}
+
+static char last_error_buf[1024] = {0};
+
+const char* wasm_runtime_get_last_error() {
+    if (last_error_buf[0] == 0) {
+        return NULL;
+    }
+    return last_error_buf;
+}
+
+void wasm_runtime_clear_last_error() {
+    last_error_buf[0] = 0;
+}
 "#;
