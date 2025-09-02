@@ -19,6 +19,7 @@
 use std::os::raw::{c_char, c_int};
 
 // Module declarations
+pub mod bindings;
 pub mod ffi;
 pub mod runtime;
 pub mod utils;

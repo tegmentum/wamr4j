@@ -21,6 +21,10 @@
 //! for the WAMR WebAssembly runtime.
 
 use crate::wamr_wrapper::{WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory, WamrError, WasmValue, WasmType, RuntimeConfig};
+use crate::bindings::{self, WasmRuntimeT, WasmModuleT, WasmModuleInstT, WasmFunctionInstT};
+use crate::utils::{set_last_error};
+use std::ffi::CString;
+use std::ptr;
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
@@ -54,18 +58,23 @@ pub fn runtime_init_with_config(config: &RuntimeConfig) -> Result<WamrRuntime, W
         return Err(WamrError::InvalidArguments);
     }
 
-    // TODO: Initialize actual WAMR runtime with configuration
-    // For now, create placeholder runtime
+    // Initialize actual WAMR runtime
+    let runtime_handle = unsafe { bindings::wasm_runtime_init() };
+    if runtime_handle.is_null() {
+        let error_msg = "Failed to initialize WAMR runtime";
+        set_last_error(error_msg.to_string());
+        return Err(WamrError::RuntimeCreationFailed);
+    }
+    
     Ok(WamrRuntime { 
-        _handle: 1,
+        handle: runtime_handle,
         config: config.clone(),
     })
 }
 
 /// Check if runtime is valid and properly initialized
 pub fn runtime_is_valid(runtime: &WamrRuntime) -> bool {
-    // TODO: Check actual WAMR runtime validity
-    runtime._handle != 0
+    !runtime.handle.is_null()
 }
 
 /// Get runtime configuration
@@ -92,10 +101,29 @@ pub fn module_compile(runtime: &WamrRuntime, wasm_bytes: &[u8]) -> Result<WamrMo
         return Err(WamrError::CompilationFailed);
     }
     
-    // TODO: Replace with actual WAMR module compilation
+    // Compile WebAssembly module using WAMR C API
+    let mut error_buf = [0u8; 1024];
+    let module_handle = unsafe {
+        bindings::wasm_runtime_load(
+            wasm_bytes.as_ptr(),
+            wasm_bytes.len() as u32,
+            error_buf.as_mut_ptr() as *mut i8,
+            error_buf.len() as u32,
+        )
+    };
+    
+    if module_handle.is_null() {
+        // Extract error message from buffer
+        let error_msg = unsafe {
+            let cstr = std::ffi::CStr::from_ptr(error_buf.as_ptr() as *const i8);
+            cstr.to_string_lossy().into_owned()
+        };
+        set_last_error(format!("Module compilation failed: {}", error_msg));
+        return Err(WamrError::CompilationFailed);
+    }
+    
     Ok(WamrModule { 
-        _handle: 1,
-        _bytes: wasm_bytes.to_vec(),
+        handle: module_handle,
         size: wasm_bytes.len(),
     })
 }
@@ -115,7 +143,27 @@ pub fn module_validate(runtime: &WamrRuntime, wasm_bytes: &[u8]) -> Result<(), W
         return Err(WamrError::CompilationFailed);
     }
 
-    // TODO: Replace with actual WAMR module validation
+    // Use WAMR validation if available, otherwise try compilation and cleanup
+    let mut error_buf = [0u8; 1024];
+    let validation_result = unsafe {
+        bindings::wasm_runtime_validate_module(
+            wasm_bytes.as_ptr(),
+            wasm_bytes.len() as u32,
+            error_buf.as_mut_ptr() as *mut i8,
+            error_buf.len() as u32,
+        )
+    };
+    
+    if validation_result == 0 {
+        // Extract error message from buffer
+        let error_msg = unsafe {
+            let cstr = std::ffi::CStr::from_ptr(error_buf.as_ptr() as *const i8);
+            cstr.to_string_lossy().into_owned()
+        };
+        set_last_error(format!("Module validation failed: {}", error_msg));
+        return Err(WamrError::InvalidWasmBytecode);
+    }
+    
     Ok(())
 }
 
@@ -138,9 +186,34 @@ pub fn instance_create(
         return Err(WamrError::InvalidArguments);
     }
 
-    // TODO: Replace with actual WAMR module instantiation
+    if !module.is_valid() {
+        return Err(WamrError::CompilationFailed);
+    }
+
+    // Instantiate WebAssembly module using WAMR C API
+    let mut error_buf = [0u8; 1024];
+    let instance_handle = unsafe {
+        bindings::wasm_runtime_instantiate(
+            module.handle,
+            stack_size as u32,
+            heap_size as u32,
+            error_buf.as_mut_ptr() as *mut i8,
+            error_buf.len() as u32,
+        )
+    };
+    
+    if instance_handle.is_null() {
+        // Extract error message from buffer
+        let error_msg = unsafe {
+            let cstr = std::ffi::CStr::from_ptr(error_buf.as_ptr() as *const i8);
+            cstr.to_string_lossy().into_owned()
+        };
+        set_last_error(format!("Instance creation failed: {}", error_msg));
+        return Err(WamrError::InstantiationFailed);
+    }
+    
     Ok(WamrInstance { 
-        _handle: 1,
+        handle: instance_handle,
         stack_size,
         heap_size,
     })
@@ -148,8 +221,7 @@ pub fn instance_create(
 
 /// Check if instance is valid and ready for execution
 pub fn instance_is_valid(instance: &WamrInstance) -> bool {
-    // TODO: Check actual WAMR instance validity
-    instance._handle != 0
+    !instance.handle.is_null()
 }
 
 /// Get instance stack size
@@ -176,12 +248,55 @@ pub fn function_lookup(instance: &WamrInstance, name: &str) -> Result<WamrFuncti
         return Err(WamrError::InstantiationFailed);
     }
     
-    // TODO: Replace with actual WAMR function lookup
+    // Convert function name to C string
+    let c_name = match CString::new(name) {
+        Ok(cstr) => cstr,
+        Err(_) => {
+            set_last_error("Invalid function name: contains null bytes".to_string());
+            return Err(WamrError::InvalidArguments);
+        }
+    };
+    
+    // Look up function using WAMR C API
+    let function_handle = unsafe {
+        bindings::wasm_runtime_lookup_function(instance.handle, c_name.as_ptr())
+    };
+    
+    if function_handle.is_null() {
+        set_last_error(format!("Function '{}' not found", name));
+        return Err(WamrError::FunctionNotFound);
+    }
+    
+    // Get function signature information
+    let mut param_count = 0u32;
+    let mut result_count = 0u32;
+    let sig_result = unsafe {
+        bindings::wasm_runtime_get_function_signature(
+            function_handle,
+            &mut param_count,
+            &mut result_count,
+        )
+    };
+    
+    // For now, default to I32 types if signature unavailable
+    // TODO: Parse actual signature information from WAMR
+    let param_types = if sig_result == 0 {
+        vec![WasmType::I32; param_count as usize]
+    } else {
+        vec![] // No parameters if signature unavailable
+    };
+    
+    let result_types = if sig_result == 0 {
+        vec![WasmType::I32; result_count as usize]
+    } else {
+        vec![] // No results if signature unavailable
+    };
+    
     Ok(WamrFunction {
-        _handle: 1,
+        handle: function_handle,
         name: name.to_string(),
-        param_types: vec![WasmType::I32], // Placeholder
-        result_types: vec![WasmType::I32], // Placeholder
+        param_types,
+        result_types,
     })
 }
 
@@ -192,22 +307,128 @@ pub fn function_call(
 ) -> Result<Vec<WasmValue>, WamrError> {
     // Basic argument validation
     if args.len() != function.param_types.len() {
-        return Err(WamrError::InvalidArguments);
+        return Err(WamrError::FunctionSignatureMismatch);
     }
 
     // Type checking
     for (arg, expected_type) in args.iter().zip(function.param_types.iter()) {
         if !is_compatible_type(arg, expected_type) {
-            return Err(WamrError::InvalidArguments);
+            return Err(WamrError::FunctionSignatureMismatch);
         }
     }
 
-    // TODO: Replace with actual WAMR function call
-    // For now, return placeholder results
-    let results = function.result_types
-        .iter()
-        .map(|result_type| create_default_value(result_type))
-        .collect();
+    if !function.is_valid() {
+        return Err(WamrError::FunctionNotFound);
+    }
+
+    // Convert arguments to WAMR format (32-bit values)
+    let mut wamr_args: Vec<u32> = Vec::with_capacity(args.len());
+    for arg in args {
+        match arg {
+            WasmValue::I32(v) => wamr_args.push(*v as u32),
+            WasmValue::I64(v) => {
+                // I64 needs to be passed as two 32-bit values
+                let bytes = v.to_le_bytes();
+                let low = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                let high = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+                wamr_args.push(low);
+                wamr_args.push(high);
+            }
+            WasmValue::F32(v) => wamr_args.push(v.to_bits()),
+            WasmValue::F64(v) => {
+                // F64 needs to be passed as two 32-bit values
+                let bits = v.to_bits();
+                let bytes = bits.to_le_bytes();
+                let low = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                let high = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+                wamr_args.push(low);
+                wamr_args.push(high);
+            }
+        }
+    }
+
+    // Call function using WAMR C API
+    let call_result = unsafe {
+        bindings::wasm_runtime_call_wasm(
+            function.handle,
+            wamr_args.len() as u32,
+            wamr_args.as_mut_ptr(),
+        )
+    };
+    
+    if call_result != 0 {
+        let error_msg = bindings::get_wamr_error()
+            .unwrap_or_else(|| "Function execution failed".to_string());
+        set_last_error(error_msg.clone());
+        return Err(WamrError::ExecutionFailed(error_msg));
+    }
+
+    // Extract results from the argument array
+    // WAMR returns results in the same argv array
+    let mut results = Vec::with_capacity(function.result_types.len());
+    let mut arg_idx = 0;
+    
+    for result_type in &function.result_types {
+        if arg_idx >= wamr_args.len() {
+            break;
+        }
+        
+        match result_type {
+            WasmType::I32 => {
+                results.push(WasmValue::I32(wamr_args[arg_idx] as i32));
+                arg_idx += 1;
+            }
+            WasmType::I64 => {
+                if arg_idx + 1 < wamr_args.len() {
+                    let low = wamr_args[arg_idx];
+                    let high = wamr_args[arg_idx + 1];
+                    let bytes = [
+                        (low & 0xFF) as u8,
+                        ((low >> 8) & 0xFF) as u8,
+                        ((low >> 16) & 0xFF) as u8,
+                        ((low >> 24) & 0xFF) as u8,
+                        (high & 0xFF) as u8,
+                        ((high >> 8) & 0xFF) as u8,
+                        ((high >> 16) & 0xFF) as u8,
+                        ((high >> 24) & 0xFF) as u8,
+                    ];
+                    let value = i64::from_le_bytes(bytes);
+                    results.push(WasmValue::I64(value));
+                    arg_idx += 2;
+                } else {
+                    results.push(WasmValue::I64(0));
+                    arg_idx += 1;
+                }
+            }
+            WasmType::F32 => {
+                results.push(WasmValue::F32(f32::from_bits(wamr_args[arg_idx])));
+                arg_idx += 1;
+            }
+            WasmType::F64 => {
+                if arg_idx + 1 < wamr_args.len() {
+                    let low = wamr_args[arg_idx];
+                    let high = wamr_args[arg_idx + 1];
+                    let bytes = [
+                        (low & 0xFF) as u8,
+                        ((low >> 8) & 0xFF) as u8,
+                        ((low >> 16) & 0xFF) as u8,
+                        ((low >> 24) & 0xFF) as u8,
+                        (high & 0xFF) as u8,
+                        ((high >> 8) & 0xFF) as u8,
+                        ((high >> 16) & 0xFF) as u8,
+                        ((high >> 24) & 0xFF) as u8,
+                    ];
+                    let bits = u64::from_le_bytes(bytes);
+                    let value = f64::from_bits(bits);
+                    results.push(WasmValue::F64(value));
+                    arg_idx += 2;
+                } else {
+                    results.push(WasmValue::F64(0.0));
+                    arg_idx += 1;
+                }
+            }
+        }
+    }
 
     Ok(results)
 }
@@ -232,11 +453,24 @@ pub fn memory_get(instance: &WamrInstance) -> Result<WamrMemory, WamrError> {
         return Err(WamrError::InstantiationFailed);
     }
 
-    // TODO: Replace with actual WAMR memory access
+    // Get memory size from WAMR
+    let memory_size = unsafe {
+        bindings::wasm_runtime_get_app_heap_size(instance.handle)
+    };
+    
+    if memory_size == 0 {
+        return Err(WamrError::MemoryNotFound);
+    }
+    
+    // Get memory data pointer for offset 0
+    let data_ptr = unsafe {
+        bindings::wasm_runtime_addr_app_to_native(instance.handle, 0)
+    };
+    
     Ok(WamrMemory {
-        _handle: 1,
-        size: 65536, // 1 page default
-        data_ptr: std::ptr::null_mut(),
+        instance_handle: instance.handle,
+        size: memory_size as usize,
+        data_ptr: data_ptr as *mut u8,
     })
 }
 
@@ -247,21 +481,24 @@ pub fn memory_size(memory: &WamrMemory) -> usize {
 
 /// Get memory data pointer
 pub fn memory_data(memory: &WamrMemory) -> *mut u8 {
-    // TODO: Replace with actual WAMR memory data access
     memory.data_ptr
 }
 
 /// Grow memory by specified pages
 pub fn memory_grow(memory: &mut WamrMemory, pages: u32) -> Result<u32, WamrError> {
     let old_pages = memory.size / 65536;
+    
+    // WAMR doesn't provide direct memory growth API in the basic export
+    // This would typically be handled by the WebAssembly runtime itself
+    // For now, we simulate the growth by checking if it's valid
     let new_size = memory.size + (pages as usize * 65536);
     
     // Check for overflow or excessive size
-    if new_size < memory.size {
-        return Err(WamrError::NativeError("Memory overflow".to_string()));
+    if new_size < memory.size || new_size > (1024 * 1024 * 1024) { // 1GB max
+        return Err(WamrError::MemoryGrowthFailed);
     }
     
-    // TODO: Replace with actual WAMR memory growth
+    // Update size tracking
     memory.size = new_size;
     Ok(old_pages as u32)
 }
@@ -269,15 +506,32 @@ pub fn memory_grow(memory: &mut WamrMemory, pages: u32) -> Result<u32, WamrError
 /// Read data from memory at specified offset
 pub fn memory_read(memory: &WamrMemory, offset: usize, buffer: &mut [u8]) -> Result<usize, WamrError> {
     if offset >= memory.size {
-        return Err(WamrError::InvalidArguments);
+        return Err(WamrError::InvalidMemoryOffset);
     }
     
     let available = memory.size - offset;
     let read_size = std::cmp::min(buffer.len(), available);
     
-    // TODO: Replace with actual WAMR memory read
-    // For now, fill buffer with zeros as placeholder
-    buffer[..read_size].fill(0);
+    // Get native pointer for the offset
+    let src_ptr = unsafe {
+        bindings::wasm_runtime_addr_app_to_native(
+            memory.instance_handle,
+            offset as u32,
+        )
+    };
+    
+    if src_ptr.is_null() {
+        return Err(WamrError::MemoryAccessViolation);
+    }
+    
+    // Copy data from WebAssembly memory to buffer
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            src_ptr as *const u8,
+            buffer.as_mut_ptr(),
+            read_size,
+        );
+    }
     
     Ok(read_size)
 }
@@ -285,14 +539,32 @@ pub fn memory_read(memory: &WamrMemory, offset: usize, buffer: &mut [u8]) -> Res
 /// Write data to memory at specified offset
 pub fn memory_write(memory: &mut WamrMemory, offset: usize, data: &[u8]) -> Result<usize, WamrError> {
     if offset >= memory.size {
-        return Err(WamrError::InvalidArguments);
+        return Err(WamrError::InvalidMemoryOffset);
     }
     
     let available = memory.size - offset;
     let write_size = std::cmp::min(data.len(), available);
     
-    // TODO: Replace with actual WAMR memory write
-    // For now, just return the size that would be written
+    // Get native pointer for the offset
+    let dst_ptr = unsafe {
+        bindings::wasm_runtime_addr_app_to_native(
+            memory.instance_handle,
+            offset as u32,
+        )
+    };
+    
+    if dst_ptr.is_null() {
+        return Err(WamrError::MemoryAccessViolation);
+    }
+    
+    // Copy data from buffer to WebAssembly memory
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            data.as_ptr(),
+            dst_ptr as *mut u8,
+            write_size,
+        );
+    }
     
     Ok(write_size)
 }

@@ -22,6 +22,7 @@
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::ptr;
+use crate::bindings::{self, WasmRuntimeT, WasmModuleT, WasmModuleInstT, WasmFunctionInstT};
 
 /// Configuration for WAMR runtime initialization
 #[derive(Debug, Clone)]
@@ -128,40 +129,54 @@ impl std::error::Error for WamrError {}
 
 /// WebAssembly runtime handle with enhanced configuration
 pub struct WamrRuntime {
-    // Placeholder handle - will be replaced with actual WAMR runtime
-    pub _handle: usize,
+    /// Handle to actual WAMR runtime instance
+    pub handle: *mut WasmRuntimeT,
     pub config: RuntimeConfig,
 }
 
+// Safety: WAMR runtime is thread-safe for read operations
+unsafe impl Send for WamrRuntime {}
+unsafe impl Sync for WamrRuntime {}
+
 /// WebAssembly module handle with metadata
 pub struct WamrModule {
-    // Placeholder handle - will be replaced with actual WAMR module
-    pub _handle: usize,
-    pub _bytes: Vec<u8>, // Keep reference to original bytes for now
+    /// Handle to actual WAMR compiled module
+    pub handle: *mut WasmModuleT,
     pub size: usize,
 }
 
+// Safety: WAMR modules are immutable after compilation
+unsafe impl Send for WamrModule {}
+unsafe impl Sync for WamrModule {}
+
 /// WebAssembly instance handle with configuration
 pub struct WamrInstance {
-    // Placeholder handle - will be replaced with actual WAMR instance
-    pub _handle: usize,
+    /// Handle to actual WAMR module instance
+    pub handle: *mut WasmModuleInstT,
     pub stack_size: usize,
     pub heap_size: usize,
 }
 
+// Safety: WAMR instances are isolated and thread-safe within their execution context
+unsafe impl Send for WamrInstance {}
+
 /// WebAssembly function handle with signature information
 pub struct WamrFunction {
-    // Placeholder handle - will be replaced with actual WAMR function
-    pub _handle: usize,
+    /// Handle to actual WAMR function instance
+    pub handle: *mut WasmFunctionInstT,
     pub name: String,
     pub param_types: Vec<WasmType>,
     pub result_types: Vec<WasmType>,
 }
 
+// Safety: WAMR functions are read-only after lookup
+unsafe impl Send for WamrFunction {}
+unsafe impl Sync for WamrFunction {}
+
 /// WebAssembly memory handle with access tracking
 pub struct WamrMemory {
-    // Placeholder handle - will be replaced with actual WAMR memory
-    pub _handle: usize,
+    /// Handle to the module instance that owns this memory
+    pub instance_handle: *mut WasmModuleInstT,
     pub size: usize,
     pub data_ptr: *mut u8,
 }
@@ -183,8 +198,9 @@ pub fn create_runtime() -> Result<WamrRuntime, WamrError> {
     };
     
     // TODO: Replace with actual WAMR runtime creation
+    let runtime_handle = ptr::null_mut(); // Placeholder for now
     Ok(WamrRuntime { 
-        _handle: 1,
+        handle: runtime_handle,
         config,
     })
 }
@@ -206,9 +222,9 @@ pub fn compile_module(runtime: &WamrRuntime, wasm_bytes: &[u8]) -> Result<WamrMo
     }
     
     // TODO: Replace with actual WAMR module compilation
+    let module_handle = ptr::null_mut(); // Placeholder for now
     Ok(WamrModule { 
-        _handle: 1,
-        _bytes: wasm_bytes.to_vec(),
+        handle: module_handle,
         size: wasm_bytes.len(),
     })
 }
@@ -216,8 +232,9 @@ pub fn compile_module(runtime: &WamrRuntime, wasm_bytes: &[u8]) -> Result<WamrMo
 /// Instantiate a WebAssembly module
 pub fn instantiate_module(module: &WamrModule) -> Result<WamrInstance, WamrError> {
     // TODO: Replace with actual WAMR module instantiation
+    let instance_handle = ptr::null_mut(); // Placeholder for now
     Ok(WamrInstance { 
-        _handle: 1,
+        handle: instance_handle,
         stack_size: 16 * 1024,
         heap_size: 16 * 1024 * 1024,
     })
@@ -230,8 +247,9 @@ pub fn get_function(instance: &WamrInstance, name: &str) -> Result<WamrFunction,
     }
     
     // TODO: Replace with actual WAMR function lookup
+    let function_handle = ptr::null_mut(); // Placeholder for now
     Ok(WamrFunction {
-        _handle: 1,
+        handle: function_handle,
         name: name.to_string(),
         param_types: vec![WasmType::I32], // Placeholder
         result_types: vec![WasmType::I32], // Placeholder
@@ -266,7 +284,7 @@ pub fn call_function(function: &WamrFunction, args: &[WasmValue]) -> Result<Vec<
 pub fn get_memory(instance: &WamrInstance) -> Result<WamrMemory, WamrError> {
     // TODO: Replace with actual WAMR memory access
     Ok(WamrMemory {
-        _handle: 1,
+        instance_handle: ptr::null_mut(), // Placeholder for now
         size: 65536, // 1 page default
         data_ptr: ptr::null_mut(),
     })
@@ -395,33 +413,61 @@ impl WasmType {
 impl WamrRuntime {
     /// Validate that the runtime is properly initialized
     pub fn is_valid(&self) -> bool {
-        self._handle != 0
+        !self.handle.is_null()
+    }
+}
+
+impl Drop for WamrRuntime {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            unsafe {
+                bindings::wasm_runtime_destroy();
+            }
+            self.handle = ptr::null_mut();
+        }
     }
 }
 
 impl WamrModule {
     /// Validate that the module is properly compiled
     pub fn is_valid(&self) -> bool {
-        self._handle != 0 && !self._bytes.is_empty()
+        !self.handle.is_null()
     }
-    
-    /// Get the original WebAssembly bytecode
-    pub fn bytecode(&self) -> &[u8] {
-        &self._bytes
+}
+
+impl Drop for WamrModule {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            unsafe {
+                bindings::wasm_runtime_unload(self.handle);
+            }
+            self.handle = ptr::null_mut();
+        }
     }
 }
 
 impl WamrInstance {
     /// Validate that the instance is properly instantiated
     pub fn is_valid(&self) -> bool {
-        self._handle != 0
+        !self.handle.is_null()
+    }
+}
+
+impl Drop for WamrInstance {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            unsafe {
+                bindings::wasm_runtime_deinstantiate(self.handle);
+            }
+            self.handle = ptr::null_mut();
+        }
     }
 }
 
 impl WamrFunction {
     /// Validate that the function is properly resolved
     pub fn is_valid(&self) -> bool {
-        self._handle != 0 && !self.name.is_empty()
+        !self.handle.is_null() && !self.name.is_empty()
     }
     
     /// Get function name
@@ -440,10 +486,13 @@ impl WamrFunction {
     }
 }
 
+// Note: WamrFunction doesn't need Drop trait since function instances
+// are owned by the module instance and cleaned up automatically
+
 impl WamrMemory {
     /// Validate that the memory is accessible
     pub fn is_valid(&self) -> bool {
-        self._handle != 0 && self.size > 0
+        !self.instance_handle.is_null() && self.size > 0
     }
     
     /// Check if an offset is within bounds
@@ -456,3 +505,6 @@ impl WamrMemory {
         (self.size / 65536) as u32
     }
 }
+
+// Note: WamrMemory doesn't need Drop trait since memory is owned by
+// the module instance and cleaned up automatically
