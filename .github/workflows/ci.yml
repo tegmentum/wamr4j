@@ -1,0 +1,316 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'epic/**', 'feature/**' ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run nightly builds at 2:00 AM UTC
+    - cron: '0 2 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  MAVEN_OPTS: '-Xmx2g -Xms1g'
+  RUST_LOG: info
+  SCCACHE_GHA_ENABLED: true
+
+jobs:
+  build-matrix:
+    name: Build (${{ matrix.os-name }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds
+          - os: ubuntu-latest
+            os-name: linux
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+            native-profile: native-linux-x86_64
+          - os: ubuntu-latest
+            os-name: linux
+            arch: aarch64
+            target: aarch64-unknown-linux-gnu
+            native-profile: native-linux-aarch64
+          
+          # Windows builds
+          - os: windows-latest
+            os-name: windows
+            arch: x86_64
+            target: x86_64-pc-windows-msvc
+            native-profile: native-windows-x86_64
+          - os: windows-latest
+            os-name: windows
+            arch: aarch64
+            target: aarch64-pc-windows-msvc
+            native-profile: native-windows-aarch64
+          
+          # macOS builds
+          - os: macos-latest
+            os-name: macos
+            arch: x86_64
+            target: x86_64-apple-darwin
+            native-profile: native-macos-x86_64
+          - os: macos-13  # Intel Mac for x86_64 builds
+            os-name: macos
+            arch: x86_64-intel
+            target: x86_64-apple-darwin
+            native-profile: native-macos-x86_64
+          - os: macos-latest
+            os-name: macos
+            arch: aarch64
+            target: aarch64-apple-darwin
+            native-profile: native-macos-aarch64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '23'
+        cache: maven
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+        components: rustfmt, clippy
+
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.4
+
+    - name: Install cross-compilation tools (Linux)
+      if: matrix.os-name == 'linux'
+      run: |
+        if [ "${{ matrix.arch }}" = "aarch64" ]; then
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+        fi
+
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          wamr4j-native/target/
+        key: ${{ runner.os }}-${{ matrix.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.arch }}-cargo-
+
+    - name: Build native library
+      run: |
+        cd wamr4j-native
+        cargo build --release --target ${{ matrix.target }}
+
+    - name: Run Rust tests
+      run: |
+        cd wamr4j-native
+        # Only run tests on native targets to avoid cross-compilation issues
+        if [[ "${{ matrix.target }}" == *"${{ runner.arch }}"* ]] || [[ "${{ matrix.os }}" == "macos-13" && "${{ matrix.arch }}" == "x86_64-intel" ]]; then
+          cargo test --release --target ${{ matrix.target }}
+        else
+          echo "Skipping tests for cross-compiled target: ${{ matrix.target }}"
+        fi
+
+    - name: Build Java modules
+      run: |
+        ./mvnw clean compile -B -P ${{ matrix.native-profile }} \
+          -Drust.target=${{ matrix.target }} \
+          -Dmaven.test.skip=true
+
+    - name: Run Java tests
+      run: |
+        # Only run Java tests on native targets
+        if [[ "${{ matrix.target }}" == *"${{ runner.arch }}"* ]] || [[ "${{ matrix.os }}" == "macos-13" && "${{ matrix.arch }}" == "x86_64-intel" ]]; then
+          ./mvnw test -B -P ${{ matrix.native-profile }} \
+            -Drust.target=${{ matrix.target }}
+        else
+          echo "Skipping Java tests for cross-compiled target: ${{ matrix.target }}"
+        fi
+
+    - name: Collect build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-library-${{ matrix.os-name }}-${{ matrix.arch }}
+        path: |
+          wamr4j-native/target/${{ matrix.target }}/release/libwamr4j_native.*
+          wamr4j-native/target/${{ matrix.target }}/release/wamr4j_native.*
+        retention-days: 7
+
+    - name: Collect test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-${{ matrix.os-name }}-${{ matrix.arch }}
+        path: |
+          **/target/surefire-reports/
+          **/target/failsafe-reports/
+        retention-days: 7
+
+  integration-build:
+    name: Integration Build
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '23'
+        cache: maven
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+
+    - name: Organize native libraries
+      run: |
+        mkdir -p wamr4j-native/src/main/resources/META-INF/native/
+        
+        # Copy Linux libraries
+        if [ -d "artifacts/native-library-linux-x86_64" ]; then
+          mkdir -p wamr4j-native/src/main/resources/META-INF/native/linux-x86_64/
+          cp artifacts/native-library-linux-x86_64/* wamr4j-native/src/main/resources/META-INF/native/linux-x86_64/ 2>/dev/null || true
+        fi
+        if [ -d "artifacts/native-library-linux-aarch64" ]; then
+          mkdir -p wamr4j-native/src/main/resources/META-INF/native/linux-aarch64/
+          cp artifacts/native-library-linux-aarch64/* wamr4j-native/src/main/resources/META-INF/native/linux-aarch64/ 2>/dev/null || true
+        fi
+        
+        # Copy Windows libraries
+        if [ -d "artifacts/native-library-windows-x86_64" ]; then
+          mkdir -p wamr4j-native/src/main/resources/META-INF/native/windows-x86_64/
+          cp artifacts/native-library-windows-x86_64/* wamr4j-native/src/main/resources/META-INF/native/windows-x86_64/ 2>/dev/null || true
+        fi
+        if [ -d "artifacts/native-library-windows-aarch64" ]; then
+          mkdir -p wamr4j-native/src/main/resources/META-INF/native/windows-aarch64/
+          cp artifacts/native-library-windows-aarch64/* wamr4j-native/src/main/resources/META-INF/native/windows-aarch64/ 2>/dev/null || true
+        fi
+        
+        # Copy macOS libraries
+        if [ -d "artifacts/native-library-macos-x86_64" ]; then
+          mkdir -p wamr4j-native/src/main/resources/META-INF/native/darwin-x86_64/
+          cp artifacts/native-library-macos-x86_64/* wamr4j-native/src/main/resources/META-INF/native/darwin-x86_64/ 2>/dev/null || true
+        fi
+        if [ -d "artifacts/native-library-macos-aarch64" ]; then
+          mkdir -p wamr4j-native/src/main/resources/META-INF/native/darwin-aarch64/
+          cp artifacts/native-library-macos-aarch64/* wamr4j-native/src/main/resources/META-INF/native/darwin-aarch64/ 2>/dev/null || true
+        fi
+        
+        # List organized libraries
+        find wamr4j-native/src/main/resources/META-INF/native/ -type f || true
+
+    - name: Build complete JAR with all platforms
+      run: |
+        ./mvnw clean package -B -P native-all-platforms -DskipTests
+
+    - name: Run integration tests
+      run: |
+        ./mvnw test -B -Dtest="*IT" -P native-all-platforms
+
+    - name: Upload integrated JAR
+      uses: actions/upload-artifact@v4
+      with:
+        name: wamr4j-complete-jar
+        path: |
+          **/target/*.jar
+        retention-days: 30
+
+  quality-checks:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '23'
+        cache: maven
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Run Rust quality checks
+      run: |
+        cd wamr4j-native
+        cargo fmt --check
+        cargo clippy -- -D warnings
+
+    - name: Run Java quality checks
+      run: |
+        ./mvnw checkstyle:check spotless:check spotbugs:check -B
+
+    - name: Generate test coverage
+      run: |
+        ./mvnw clean test jacoco:report -B
+
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-reports
+        path: |
+          **/target/site/jacoco/
+        retention-days: 30
+
+  notify-status:
+    name: Notify Build Status
+    needs: [build-matrix, integration-build, quality-checks]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Determine overall status
+      id: status
+      run: |
+        if [[ "${{ needs.build-matrix.result }}" == "success" && 
+              "${{ needs.integration-build.result }}" == "success" && 
+              "${{ needs.quality-checks.result }}" == "success" ]]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "message=All CI checks passed successfully" >> $GITHUB_OUTPUT
+        else
+          echo "status=failure" >> $GITHUB_OUTPUT
+          echo "message=CI pipeline failed" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create build summary
+      run: |
+        echo "## CI Pipeline Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Matrix**: ${{ needs.build-matrix.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Integration Build**: ${{ needs.integration-build.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Quality Checks**: ${{ needs.quality-checks.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Overall Status**: ${{ steps.status.outputs.status }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Message**: ${{ steps.status.outputs.message }}" >> $GITHUB_STEP_SUMMARY

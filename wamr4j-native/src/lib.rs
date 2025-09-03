@@ -15,211 +15,95 @@
  */
 
 //! Shared native library for wamr4j JNI and Panama FFI bindings
-//!
-//! This library provides a unified interface to the WAMR WebAssembly runtime
-//! that can be accessed from both JNI (Java 8+) and Panama FFI (Java 23+).
-//! All functions are exported with C ABI for maximum compatibility.
 
-use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int, c_long, c_uchar, c_void};
-use std::ptr;
+use std::os::raw::{c_char, c_int};
 
-// Re-export modules
-pub mod jni_bindings;
-pub mod panama_bindings;
+// Module declarations
+pub mod bindings;
+pub mod ffi;
+pub mod runtime;
+pub mod utils;
 pub mod wamr_wrapper;
+pub mod platform;
+pub mod optimizations;
 
-// Use the WAMR wrapper for common functionality
-use wamr_wrapper::*;
-
-/// Initialize the WAMR runtime
+/// Test function to verify cross-compilation works
 #[no_mangle]
-pub extern "C" fn wamr_create_runtime() -> *mut c_void {
-    match create_runtime() {
-        Ok(runtime) => Box::into_raw(Box::new(runtime)) as *mut c_void,
-        Err(_) => ptr::null_mut(),
+pub extern "C" fn wamr4j_test_init() -> c_int {
+    // Return success code for testing
+    0
+}
+
+/// Test function to get version string
+#[no_mangle]
+pub extern "C" fn wamr4j_test_get_version() -> *const c_char {
+    b"1.0.0-test\0".as_ptr() as *const c_char
+}
+
+/// Test function to verify cross-platform build
+#[no_mangle]
+pub extern "C" fn wamr4j_test_platform() -> *const c_char {
+    if cfg!(target_os = "linux") {
+        b"linux\0".as_ptr() as *const c_char
+    } else if cfg!(target_os = "windows") {
+        b"windows\0".as_ptr() as *const c_char
+    } else if cfg!(target_os = "macos") {
+        b"macos\0".as_ptr() as *const c_char
+    } else {
+        b"unknown\0".as_ptr() as *const c_char
     }
 }
 
-/// Destroy the WAMR runtime
+/// Test function to verify architecture
 #[no_mangle]
-pub extern "C" fn wamr_destroy_runtime(runtime: *mut c_void) {
-    if !runtime.is_null() {
-        unsafe {
-            let _runtime = Box::from_raw(runtime as *mut WamrRuntime);
-            // Box drop will clean up the runtime
-        }
+pub extern "C" fn wamr4j_test_arch() -> *const c_char {
+    if cfg!(target_arch = "x86_64") {
+        b"x86_64\0".as_ptr() as *const c_char
+    } else if cfg!(target_arch = "aarch64") {
+        b"aarch64\0".as_ptr() as *const c_char
+    } else {
+        b"unknown\0".as_ptr() as *const c_char
     }
 }
 
-/// Compile a WebAssembly module
+/// Initialize platform-specific optimizations
 #[no_mangle]
-pub extern "C" fn wamr_compile_module(
-    runtime: *mut c_void,
-    wasm_bytes: *const c_uchar,
-    length: c_long,
-) -> *mut c_void {
-    if runtime.is_null() || wasm_bytes.is_null() || length <= 0 {
-        return ptr::null_mut();
-    }
-
-    unsafe {
-        let runtime_ref = &*(runtime as *const WamrRuntime);
-        let bytes = std::slice::from_raw_parts(wasm_bytes, length as usize);
-        
-        match compile_module(runtime_ref, bytes) {
-            Ok(module) => Box::into_raw(Box::new(module)) as *mut c_void,
-            Err(_) => ptr::null_mut(),
-        }
+pub extern "C" fn wamr4j_init_platform_optimizations() -> c_int {
+    match platform::init_global_platform_optimizations() {
+        Ok(()) => 0,  // Success
+        Err(_) => -1, // Error
     }
 }
 
-/// Destroy a WebAssembly module
+/// Get platform optimization information
 #[no_mangle]
-pub extern "C" fn wamr_destroy_module(module: *mut c_void) {
-    if !module.is_null() {
-        unsafe {
-            let _module = Box::from_raw(module as *mut WamrModule);
-            // Box drop will clean up the module
-        }
-    }
+pub extern "C" fn wamr4j_get_platform_info() -> *const c_char {
+    let info = platform::get_platform_info();
+    // Note: This is a simplified implementation
+    // In production, we'd need to manage the lifetime of this string properly
+    let c_string = std::ffi::CString::new(info).unwrap_or_default();
+    c_string.into_raw() as *const c_char
 }
 
-/// Instantiate a WebAssembly module
+/// Get optimization configuration information
 #[no_mangle]
-pub extern "C" fn wamr_instantiate_module(module: *mut c_void) -> *mut c_void {
-    if module.is_null() {
-        return ptr::null_mut();
-    }
-
-    unsafe {
-        let module_ref = &*(module as *const WamrModule);
-        match instantiate_module(module_ref) {
-            Ok(instance) => Box::into_raw(Box::new(instance)) as *mut c_void,
-            Err(_) => ptr::null_mut(),
-        }
-    }
+pub extern "C" fn wamr4j_get_optimization_info() -> *const c_char {
+    let config = optimizations::get_optimal_config();
+    let info = config.get_optimization_info();
+    // Note: This is a simplified implementation
+    // In production, we'd need to manage the lifetime of this string properly
+    let c_string = std::ffi::CString::new(info).unwrap_or_default();
+    c_string.into_raw() as *const c_char
 }
 
-/// Destroy a WebAssembly instance
+/// Get optimal thread count for current platform
 #[no_mangle]
-pub extern "C" fn wamr_destroy_instance(instance: *mut c_void) {
-    if !instance.is_null() {
-        unsafe {
-            let _instance = Box::from_raw(instance as *mut WamrInstance);
-            // Box drop will clean up the instance
-        }
+pub extern "C" fn wamr4j_get_optimal_thread_count() -> c_int {
+    if let Some(opts) = platform::get_platform_optimizations() {
+        opts.get_optimal_thread_count() as c_int
+    } else {
+        std::thread::available_parallelism()
+            .map(|n| n.get() as c_int)
+            .unwrap_or(1)
     }
-}
-
-/// Get a function from an instance
-#[no_mangle]
-pub extern "C" fn wamr_get_function(
-    instance: *mut c_void,
-    name: *const c_char,
-) -> *mut c_void {
-    if instance.is_null() || name.is_null() {
-        return ptr::null_mut();
-    }
-
-    unsafe {
-        let instance_ref = &*(instance as *const WamrInstance);
-        let function_name = match CStr::from_ptr(name).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        };
-        
-        match get_function(instance_ref, function_name) {
-            Ok(function) => Box::into_raw(Box::new(function)) as *mut c_void,
-            Err(_) => ptr::null_mut(),
-        }
-    }
-}
-
-/// Call a WebAssembly function
-#[no_mangle]
-pub extern "C" fn wamr_call_function(
-    function: *mut c_void,
-    args: *const c_void,
-    arg_count: c_int,
-    results: *mut c_void,
-    result_capacity: c_int,
-) -> c_int {
-    if function.is_null() {
-        return -1;
-    }
-
-    unsafe {
-        let function_ref = &*(function as *const WamrFunction);
-        // For now, call with empty args - proper argument conversion needed
-        match call_function(function_ref, &[]) {
-            Ok(_) => 0,
-            Err(_) => -1,
-        }
-    }
-}
-
-/// Get memory from an instance
-#[no_mangle]
-pub extern "C" fn wamr_get_memory(instance: *mut c_void) -> *mut c_void {
-    if instance.is_null() {
-        return ptr::null_mut();
-    }
-
-    unsafe {
-        let instance_ref = &*(instance as *const WamrInstance);
-        match get_memory(instance_ref) {
-            Ok(memory) => Box::into_raw(Box::new(memory)) as *mut c_void,
-            Err(_) => ptr::null_mut(),
-        }
-    }
-}
-
-/// Get memory size
-#[no_mangle]
-pub extern "C" fn wamr_memory_size(memory: *mut c_void) -> c_long {
-    if memory.is_null() {
-        return -1;
-    }
-
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        memory_size(memory_ref) as c_long
-    }
-}
-
-/// Get memory data pointer
-#[no_mangle]
-pub extern "C" fn wamr_memory_data(memory: *mut c_void) -> *mut c_void {
-    if memory.is_null() {
-        return ptr::null_mut();
-    }
-
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        memory_data(memory_ref) as *mut c_void
-    }
-}
-
-/// Grow memory by specified pages
-#[no_mangle]
-pub extern "C" fn wamr_memory_grow(memory: *mut c_void, pages: c_long) -> c_int {
-    if memory.is_null() || pages < 0 {
-        return -1;
-    }
-
-    unsafe {
-        let memory_ref = &mut *(memory as *mut WamrMemory);
-        match memory_grow(memory_ref, pages as u32) {
-            Ok(old_size) => old_size as c_int,
-            Err(_) => -1,
-        }
-    }
-}
-
-/// Get WAMR version
-#[no_mangle]
-pub extern "C" fn wamr_get_version() -> *const c_char {
-    static VERSION: &str = "2.4.1\0";
-    VERSION.as_ptr() as *const c_char
 }
