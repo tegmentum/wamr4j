@@ -26,13 +26,6 @@
         <rust.target.dir>${project.basedir}/target</rust.target.dir>
         <rust.src.dir>${project.basedir}/src</rust.src.dir>
         <wamr.version>2.4.1</wamr.version>
-        
-        <!-- Cross-compilation targets -->
-        <rust.target.linux-x86_64>x86_64-unknown-linux-gnu</rust.target.linux-x86_64>
-        <rust.target.linux-aarch64>aarch64-unknown-linux-gnu</rust.target.linux-aarch64>
-        <rust.target.osx-x86_64>x86_64-apple-darwin</rust.target.osx-x86_64>
-        <rust.target.osx-aarch64>aarch64-apple-darwin</rust.target.osx-aarch64>
-        <rust.target.windows-x86_64>x86_64-pc-windows-gnu</rust.target.windows-x86_64>
     </properties>
 
     <!-- Dependencies -->
@@ -63,25 +56,37 @@
                 </configuration>
             </plugin>
 
-            <!-- Custom build process for Rust/WAMR -->
+            <!-- OS Detection for native library naming -->
             <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>3.1.1</version>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>1.7.1</version>
                 <executions>
                     <execution>
-                        <id>cargo-build</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>detect</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Rust Maven Plugin for native compilation -->
+            <plugin>
+                <groupId>org.questdb</groupId>
+                <artifactId>rust-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>rust-compile</id>
                         <phase>compile</phase>
                         <goals>
-                            <goal>exec</goal>
+                            <goal>build</goal>
                         </goals>
                         <configuration>
-                            <executable>cargo</executable>
-                            <arguments>
-                                <argument>build</argument>
-                                <argument>--release</argument>
-                            </arguments>
-                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <path>${project.basedir}</path>
+                            <release>true</release>
+                            <verbose>true</verbose>
+                            <offline>false</offline>
                         </configuration>
                     </execution>
                 </executions>
@@ -99,12 +104,12 @@
                             <goal>copy-resources</goal>
                         </goals>
                         <configuration>
-                            <outputDirectory>${project.build.outputDirectory}/native/macos-arm64</outputDirectory>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF/native/${native.platform.classifier}</outputDirectory>
                             <resources>
                                 <resource>
                                     <directory>${project.basedir}/target/release</directory>
                                     <includes>
-                                        <include>libwamr4j_native.dylib</include>
+                                        <include>${native.library.name}</include>
                                     </includes>
                                 </resource>
                             </resources>
@@ -144,34 +149,214 @@
 
     <!-- Platform-Specific Build Profiles -->
     <profiles>
-        <!-- Native Cross-Compilation Profile -->
+        <!-- Cross-compilation profile for all supported platforms -->
         <profile>
-            <id>native-all</id>
+            <id>native-all-platforms</id>
             <build>
                 <plugins>
+                    <!-- Build for all cross-compilation targets -->
                     <plugin>
-                        <groupId>org.codehaus.mojo</groupId>
-                        <artifactId>exec-maven-plugin</artifactId>
+                        <groupId>org.questdb</groupId>
+                        <artifactId>rust-maven-plugin</artifactId>
                         <executions>
-                            <!-- Build for all supported platforms -->
                             <execution>
-                                <id>cargo-build-all-targets</id>
+                                <id>rust-build-linux-x86_64</id>
                                 <phase>compile</phase>
                                 <goals>
-                                    <goal>exec</goal>
+                                    <goal>build</goal>
                                 </goals>
                                 <configuration>
-                                    <executable>bash</executable>
-                                    <arguments>
-                                        <argument>-c</argument>
-                                        <argument>
-                                            cargo build --release --target ${rust.target.linux-x86_64} ;
-                                            cargo build --release --target ${rust.target.linux-aarch64} ;
-                                            cargo build --release --target ${rust.target.osx-x86_64} ;
-                                            cargo build --release --target ${rust.target.osx-aarch64} ;
-                                            cargo build --release --target ${rust.target.windows-x86_64}
-                                        </argument>
-                                    </arguments>
+                                    <path>${project.basedir}</path>
+                                    <release>true</release>
+                                    <targets>
+                                        <target>x86_64-unknown-linux-gnu</target>
+                                    </targets>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>rust-build-linux-aarch64</id>
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                                <configuration>
+                                    <path>${project.basedir}</path>
+                                    <release>true</release>
+                                    <targets>
+                                        <target>aarch64-unknown-linux-gnu</target>
+                                    </targets>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>rust-build-macos-x86_64</id>
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                                <configuration>
+                                    <path>${project.basedir}</path>
+                                    <release>true</release>
+                                    <targets>
+                                        <target>x86_64-apple-darwin</target>
+                                    </targets>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>rust-build-macos-aarch64</id>
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                                <configuration>
+                                    <path>${project.basedir}</path>
+                                    <release>true</release>
+                                    <targets>
+                                        <target>aarch64-apple-darwin</target>
+                                    </targets>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>rust-build-windows-x86_64</id>
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                                <configuration>
+                                    <path>${project.basedir}</path>
+                                    <release>true</release>
+                                    <targets>
+                                        <target>x86_64-pc-windows-msvc</target>
+                                    </targets>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>rust-build-windows-aarch64</id>
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                                <configuration>
+                                    <path>${project.basedir}</path>
+                                    <release>true</release>
+                                    <targets>
+                                        <target>aarch64-pc-windows-msvc</target>
+                                    </targets>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    
+                    <!-- Copy all cross-compiled libraries -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-linux-x86_64</id>
+                                <phase>process-classes</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.outputDirectory}/META-INF/native/linux-x86_64</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/target/x86_64-unknown-linux-gnu/release</directory>
+                                            <includes>
+                                                <include>libwamr4j_native.so</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>copy-linux-aarch64</id>
+                                <phase>process-classes</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.outputDirectory}/META-INF/native/linux-aarch64</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/target/aarch64-unknown-linux-gnu/release</directory>
+                                            <includes>
+                                                <include>libwamr4j_native.so</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>copy-darwin-x86_64</id>
+                                <phase>process-classes</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.outputDirectory}/META-INF/native/darwin-x86_64</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/target/x86_64-apple-darwin/release</directory>
+                                            <includes>
+                                                <include>libwamr4j_native.dylib</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>copy-darwin-aarch64</id>
+                                <phase>process-classes</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.outputDirectory}/META-INF/native/darwin-aarch64</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/target/aarch64-apple-darwin/release</directory>
+                                            <includes>
+                                                <include>libwamr4j_native.dylib</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>copy-windows-x86_64</id>
+                                <phase>process-classes</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.outputDirectory}/META-INF/native/windows-x86_64</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/target/x86_64-pc-windows-msvc/release</directory>
+                                            <includes>
+                                                <include>wamr4j_native.dll</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>copy-windows-aarch64</id>
+                                <phase>process-classes</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.outputDirectory}/META-INF/native/windows-aarch64</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/target/aarch64-pc-windows-msvc/release</directory>
+                                            <includes>
+                                                <include>wamr4j_native.dll</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
                                 </configuration>
                             </execution>
                         </executions>

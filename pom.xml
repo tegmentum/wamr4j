@@ -79,6 +79,14 @@
         <!-- Utility Dependencies -->
         <slf4j.version>2.0.9</slf4j.version>
 
+        <!-- Rust Maven Plugin -->
+        <rust-maven-plugin.version>1.2.0</rust-maven-plugin.version>
+        <os-maven-plugin.version>1.7.1</os-maven-plugin.version>
+        
+        <!-- Publishing Plugins -->
+        <maven-gpg-plugin.version>3.1.0</maven-gpg-plugin.version>
+        <nexus-staging-plugin.version>1.6.13</nexus-staging-plugin.version>
+        
         <!-- Cross-Platform Build Configuration -->
         <native.platform.classifier>${os.detected.name}-${os.detected.arch}</native.platform.classifier>
         
@@ -150,6 +158,20 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <!-- Distribution Management -->
+    <distributionManagement>
+        <snapshotRepository>
+            <id>ossrh</id>
+            <name>Central Repository OSSRH - Snapshots</name>
+            <url>https://s01.oss.sonatype.org/content/repositories/snapshots</url>
+        </snapshotRepository>
+        <repository>
+            <id>ossrh</id>
+            <name>Central Repository OSSRH - Releases</name>
+            <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+        </repository>
+    </distributionManagement>
 
     <!-- Build Configuration -->
     <build>
@@ -457,6 +479,73 @@
                         </execution>
                     </executions>
                 </plugin>
+
+                <!-- Rust Maven Plugin -->
+                <plugin>
+                    <groupId>org.questdb</groupId>
+                    <artifactId>rust-maven-plugin</artifactId>
+                    <version>${rust-maven-plugin.version}</version>
+                    <configuration>
+                        <path>.</path>
+                        <release>true</release>
+                        <verbose>true</verbose>
+                        <offline>false</offline>
+                    </configuration>
+                </plugin>
+
+                <!-- OS Detection Plugin -->
+                <plugin>
+                    <groupId>kr.motd.maven</groupId>
+                    <artifactId>os-maven-plugin</artifactId>
+                    <version>${os-maven-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <phase>initialize</phase>
+                            <goals>
+                                <goal>detect</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Maven GPG Plugin for Artifact Signing -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-gpg-plugin</artifactId>
+                    <version>${maven-gpg-plugin.version}</version>
+                    <configuration>
+                        <gpgArguments>
+                            <arg>--pinentry-mode</arg>
+                            <arg>loopback</arg>
+                        </gpgArguments>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>sign-artifacts</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>sign</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Nexus Staging Plugin for Central Repository Deployment -->
+                <plugin>
+                    <groupId>org.sonatype.plugins</groupId>
+                    <artifactId>nexus-staging-maven-plugin</artifactId>
+                    <version>${nexus-staging-plugin.version}</version>
+                    <extensions>true</extensions>
+                    <configuration>
+                        <serverId>ossrh</serverId>
+                        <nexusUrl>https://s01.oss.sonatype.org/</nexusUrl>
+                        <autoReleaseAfterClose>false</autoReleaseAfterClose>
+                        <stagingProgressTimeoutMinutes>30</stagingProgressTimeoutMinutes>
+                        <stagingProgressPauseDurationSeconds>10</stagingProgressPauseDurationSeconds>
+                        <keepStagingRepositoryOnCloseRuleFailure>true</keepStagingRepositoryOnCloseRuleFailure>
+                        <keepStagingRepositoryOnFailure>true</keepStagingRepositoryOnFailure>
+                    </configuration>
+                </plugin>
             </plugins>
         </pluginManagement>
 
@@ -642,6 +731,8 @@
             </activation>
             <properties>
                 <native.platform.classifier>linux-x86_64</native.platform.classifier>
+                <rust.target>x86_64-unknown-linux-gnu</rust.target>
+                <native.library.name>libwamr4j_native.so</native.library.name>
             </properties>
         </profile>
 
@@ -655,6 +746,8 @@
             </activation>
             <properties>
                 <native.platform.classifier>linux-aarch64</native.platform.classifier>
+                <rust.target>aarch64-unknown-linux-gnu</rust.target>
+                <native.library.name>libwamr4j_native.so</native.library.name>
             </properties>
         </profile>
 
@@ -667,7 +760,9 @@
                 </os>
             </activation>
             <properties>
-                <native.platform.classifier>osx-x86_64</native.platform.classifier>
+                <native.platform.classifier>darwin-x86_64</native.platform.classifier>
+                <rust.target>x86_64-apple-darwin</rust.target>
+                <native.library.name>libwamr4j_native.dylib</native.library.name>
             </properties>
         </profile>
 
@@ -680,7 +775,9 @@
                 </os>
             </activation>
             <properties>
-                <native.platform.classifier>osx-aarch64</native.platform.classifier>
+                <native.platform.classifier>darwin-aarch64</native.platform.classifier>
+                <rust.target>aarch64-apple-darwin</rust.target>
+                <native.library.name>libwamr4j_native.dylib</native.library.name>
             </properties>
         </profile>
 
@@ -694,7 +791,122 @@
             </activation>
             <properties>
                 <native.platform.classifier>windows-x86_64</native.platform.classifier>
+                <rust.target>x86_64-pc-windows-msvc</rust.target>
+                <native.library.name>wamr4j_native.dll</native.library.name>
             </properties>
+        </profile>
+
+        <profile>
+            <id>windows-aarch64</id>
+            <properties>
+                <native.platform.classifier>windows-aarch64</native.platform.classifier>
+                <rust.target>aarch64-pc-windows-msvc</rust.target>
+                <native.library.name>wamr4j_native.dll</native.library.name>
+            </properties>
+        </profile>
+
+        <!-- Cross-compilation profiles for building all platforms -->
+        <profile>
+            <id>native-all-platforms</id>
+            <properties>
+                <rust.targets>x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-apple-darwin,aarch64-apple-darwin,x86_64-pc-windows-msvc,aarch64-pc-windows-msvc</rust.targets>
+            </properties>
+        </profile>
+
+        <!-- Release Profile for Maven Central Publishing -->
+        <profile>
+            <id>release</id>
+            <properties>
+                <!-- Skip default deploy plugin in favor of nexus-staging-maven-plugin -->
+                <maven.deploy.skip>true</maven.deploy.skip>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- Maven Source Plugin -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!-- Maven Javadoc Plugin -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!-- GPG Signing Plugin -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                    </plugin>
+
+                    <!-- Nexus Staging Plugin -->
+                    <plugin>
+                        <groupId>org.sonatype.plugins</groupId>
+                        <artifactId>nexus-staging-maven-plugin</artifactId>
+                    </plugin>
+
+                    <!-- Static Analysis for Release Quality -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-checkstyle-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>checkstyle-check</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>spotbugs-check</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!-- Test Coverage for Release Quality -->
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>jacoco-check</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>check</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 </project>

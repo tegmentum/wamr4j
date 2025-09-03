@@ -1,0 +1,457 @@
+name: Performance Monitoring
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run performance benchmarks weekly on Sundays at 3:00 AM UTC
+    - cron: '0 3 * * 0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel performance runs
+
+env:
+  MAVEN_OPTS: '-Xmx4g -Xms2g'
+  RUST_LOG: info
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            platform: windows-x86_64
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            platform: macos-aarch64
+            target: aarch64-apple-darwin
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '23'
+        cache: maven
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          ~/.m2/repository/
+          wamr4j-native/target/
+        key: ${{ runner.os }}-perf-${{ hashFiles('**/Cargo.lock', '**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-perf-
+
+    - name: Build optimized release
+      run: |
+        cd wamr4j-native
+        cargo build --release --target ${{ matrix.target }}
+
+    - name: Build benchmark module
+      run: |
+        ./mvnw clean compile -B -pl wamr4j-benchmarks
+
+    - name: Run native Rust benchmarks
+      run: |
+        cd wamr4j-native
+        cargo bench --target ${{ matrix.target }} -- --output-format json | tee ../native-bench-${{ matrix.platform }}.json
+        
+    - name: Run JMH Java benchmarks
+      run: |
+        ./mvnw clean compile exec:java -pl wamr4j-benchmarks \
+          -Dexec.mainClass="ai.tegmentum.wamr4j.benchmarks.RuntimeBenchmark" \
+          -Dexec.args="-rf json -rff jmh-results-${{ matrix.platform }}.json"
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results-${{ matrix.platform }}
+        path: |
+          native-bench-*.json
+          jmh-results-*.json
+        retention-days: 90
+
+  analyze-performance:
+    name: Analyze Performance Results
+    needs: benchmark
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download benchmark results
+      uses: actions/download-artifact@v4
+      with:
+        path: benchmark-results/
+
+    - name: Set up Python for analysis
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install analysis dependencies
+      run: |
+        pip install matplotlib pandas numpy scipy
+
+    - name: Create performance analysis script
+      run: |
+        cat > analyze_performance.py << 'EOF'
+        #!/usr/bin/env python3
+        import json
+        import pandas as pd
+        import numpy as np
+        from pathlib import Path
+        import sys
+        import os
+        import statistics
+
+        # Performance targets from requirements
+        PERFORMANCE_TARGETS = {
+            'function_call_overhead_ns': 10.0,
+            'module_loading_ms': 100.0,
+            'startup_time_ms': 50.0,
+        }
+
+        REGRESSION_THRESHOLD = 0.15  # 15% performance degradation
+
+        def load_native_benchmarks():
+            """Load Criterion.rs benchmark results"""
+            results = {}
+            benchmark_dir = Path('benchmark-results')
+            
+            for platform_dir in benchmark_dir.iterdir():
+                if platform_dir.is_dir():
+                    platform = platform_dir.name.replace('benchmark-results-', '')
+                    native_file = platform_dir / f'native-bench-{platform}.json'
+                    
+                    if native_file.exists():
+                        try:
+                            with open(native_file) as f:
+                                # Criterion JSON is line-delimited JSON
+                                data = []
+                                for line in f:
+                                    line = line.strip()
+                                    if line and line.startswith('{'):
+                                        data.append(json.loads(line))
+                                
+                                results[platform] = {
+                                    'native_benchmarks': data
+                                }
+                        except Exception as e:
+                            print(f"Error loading native benchmarks for {platform}: {e}")
+            
+            return results
+
+        def load_jmh_benchmarks():
+            """Load JMH benchmark results"""
+            results = {}
+            benchmark_dir = Path('benchmark-results')
+            
+            for platform_dir in benchmark_dir.iterdir():
+                if platform_dir.is_dir():
+                    platform = platform_dir.name.replace('benchmark-results-', '')
+                    jmh_file = platform_dir / f'jmh-results-{platform}.json'
+                    
+                    if jmh_file.exists():
+                        try:
+                            with open(jmh_file) as f:
+                                data = json.load(f)
+                                if platform not in results:
+                                    results[platform] = {}
+                                results[platform]['jmh_benchmarks'] = data
+                        except Exception as e:
+                            print(f"Error loading JMH benchmarks for {platform}: {e}")
+            
+            return results
+
+        def analyze_performance_targets(results):
+            """Check if performance targets are met"""
+            target_analysis = {}
+            
+            for platform, data in results.items():
+                analysis = {
+                    'targets_met': {},
+                    'violations': [],
+                    'warnings': []
+                }
+                
+                # Analyze native benchmarks
+                if 'native_benchmarks' in data:
+                    for bench_data in data['native_benchmarks']:
+                        if bench_data.get('reason') == 'benchmark-complete':
+                            bench_id = bench_data.get('id', '')
+                            
+                            # Extract mean estimate from benchmark
+                            if 'mean' in bench_data:
+                                mean_ns = bench_data['mean']['estimate']
+                                
+                                # Check function call overhead
+                                if 'basic_ffi/test_function' in bench_id:
+                                    target = PERFORMANCE_TARGETS['function_call_overhead_ns']
+                                    analysis['targets_met']['function_call_overhead'] = mean_ns <= target
+                                    if mean_ns > target:
+                                        analysis['violations'].append(
+                                            f"Function call overhead: {mean_ns:.2f}ns > {target}ns target"
+                                        )
+                
+                # Analyze JMH benchmarks
+                if 'jmh_benchmarks' in data:
+                    jmh_data = data['jmh_benchmarks']
+                    for benchmark in jmh_data:
+                        name = benchmark.get('benchmark', '')
+                        
+                        # Check module compilation time
+                        if 'ModuleCompilation' in name:
+                            mean_microseconds = benchmark.get('primaryMetric', {}).get('score', 0)
+                            mean_ms = mean_microseconds / 1000.0
+                            
+                            target = PERFORMANCE_TARGETS['module_loading_ms']
+                            analysis['targets_met']['module_loading'] = mean_ms <= target
+                            if mean_ms > target:
+                                analysis['violations'].append(
+                                    f"Module loading: {mean_ms:.2f}ms > {target}ms target"
+                                )
+                        
+                        # Check runtime creation time
+                        elif 'RuntimeCreation' in name:
+                            mean_microseconds = benchmark.get('primaryMetric', {}).get('score', 0)
+                            mean_ms = mean_microseconds / 1000.0
+                            
+                            target = PERFORMANCE_TARGETS['startup_time_ms']
+                            analysis['targets_met']['startup_time'] = mean_ms <= target
+                            if mean_ms > target:
+                                analysis['violations'].append(
+                                    f"Startup time: {mean_ms:.2f}ms > {target}ms target"
+                                )
+                
+                target_analysis[platform] = analysis
+            
+            return target_analysis
+
+        def create_performance_report(results, target_analysis):
+            """Generate comprehensive performance report"""
+            report = []
+            report.append("# Performance Analysis Report")
+            report.append(f"Generated: {pd.Timestamp.now()}")
+            report.append("")
+            
+            # Overall status
+            all_targets_met = True
+            total_violations = 0
+            
+            for platform, analysis in target_analysis.items():
+                if analysis['violations']:
+                    all_targets_met = False
+                    total_violations += len(analysis['violations'])
+            
+            if all_targets_met:
+                report.append("## ✅ Overall Status: PASS")
+                report.append("All performance targets met across all platforms.")
+            else:
+                report.append("## ❌ Overall Status: FAIL")
+                report.append(f"Performance targets violated on {total_violations} benchmark(s).")
+            
+            report.append("")
+            
+            # Performance targets summary
+            report.append("## Performance Targets")
+            report.append("| Target | Threshold | Status |")
+            report.append("|--------|-----------|---------|")
+            report.append(f"| Function Call Overhead | {PERFORMANCE_TARGETS['function_call_overhead_ns']}ns | ✅/❌ |")
+            report.append(f"| Module Loading | {PERFORMANCE_TARGETS['module_loading_ms']}ms | ✅/❌ |")
+            report.append(f"| Startup Time | {PERFORMANCE_TARGETS['startup_time_ms']}ms | ✅/❌ |")
+            report.append("")
+            
+            # Platform-specific results
+            for platform, data in results.items():
+                report.append(f"## Platform: {platform}")
+                analysis = target_analysis.get(platform, {})
+                
+                # Target violations
+                if analysis.get('violations'):
+                    report.append("### ❌ Performance Target Violations")
+                    for violation in analysis['violations']:
+                        report.append(f"- {violation}")
+                    report.append("")
+                
+                # Native benchmark results
+                if 'native_benchmarks' in data:
+                    report.append("### Native (Rust) Benchmarks")
+                    report.append("| Benchmark | Mean | Unit | Status |")
+                    report.append("|-----------|------|------|--------|")
+                    
+                    for bench_data in data['native_benchmarks']:
+                        if bench_data.get('reason') == 'benchmark-complete':
+                            bench_id = bench_data.get('id', '')
+                            if 'mean' in bench_data:
+                                mean = bench_data['mean']['estimate']
+                                unit = bench_data['mean'].get('unit', 'ns')
+                                
+                                # Determine status
+                                status = "✅"
+                                if 'basic_ffi/test_function' in bench_id and mean > PERFORMANCE_TARGETS['function_call_overhead_ns']:
+                                    status = "❌"
+                                
+                                report.append(f"| {bench_id} | {mean:.2f} | {unit} | {status} |")
+                    report.append("")
+                
+                # JMH benchmark results
+                if 'jmh_benchmarks' in data:
+                    report.append("### JMH (Java) Benchmarks")
+                    report.append("| Benchmark | Mean (μs) | Error | Status |")
+                    report.append("|-----------|-----------|--------|--------|")
+                    
+                    for benchmark in data['jmh_benchmarks']:
+                        name = benchmark.get('benchmark', '').split('.')[-1]  # Short name
+                        mean = benchmark.get('primaryMetric', {}).get('score', 0)
+                        error = benchmark.get('primaryMetric', {}).get('scoreError', 0)
+                        
+                        # Determine status
+                        status = "✅"
+                        if 'ModuleCompilation' in name and (mean / 1000.0) > PERFORMANCE_TARGETS['module_loading_ms']:
+                            status = "❌"
+                        elif 'RuntimeCreation' in name and (mean / 1000.0) > PERFORMANCE_TARGETS['startup_time_ms']:
+                            status = "❌"
+                        
+                        report.append(f"| {name} | {mean:.2f} | ±{error:.2f} | {status} |")
+                    report.append("")
+                
+                report.append("")
+            
+            # Regression analysis placeholder
+            report.append("## Regression Analysis")
+            report.append("Historical performance data comparison will be implemented")
+            report.append("when baseline measurements are established.")
+            report.append("")
+            
+            return "\n".join(report)
+
+        def check_performance_regression():
+            """Check for performance regressions and fail if severe"""
+            # This will be implemented when we have historical data
+            return False  # No regressions detected for now
+
+        def main():
+            print("Loading performance benchmark results...")
+            
+            native_results = load_native_benchmarks()
+            jmh_results = load_jmh_benchmarks()
+            
+            # Merge results
+            all_results = {}
+            for platform in set(list(native_results.keys()) + list(jmh_results.keys())):
+                all_results[platform] = {}
+                if platform in native_results:
+                    all_results[platform].update(native_results[platform])
+                if platform in jmh_results:
+                    all_results[platform].update(jmh_results[platform])
+            
+            if not all_results:
+                print("No benchmark data found")
+                return 1
+            
+            print("Analyzing performance targets...")
+            target_analysis = analyze_performance_targets(all_results)
+            
+            print("Generating performance report...")
+            report = create_performance_report(all_results, target_analysis)
+            
+            # Save report
+            with open('performance-report.md', 'w') as f:
+                f.write(report)
+            
+            print("Performance analysis completed")
+            print(f"Found results for platforms: {list(all_results.keys())}")
+            
+            # Check for critical failures
+            has_violations = any(
+                analysis.get('violations', []) 
+                for analysis in target_analysis.values()
+            )
+            
+            if has_violations:
+                print("❌ Performance targets violated - check report for details")
+                return 1
+            else:
+                print("✅ All performance targets met")
+                return 0
+
+        if __name__ == "__main__":
+            sys.exit(main())
+        EOF
+
+    - name: Run performance analysis
+      run: |
+        python analyze_performance.py
+
+    - name: Upload performance report
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-report
+        path: performance-report.md
+        retention-days: 90
+
+    - name: Comment on PR (if applicable)
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          try {
+            const report = fs.readFileSync('performance-report.md', 'utf8');
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Performance Benchmark Results\n\n${report}`
+            });
+          } catch (error) {
+            console.log('Could not post performance report:', error);
+          }
+
+    - name: Check for performance regressions
+      run: |
+        # The analysis script already checks performance targets
+        # and fails if violations are detected
+        if [ -f "performance-report.md" ]; then
+          echo "Performance analysis completed - check artifacts for full report"
+          
+          # Extract overall status from report
+          if grep -q "Overall Status: FAIL" performance-report.md; then
+            echo "❌ Performance targets violated - failing build"
+            exit 1
+          else
+            echo "✅ All performance targets met"
+          fi
+        else
+          echo "❌ Performance report not generated - analysis failed"
+          exit 1
+        fi
