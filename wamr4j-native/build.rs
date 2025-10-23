@@ -108,7 +108,7 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
     
     // Link to WAMR library
     println!("cargo:rustc-link-search=native={}/lib", wamr_build.display());
-    println!("cargo:rustc-link-lib=static=vmlib");
+    println!("cargo:rustc-link-lib=static=iwasm");
     
     // Platform-specific system libraries
     link_system_libraries(target);

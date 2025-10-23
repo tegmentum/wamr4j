@@ -50,7 +50,7 @@ public final class NativeLibraryLoader {
     private static final Logger LOGGER = Logger.getLogger(NativeLibraryLoader.class.getName());
     
     private static final String LIBRARY_NAME = "wamr4j_native";
-    private static final String LIBRARY_PATH_PREFIX = "/native/";
+    private static final String LIBRARY_PATH_PREFIX = "/META-INF/native/";
     
     // Loading state tracking
     private static volatile boolean loaded = false;
@@ -165,7 +165,7 @@ public final class NativeLibraryLoader {
         switch (os) {
             case "windows":
                 return LIBRARY_NAME + ".dll";
-            case "macos":
+            case "darwin":
                 return "lib" + LIBRARY_NAME + ".dylib";
             case "linux":
             default:
@@ -177,7 +177,7 @@ public final class NativeLibraryLoader {
         if (OS_NAME.contains("windows")) {
             return "windows";
         } else if (OS_NAME.contains("mac") || OS_NAME.contains("darwin")) {
-            return "macos";
+            return "darwin";
         } else if (OS_NAME.contains("linux")) {
             return "linux";
         } else {
@@ -187,27 +187,27 @@ public final class NativeLibraryLoader {
 
     private static String getNormalizedArchitecture() {
         final String arch = OS_ARCH.toLowerCase();
-        
+
         // x86_64 variants
         if (arch.contains("amd64") || arch.contains("x86_64") || arch.contains("x64")) {
             return "x86_64";
         }
-        
-        // ARM64 variants
+
+        // ARM64 variants (use aarch64 to match Maven platform classifier)
         if (arch.contains("aarch64") || arch.contains("arm64")) {
-            return "arm64";
+            return "aarch64";
         }
-        
+
         // x86 32-bit variants
         if (arch.contains("x86") || arch.contains("i386") || arch.contains("i686")) {
             return "x86";
         }
-        
+
         // ARM 32-bit variants
         if (arch.contains("arm")) {
             return "arm";
         }
-        
+
         return "unknown";
     }
 }
