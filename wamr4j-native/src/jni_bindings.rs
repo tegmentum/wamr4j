@@ -145,9 +145,9 @@ fn next<'local>(env: &mut JNIEnv<'local>, iterator: &JObject<'local>) -> Result<
 }
 
 /// Parse the outer imports map: Map<String moduleName, Map<String itemName, Object item>>
-fn parse_imports(
-    env: &JNIEnv,
-    imports: JObject,
+fn parse_imports<'local>(
+    env: &mut JNIEnv<'local>,
+    imports: &JObject<'local>,
 ) -> Result<HashMap<String, HashMap<String, ImportItem>>, String> {
     if imports.is_null() {
         return Ok(HashMap::new());
@@ -161,26 +161,26 @@ fn parse_imports(
         .map_err(|e| format!("Failed to get entrySet: {}", e))?;
 
     // Get Set.iterator() method
+    let entry_set_obj = entry_set.l().map_err(|e| format!("Failed to get entry set object: {}", e))?;
     let iterator = env
-        .call_method(entry_set.l()?, "iterator", "()Ljava/util/Iterator;", &[])
+        .call_method(&entry_set_obj, "iterator", "()Ljava/util/Iterator;", &[])
         .map_err(|e| format!("Failed to get iterator: {}", e))?;
 
     // Iterate over outer map (module names)
-    while has_next(env, iterator.l()?)? {
-        let entry = next(env, iterator.l()?)?;
+    let iterator_obj = iterator.l().map_err(|e| format!("Failed to get iterator object: {}", e))?;
+    while has_next(env, &iterator_obj)? {
+        let entry = next(env, &iterator_obj)?;
 
         // Get module name (key)
         let key_obj = env
-            .call_method(entry, "getKey", "()Ljava/lang/Object;", &[])
+            .call_method(&entry, "getKey", "()Ljava/lang/Object;", &[])
             .map_err(|e| format!("Failed to get key: {}", e))?;
 
-        let module_name_jstring: JString = key_obj
-            .l()
-            .map_err(|e| format!("Failed to convert key to JString: {}", e))?
-            .into();
+        let key_obj_ref = key_obj.l().map_err(|e| format!("Failed to convert key: {}", e))?;
+        let module_name_jstring: JString = key_obj_ref.into();
 
         let module_name = env
-            .get_string(module_name_jstring)
+            .get_string(&module_name_jstring)
             .map_err(|e| format!("Failed to get module name string: {}", e))?
             .to_str()
             .map_err(|e| format!("Invalid module name UTF-8: {}", e))?
@@ -188,11 +188,12 @@ fn parse_imports(
 
         // Get inner map (value)
         let value_obj = env
-            .call_method(entry, "getValue", "()Ljava/lang/Object;", &[])
+            .call_method(&entry, "getValue", "()Ljava/lang/Object;", &[])
             .map_err(|e| format!("Failed to get value: {}", e))?;
 
+        let value_obj_ref = value_obj.l().map_err(|e| format!("Failed to get value object: {}", e))?;
         // Parse inner map (item imports)
-        let item_imports = parse_item_imports(env, value_obj.l()?)?;
+        let item_imports = parse_item_imports(env, &value_obj_ref)?;
 
         parsed_imports.insert(module_name, item_imports);
     }
@@ -201,9 +202,9 @@ fn parse_imports(
 }
 
 /// Parse the inner imports map: Map<String itemName, Object item>
-fn parse_item_imports(
-    env: &JNIEnv,
-    inner_map: JObject,
+fn parse_item_imports<'local>(
+    env: &mut JNIEnv<'local>,
+    inner_map: &JObject<'local>,
 ) -> Result<HashMap<String, ImportItem>, String> {
     let mut items = HashMap::new();
 
@@ -213,26 +214,26 @@ fn parse_item_imports(
         .map_err(|e| format!("Failed to get inner entrySet: {}", e))?;
 
     // Get Set.iterator() method
+    let entry_set_obj = entry_set.l().map_err(|e| format!("Failed to get inner entry set object: {}", e))?;
     let iterator = env
-        .call_method(entry_set.l()?, "iterator", "()Ljava/util/Iterator;", &[])
+        .call_method(&entry_set_obj, "iterator", "()Ljava/util/Iterator;", &[])
         .map_err(|e| format!("Failed to get inner iterator: {}", e))?;
 
     // Iterate over inner map (item names)
-    while has_next(env, iterator.l()?)? {
-        let entry = next(env, iterator.l()?)?;
+    let iterator_obj = iterator.l().map_err(|e| format!("Failed to get inner iterator object: {}", e))?;
+    while has_next(env, &iterator_obj)? {
+        let entry = next(env, &iterator_obj)?;
 
         // Get item name (key)
         let key_obj = env
-            .call_method(entry, "getKey", "()Ljava/lang/Object;", &[])
+            .call_method(&entry, "getKey", "()Ljava/lang/Object;", &[])
             .map_err(|e| format!("Failed to get item key: {}", e))?;
 
-        let item_name_jstring: JString = key_obj
-            .l()
-            .map_err(|e| format!("Failed to convert item key to JString: {}", e))?
-            .into();
+        let key_obj_ref = key_obj.l().map_err(|e| format!("Failed to convert item key: {}", e))?;
+        let item_name_jstring: JString = key_obj_ref.into();
 
         let item_name = env
-            .get_string(item_name_jstring)
+            .get_string(&item_name_jstring)
             .map_err(|e| format!("Failed to get item name string: {}", e))?
             .to_str()
             .map_err(|e| format!("Invalid item name UTF-8: {}", e))?
@@ -240,11 +241,12 @@ fn parse_item_imports(
 
         // Get import item (value)
         let value_obj = env
-            .call_method(entry, "getValue", "()Ljava/lang/Object;", &[])
+            .call_method(&entry, "getValue", "()Ljava/lang/Object;", &[])
             .map_err(|e| format!("Failed to get item value: {}", e))?;
 
+        let value_obj_ref = value_obj.l().map_err(|e| format!("Failed to get item value object: {}", e))?;
         // Determine import type and parse accordingly
-        let import_item = parse_import_item(env, value_obj.l()?)?;
+        let import_item = parse_import_item(env, &value_obj_ref)?;
 
         items.insert(item_name, import_item);
     }
@@ -253,7 +255,7 @@ fn parse_item_imports(
 }
 
 /// Parse a single import item based on its Java type
-fn parse_import_item(env: &JNIEnv, value_obj: JObject) -> Result<ImportItem, String> {
+fn parse_import_item<'local>(env: &mut JNIEnv<'local>, value_obj: &JObject<'local>) -> Result<ImportItem, String> {
     // Check if it's a primitive wrapper (Integer, Long, Float, Double) for global
     if is_instance_of(env, value_obj, "java/lang/Integer")? {
         let int_value = env
@@ -323,19 +325,23 @@ fn parse_import_item(env: &JNIEnv, value_obj: JObject) -> Result<ImportItem, Str
 }
 
 /// Check if an object is an instance of a specific class
-fn is_instance_of(env: &JNIEnv, obj: JObject, class_name: &str) -> Result<bool, String> {
+fn is_instance_of<'local>(env: &mut JNIEnv<'local>, obj: &JObject<'local>, class_name: &str) -> Result<bool, String> {
     let class = env
         .find_class(class_name)
         .map_err(|e| format!("Failed to find class {}: {}", class_name, e))?;
 
-    env.is_instance_of(obj, class)
+    env.is_instance_of(obj, &class)
         .map_err(|e| format!("Failed to check instance: {}", e))
 }
 
 // =============================================================================
 // WASM Callback Wrapper Functions
 // =============================================================================
+// NOTE: Callback wrappers are temporarily disabled due to missing WAMR API functions
+// (wasm_runtime_get_function_argv not available in current WAMR build)
+// These will be re-enabled once WAMR is built with the required features.
 
+/*
 /// Generic callback wrapper: () -> i32
 /// WAMR signature: "()i"
 /// Expects Java Supplier<Integer>
@@ -361,7 +367,7 @@ unsafe extern "C" fn callback_wrapper_void_to_i32(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -452,7 +458,7 @@ unsafe extern "C" fn callback_wrapper_i32_to_i32(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -483,7 +489,7 @@ unsafe extern "C" fn callback_wrapper_i32_to_i32(
         callback.as_obj(),
         "apply",
         "(Ljava/lang/Object;)Ljava/lang/Object;",
-        &[jni::objects::JValue::Object(arg_obj)],
+        &[jni::objects::JValue::Object(&arg_obj)],
     ) {
         Ok(val) => val,
         Err(e) => {
@@ -553,7 +559,7 @@ unsafe extern "C" fn callback_wrapper_i32_i32_to_i32(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -593,8 +599,8 @@ unsafe extern "C" fn callback_wrapper_i32_i32_to_i32(
         "apply",
         "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
         &[
-            jni::objects::JValue::Object(arg0_obj),
-            jni::objects::JValue::Object(arg1_obj),
+            jni::objects::JValue::Object(&arg0_obj),
+            jni::objects::JValue::Object(&arg1_obj),
         ],
     ) {
         Ok(val) => val,
@@ -657,7 +663,7 @@ unsafe extern "C" fn callback_wrapper_void_to_i64(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -737,7 +743,7 @@ unsafe extern "C" fn callback_wrapper_i64_to_i64(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -769,7 +775,7 @@ unsafe extern "C" fn callback_wrapper_i64_to_i64(
         callback.as_obj(),
         "apply",
         "(Ljava/lang/Object;)Ljava/lang/Object;",
-        &[jni::objects::JValue::Object(arg_obj)],
+        &[jni::objects::JValue::Object(&arg_obj)],
     ) {
         Ok(val) => val,
         Err(e) => {
@@ -834,7 +840,7 @@ unsafe extern "C" fn callback_wrapper_i64_i64_to_i64(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -879,8 +885,8 @@ unsafe extern "C" fn callback_wrapper_i64_i64_to_i64(
         "apply",
         "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
         &[
-            jni::objects::JValue::Object(arg0_obj),
-            jni::objects::JValue::Object(arg1_obj),
+            jni::objects::JValue::Object(&arg0_obj),
+            jni::objects::JValue::Object(&arg1_obj),
         ],
     ) {
         Ok(val) => val,
@@ -941,7 +947,7 @@ unsafe extern "C" fn callback_wrapper_void_to_f32(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -1020,7 +1026,7 @@ unsafe extern "C" fn callback_wrapper_f32_to_f32(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -1052,7 +1058,7 @@ unsafe extern "C" fn callback_wrapper_f32_to_f32(
         callback.as_obj(),
         "apply",
         "(Ljava/lang/Object;)Ljava/lang/Object;",
-        &[jni::objects::JValue::Object(arg_obj)],
+        &[jni::objects::JValue::Object(&arg_obj)],
     ) {
         Ok(val) => val,
         Err(e) => {
@@ -1117,7 +1123,7 @@ unsafe extern "C" fn callback_wrapper_f32_f32_to_f32(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -1162,8 +1168,8 @@ unsafe extern "C" fn callback_wrapper_f32_f32_to_f32(
         "apply",
         "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
         &[
-            jni::objects::JValue::Object(arg0_obj),
-            jni::objects::JValue::Object(arg1_obj),
+            jni::objects::JValue::Object(&arg0_obj),
+            jni::objects::JValue::Object(&arg1_obj),
         ],
     ) {
         Ok(val) => val,
@@ -1224,7 +1230,7 @@ unsafe extern "C" fn callback_wrapper_void_to_f64(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -1303,7 +1309,7 @@ unsafe extern "C" fn callback_wrapper_f64_to_f64(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -1335,7 +1341,7 @@ unsafe extern "C" fn callback_wrapper_f64_to_f64(
         callback.as_obj(),
         "apply",
         "(Ljava/lang/Object;)Ljava/lang/Object;",
-        &[jni::objects::JValue::Object(arg_obj)],
+        &[jni::objects::JValue::Object(&arg_obj)],
     ) {
         Ok(val) => val,
         Err(e) => {
@@ -1400,7 +1406,7 @@ unsafe extern "C" fn callback_wrapper_f64_f64_to_f64(
         }
     };
 
-    let env = match jvm.attach_current_thread() {
+    let mut env = match jvm.attach_current_thread() {
         Ok(env) => env,
         Err(e) => {
             eprintln!("ERROR: Failed to attach thread: {}", e);
@@ -1445,8 +1451,8 @@ unsafe extern "C" fn callback_wrapper_f64_f64_to_f64(
         "apply",
         "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
         &[
-            jni::objects::JValue::Object(arg0_obj),
-            jni::objects::JValue::Object(arg1_obj),
+            jni::objects::JValue::Object(&arg0_obj),
+            jni::objects::JValue::Object(&arg1_obj),
         ],
     ) {
         Ok(val) => val,
@@ -1527,10 +1533,15 @@ fn get_callback_wrapper(
     }
 }
 
+*/
+
 // =============================================================================
 // WAMR Host Function Registration
 // =============================================================================
+// NOTE: Host function registration is temporarily disabled along with callbacks
+// These will be re-enabled once WAMR is built with the required features.
 
+/*
 /// Generate WAMR signature string from parameter and result types
 ///
 /// Examples:
@@ -1678,12 +1689,13 @@ fn register_imports(
 
     Ok(())
 }
+*/
 
 /// Create a new WAMR runtime instance
 #[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeCreateRuntime(
-    _env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeCreateRuntime<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
 ) -> jlong {
     match create_runtime() {
         Ok(runtime) => Box::into_raw(Box::new(runtime)) as jlong,
@@ -1693,9 +1705,9 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
 
 /// Destroy a WAMR runtime instance
 #[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeDestroyRuntime(
-    _env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeDestroyRuntime<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
     runtime_handle: jlong,
 ) {
     if runtime_handle != 0 {
@@ -1708,18 +1720,17 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
 
 /// Compile a WebAssembly module
 #[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeCompileModule(
-    env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeCompileModule<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
     runtime_handle: jlong,
-    wasm_bytes: jbyteArray,
+    wasm_bytes: JByteArray<'local>,
 ) -> jlong {
     if runtime_handle == 0 {
         return 0;
     }
 
-    let byte_array = unsafe { JByteArray::from_raw(wasm_bytes) };
-    let bytes = match env.convert_byte_array(byte_array) {
+    let bytes = match env.convert_byte_array(&wasm_bytes) {
         Ok(bytes) => bytes,
         Err(_) => return 0,
     };
@@ -1735,9 +1746,9 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
 
 /// Get WAMR version
 #[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetVersion(
-    env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetVersion<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
 ) -> jstring {
     let version = "2.4.1";
     match env.new_string(version) {
@@ -1748,9 +1759,9 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
 
 /// Destroy a WebAssembly module
 #[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeDestroyModule(
-    _env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeDestroyModule<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
     module_handle: jlong,
 ) {
     if module_handle != 0 {
@@ -1763,11 +1774,11 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
 
 /// Instantiate a WebAssembly module with optional imports
 #[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeInstantiateModule(
-    env: JNIEnv,
-    _class: JClass,
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeInstantiateModule<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
     module_handle: jlong,
-    imports: JObject,
+    imports: JObject<'local>,
 ) -> jlong {
     if module_handle == 0 {
         return 0;
@@ -1776,9 +1787,12 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
     unsafe {
         let module_ref = &*(module_handle as *const WamrModule);
 
+        // NOTE: Import registration temporarily disabled
+        // TODO: Re-enable once WAMR is built with required features
+        /*
         // Parse and register imports if provided
         if !imports.is_null() {
-            match parse_imports(&env, imports) {
+            match parse_imports(&mut env, &imports) {
                 Ok(parsed_imports) => {
                     if !parsed_imports.is_empty() {
                         // Register imports with WAMR before instantiation
@@ -1793,6 +1807,12 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
                     return 0;
                 }
             }
+        }
+        */
+
+        // For now, warn if imports were provided
+        if !imports.is_null() {
+            eprintln!("WARNING: Import registration not yet supported - ignoring imports");
         }
 
         // Instantiate module (with or without imports)
