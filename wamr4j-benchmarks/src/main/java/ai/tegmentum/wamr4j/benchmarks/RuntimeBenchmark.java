@@ -101,9 +101,7 @@ public class RuntimeBenchmark {
     @TearDown(Level.Iteration)
     public void tearDownIteration() {
         try {
-            if (addFunction != null && !addFunction.isClosed()) {
-                addFunction.close();
-            }
+            // Note: Functions don't have close() - they're managed by the instance
             if (moduleInstance != null && !moduleInstance.isClosed()) {
                 moduleInstance.close();
             }
@@ -168,10 +166,10 @@ public class RuntimeBenchmark {
         if (addFunction == null) return;
         
         try {
-            final Object[] result = addFunction.call(42, 24);
+            final Object result = addFunction.invoke(42, 24);
             bh.consume(result);
         } catch (final Exception e) {
-            throw new RuntimeException("JNI function call benchmark failed", e);
+            throw new RuntimeException("Function invocation benchmark failed", e);
         }
     }
 

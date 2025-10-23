@@ -86,15 +86,13 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
             }
             
             return (int) size;
-        } catch (final RuntimeException e) {
-            throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Throwable e) {
-            throw new RuntimeException("Unexpected error getting memory size", e);
+            throw new IllegalStateException("Unexpected error getting memory size", e);
         }
     }
 
     @Override
-    public ByteBuffer buffer() throws RuntimeException {
+    public ByteBuffer asByteBuffer() {
         ensureNotClosed();
         
         try {
@@ -115,166 +113,157 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
             final MemorySegment memorySegment = dataPtr.reinterpret(size);
             
             return memorySegment.asByteBuffer();
-        } catch (final RuntimeException e) {
-            throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Throwable e) {
-            throw new RuntimeException("Unexpected error getting memory buffer", e);
+            throw new IllegalStateException("Unexpected error getting memory buffer", e);
         }
     }
 
-    @Override
-    public byte readByte(final long offset) throws RuntimeException {
+    // Helper method - not part of public API
+    byte readByte(final int offset) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 1);
         
         try {
-            return buffer().get((int) offset);
+            return asByteBuffer().get((int) offset);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to read byte at offset " + offset, e);
         }
     }
 
-    @Override
-    public void writeByte(final long offset, final byte value) throws RuntimeException {
+    // Helper method - not part of public API
+    void writeByte(final int offset, final byte value) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 1);
         
         try {
-            buffer().put((int) offset, value);
+            asByteBuffer().put((int) offset, value);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to write byte at offset " + offset, e);
         }
     }
 
     @Override
-    public int readInt32(final long offset) throws RuntimeException {
+    public int readInt32(final int offset) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 4);
         
         try {
-            return buffer().getInt((int) offset);
+            return asByteBuffer().getInt((int) offset);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to read int32 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeInt32(final long offset, final int value) throws RuntimeException {
+    public void writeInt32(final int offset, final int value) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 4);
         
         try {
-            buffer().putInt((int) offset, value);
+            asByteBuffer().putInt((int) offset, value);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to write int32 at offset " + offset, e);
         }
     }
 
     @Override
-    public long readInt64(final long offset) throws RuntimeException {
+    public long readInt64(final int offset) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 8);
         
         try {
-            return buffer().getLong((int) offset);
+            return asByteBuffer().getLong((int) offset);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to read int64 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeInt64(final long offset, final long value) throws RuntimeException {
+    public void writeInt64(final int offset, final long value) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 8);
         
         try {
-            buffer().putLong((int) offset, value);
+            asByteBuffer().putLong((int) offset, value);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to write int64 at offset " + offset, e);
         }
     }
 
     @Override
-    public float readFloat32(final long offset) throws RuntimeException {
+    public float readFloat32(final int offset) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 4);
         
         try {
-            return buffer().getFloat((int) offset);
+            return asByteBuffer().getFloat((int) offset);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to read float32 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeFloat32(final long offset, final float value) throws RuntimeException {
+    public void writeFloat32(final int offset, final float value) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 4);
         
         try {
-            buffer().putFloat((int) offset, value);
+            asByteBuffer().putFloat((int) offset, value);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to write float32 at offset " + offset, e);
         }
     }
 
     @Override
-    public double readFloat64(final long offset) throws RuntimeException {
+    public double readFloat64(final int offset) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 8);
         
         try {
-            return buffer().getDouble((int) offset);
+            return asByteBuffer().getDouble((int) offset);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to read float64 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeFloat64(final long offset, final double value) throws RuntimeException {
+    public void writeFloat64(final int offset, final double value) throws RuntimeException {
         ensureNotClosed();
         validateOffset(offset, 8);
         
         try {
-            buffer().putDouble((int) offset, value);
+            asByteBuffer().putDouble((int) offset, value);
         } catch (final Exception e) {
             throw new RuntimeException("Failed to write float64 at offset " + offset, e);
         }
     }
 
     @Override
-    public boolean grow(final long pages) throws RuntimeException {
+    public int grow(final int pages) {
         if (pages < 0) {
             throw new IllegalArgumentException("Page count cannot be negative: " + pages);
         }
-        
+
         ensureNotClosed();
-        
+
         try {
             final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
             final MemorySegment growFunc = lookup.find("wamr_memory_grow")
                 .orElseThrow(() -> new RuntimeException(
                     "Native function 'wamr_memory_grow' not found"));
-            
+
             final MethodHandle grow = Linker.nativeLinker()
                 .downcallHandle(growFunc, GROW_DESC);
-            
-            final int result = (int) grow.invoke(nativeHandle, pages);
-            return result >= 0; // WAMR returns -1 on failure, old size on success
-        } catch (final RuntimeException e) {
-            throw e; // Re-throw WebAssembly exceptions as-is
+
+            final int result = (int) grow.invoke(nativeHandle, (long) pages);
+            return result; // Returns previous page count, or -1 on failure
         } catch (final Throwable e) {
-            throw new RuntimeException("Unexpected error growing memory", e);
+            throw new IllegalStateException("Unexpected error growing memory", e);
         }
     }
 
-    @Override
-    public boolean isClosed() {
-        return closed.get();
-    }
-
-    @Override
-    public void close() {
+    // Helper method for cleanup - not part of public API
+    void close() {
         if (closed.compareAndSet(false, true)) {
             final MemorySegment handle = nativeHandle;
             nativeHandle = MemorySegment.NULL;
@@ -317,6 +306,60 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
         }
     }
     
+    @Override
+    public byte[] read(final int offset, final int length) throws RuntimeException {
+        if (offset < 0) {
+            throw new IllegalArgumentException("Offset cannot be negative: " + offset);
+        }
+        if (length <= 0) {
+            throw new IllegalArgumentException("Length must be positive: " + length);
+        }
+
+        ensureNotClosed();
+        validateOffset(offset, length);
+
+        final byte[] result = new byte[length];
+        try {
+            final ByteBuffer buffer = asByteBuffer();
+            buffer.position(offset);
+            buffer.get(result);
+            return result;
+        } catch (final Exception e) {
+            throw new RuntimeException("Failed to read " + length + " bytes at offset " + offset, e);
+        }
+    }
+
+    @Override
+    public void write(final int offset, final byte[] data) throws RuntimeException {
+        if (offset < 0) {
+            throw new IllegalArgumentException("Offset cannot be negative: " + offset);
+        }
+        if (data == null) {
+            throw new IllegalArgumentException("Data cannot be null");
+        }
+
+        ensureNotClosed();
+        validateOffset(offset, data.length);
+
+        try {
+            final ByteBuffer buffer = asByteBuffer();
+            buffer.position(offset);
+            buffer.put(data);
+        } catch (final Exception e) {
+            throw new RuntimeException("Failed to write " + data.length + " bytes at offset " + offset, e);
+        }
+    }
+
+    @Override
+    public int pageCount() {
+        ensureNotClosed();
+
+        // WebAssembly page size is 64KB
+        final int pageSize = 65536;
+        final int totalSize = size();
+        return totalSize / pageSize;
+    }
+
     @Override
     public boolean isValid() {
         return !closed.get() && nativeHandle != null && !nativeHandle.equals(MemorySegment.NULL);

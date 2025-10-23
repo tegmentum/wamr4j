@@ -310,6 +310,64 @@ pub const MAX_FUNCTION_ARGS: usize = 32;
 pub const MAX_FUNCTION_RESULTS: usize = 8;
 
 // =============================================================================
+// Export/Import Kind Constants
+// =============================================================================
+
+/// WebAssembly export/import kind: Function
+pub const WASM_IMPORT_EXPORT_KIND_FUNC: u32 = 0;
+
+/// WebAssembly export/import kind: Table
+pub const WASM_IMPORT_EXPORT_KIND_TABLE: u32 = 1;
+
+/// WebAssembly export/import kind: Memory
+pub const WASM_IMPORT_EXPORT_KIND_MEMORY: u32 = 2;
+
+/// WebAssembly export/import kind: Global
+pub const WASM_IMPORT_EXPORT_KIND_GLOBAL: u32 = 3;
+
+// =============================================================================
+// Value Type Constants
+// =============================================================================
+
+/// WebAssembly value type: i32
+pub const WASM_I32: u32 = 0;
+
+/// WebAssembly value type: i64
+pub const WASM_I64: u32 = 1;
+
+/// WebAssembly value type: f32
+pub const WASM_F32: u32 = 2;
+
+/// WebAssembly value type: f64
+pub const WASM_F64: u32 = 3;
+
+// =============================================================================
+// Export and Global Type Structures
+// =============================================================================
+
+/// WebAssembly export information
+#[repr(C)]
+pub struct wasm_export_t {
+    /// Export name
+    pub name: *const c_char,
+    /// Export kind (function, table, memory, global)
+    pub kind: u32,
+    /// Type information (union - use based on kind)
+    pub type_data: [u8; 8],
+}
+
+/// WebAssembly global instance
+#[repr(C)]
+pub struct wasm_global_inst_t {
+    /// Value type
+    pub kind: u8,
+    /// Is mutable
+    pub is_mutable: bool,
+    /// Pointer to global data
+    pub global_data: *mut c_void,
+}
+
+// =============================================================================
 // Host Function Registration (Import Support)
 // =============================================================================
 
@@ -404,4 +462,52 @@ extern "C" {
     /// # Returns
     /// Pointer to attachment data (void*)
     pub fn wasm_runtime_get_function_attachment(exec_env: *mut WasmExecEnv) -> *mut c_void;
+
+    /// Get module from module instance
+    ///
+    /// # Parameters
+    /// - `module_inst`: Module instance pointer
+    ///
+    /// # Returns
+    /// Module pointer
+    pub fn wasm_runtime_get_module(module_inst: *mut WasmModuleInstT) -> *mut WasmModuleT;
+
+    /// Get export count from module
+    ///
+    /// # Parameters
+    /// - `module`: Module pointer
+    ///
+    /// # Returns
+    /// Number of exports
+    pub fn wasm_runtime_get_export_count(module: *const WasmModuleT) -> u32;
+
+    /// Get export info by index
+    ///
+    /// # Parameters
+    /// - `module`: Module pointer
+    /// - `export_index`: Index of export
+    /// - `export_type`: Pointer to export info structure to fill
+    ///
+    /// # Returns
+    /// true if successful, false otherwise
+    pub fn wasm_runtime_get_export_type(
+        module: *const WasmModuleT,
+        export_index: i32,
+        export_type: *mut wasm_export_t,
+    ) -> bool;
+
+    /// Get exported global instance by name
+    ///
+    /// # Parameters
+    /// - `module_inst`: Module instance pointer
+    /// - `name`: Global variable name
+    /// - `global_inst`: Pointer to global instance structure to fill
+    ///
+    /// # Returns
+    /// true if successful, false otherwise
+    pub fn wasm_runtime_get_export_global_inst(
+        module_inst: *const WasmModuleInstT,
+        name: *const c_char,
+        global_inst: *mut wasm_global_inst_t,
+    ) -> bool;
 }
