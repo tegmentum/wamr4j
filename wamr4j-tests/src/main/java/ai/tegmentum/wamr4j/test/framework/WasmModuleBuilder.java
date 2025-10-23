@@ -711,6 +711,7 @@ public final class WasmModuleBuilder {
     public static final byte IMPORT_GLOBAL = 0x03;
 
     // Control flow opcodes
+    public static final byte UNREACHABLE = 0x00;
     public static final byte NOP = 0x01;
     public static final byte BLOCK = 0x02;
     public static final byte LOOP = 0x03;

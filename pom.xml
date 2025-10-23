@@ -30,13 +30,9 @@
     <modules>
         <module>wamr4j</module>
         <module>wamr4j-jni</module>
-        <!-- Panama module disabled due to compilation errors - needs API sync
         <module>wamr4j-panama</module>
-        -->
         <module>wamr4j-native</module>
-        <!-- Benchmarks disabled due to compilation errors - needs API sync
         <module>wamr4j-benchmarks</module>
-        -->
         <module>wamr4j-tests</module>
     </modules>
 

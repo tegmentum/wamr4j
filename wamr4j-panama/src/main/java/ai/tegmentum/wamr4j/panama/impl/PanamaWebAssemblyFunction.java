@@ -108,13 +108,12 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
         } catch (final Throwable e) {
             LOGGER.warning("Failed to get function signature for '" + name + "': " + e.getMessage());
             return FunctionSignature.builder()
-                .name(name)
                 .build();
         }
     }
 
     @Override
-    public Object[] call(final Object... args) throws RuntimeException {
+    public Object invoke(final Object... args) throws RuntimeException {
         // Defensive programming - validate inputs
         if (args == null) {
             throw new IllegalArgumentException("Function arguments cannot be null");
@@ -141,9 +140,17 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
             if (resultCode != 0) {
                 throw new RuntimeException("Function call failed with code: " + resultCode);
             }
-            
-            // Convert native results back to Java objects
-            return convertResultsFromNative(resultsBuffer);
+
+            // Convert native results back to Java object (single value or null)
+            final Object[] results = convertResultsFromNative(resultsBuffer);
+            if (results == null || results.length == 0) {
+                return null; // Void function
+            } else if (results.length == 1) {
+                return results[0]; // Single return value
+            } else {
+                // Multi-value returns not yet supported - return first value
+                return results[0];
+            }
         } catch (final RuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Throwable e) {
@@ -151,13 +158,8 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
         }
     }
 
-    @Override
-    public boolean isClosed() {
-        return closed.get();
-    }
-
-    @Override
-    public void close() {
+    // Helper method for cleanup - not part of public API
+    void close() {
         if (closed.compareAndSet(false, true)) {
             final MemorySegment handle = nativeHandle;
             nativeHandle = MemorySegment.NULL;
@@ -190,7 +192,6 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
     private FunctionSignature parseNativeSignature(final MemorySegment signaturePtr) {
         // Placeholder implementation - actual parsing depends on native format
         return FunctionSignature.builder()
-            .name(name)
             .build();
     }
     

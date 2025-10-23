@@ -32,13 +32,25 @@ use crate::runtime::{
     memory_get, memory_size, memory_data, memory_grow, memory_read, memory_write,
 };
 use crate::utils::{
-    write_error_to_buffer, get_last_error, clear_last_error,
+    write_error_to_buffer, get_last_error, clear_last_error, set_last_error,
     wasm_value_from_ffi, wasm_value_to_ffi, wasm_type_to_ffi,
     WasmValueFFI, WASM_TYPE_I32, WASM_TYPE_I64, WASM_TYPE_F32, WASM_TYPE_F64,
 };
 use crate::wamr_wrapper::{
     WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory,
     WasmValue, WasmType, WamrError, RuntimeConfig,
+};
+use crate::bindings::{
+    WasmModuleInstT,
+    wasm_runtime_get_module,
+    wasm_runtime_get_export_count,
+    wasm_runtime_get_export_type,
+    wasm_runtime_get_export_global_inst,
+    wasm_export_t,
+    wasm_global_inst_t,
+    WASM_IMPORT_EXPORT_KIND_FUNC,
+    WASM_IMPORT_EXPORT_KIND_GLOBAL,
+    WASM_I32, WASM_I64, WASM_F32, WASM_F64,
 };
 
 // =============================================================================
@@ -549,6 +561,287 @@ pub extern "C" fn wamr_get_last_error(buffer: *mut c_char, buffer_size: c_int) -
 #[no_mangle]
 pub extern "C" fn wamr_clear_last_error() {
     clear_last_error();
+}
+
+// =============================================================================
+// Export Enumeration Functions
+// =============================================================================
+
+/// Get names of all exported functions from an instance
+#[no_mangle]
+pub extern "C" fn wamr_get_function_names(
+    instance: *mut c_void,
+    names_buffer: *mut *mut *mut c_char,
+    count: *mut c_int,
+) -> c_int {
+    if instance.is_null() || names_buffer.is_null() || count.is_null() {
+        set_last_error("Invalid parameters for get_function_names".to_string());
+        return -1;
+    }
+
+    unsafe {
+        let module_inst = instance as *mut WasmModuleInstT;
+        let module = wasm_runtime_get_module(module_inst);
+
+        if module.is_null() {
+            set_last_error("Failed to get module from instance".to_string());
+            return -1;
+        }
+
+        let export_count = wasm_runtime_get_export_count(module);
+        let mut function_names: Vec<*mut c_char> = Vec::new();
+
+        for i in 0..export_count {
+            let mut export_info: wasm_export_t = std::mem::zeroed();
+            if wasm_runtime_get_export_type(module, i as i32, &mut export_info) {
+                if export_info.kind == WASM_IMPORT_EXPORT_KIND_FUNC {
+                    if !export_info.name.is_null() {
+                        // Allocate and copy the name
+                        let name_len = libc::strlen(export_info.name);
+                        let name_copy = libc::malloc(name_len + 1) as *mut c_char;
+                        if !name_copy.is_null() {
+                            libc::strcpy(name_copy, export_info.name);
+                            function_names.push(name_copy);
+                        }
+                    }
+                }
+            }
+        }
+
+        *count = function_names.len() as c_int;
+
+        if function_names.is_empty() {
+            *names_buffer = std::ptr::null_mut();
+            return 0;
+        }
+
+        // Allocate array for pointers
+        let array_size = function_names.len() * std::mem::size_of::<*mut c_char>();
+        let array = libc::malloc(array_size) as *mut *mut c_char;
+
+        if array.is_null() {
+            // Clean up allocated names
+            for name in function_names {
+                libc::free(name as *mut c_void);
+            }
+            set_last_error("Failed to allocate memory for function names array".to_string());
+            return -1;
+        }
+
+        // Copy pointers to array
+        for (i, name) in function_names.iter().enumerate() {
+            *array.add(i) = *name;
+        }
+
+        *names_buffer = array;
+        0
+    }
+}
+
+/// Get names of all exported globals from an instance
+#[no_mangle]
+pub extern "C" fn wamr_get_global_names(
+    instance: *mut c_void,
+    names_buffer: *mut *mut *mut c_char,
+    count: *mut c_int,
+) -> c_int {
+    if instance.is_null() || names_buffer.is_null() || count.is_null() {
+        set_last_error("Invalid parameters for get_global_names".to_string());
+        return -1;
+    }
+
+    unsafe {
+        let module_inst = instance as *mut WasmModuleInstT;
+        let module = wasm_runtime_get_module(module_inst);
+
+        if module.is_null() {
+            set_last_error("Failed to get module from instance".to_string());
+            return -1;
+        }
+
+        let export_count = wasm_runtime_get_export_count(module);
+        let mut global_names: Vec<*mut c_char> = Vec::new();
+
+        for i in 0..export_count {
+            let mut export_info: wasm_export_t = std::mem::zeroed();
+            if wasm_runtime_get_export_type(module, i as i32, &mut export_info) {
+                if export_info.kind == WASM_IMPORT_EXPORT_KIND_GLOBAL {
+                    if !export_info.name.is_null() {
+                        // Allocate and copy the name
+                        let name_len = libc::strlen(export_info.name);
+                        let name_copy = libc::malloc(name_len + 1) as *mut c_char;
+                        if !name_copy.is_null() {
+                            libc::strcpy(name_copy, export_info.name);
+                            global_names.push(name_copy);
+                        }
+                    }
+                }
+            }
+        }
+
+        *count = global_names.len() as c_int;
+
+        if global_names.is_empty() {
+            *names_buffer = std::ptr::null_mut();
+            return 0;
+        }
+
+        // Allocate array for pointers
+        let array_size = global_names.len() * std::mem::size_of::<*mut c_char>();
+        let array = libc::malloc(array_size) as *mut *mut c_char;
+
+        if array.is_null() {
+            // Clean up allocated names
+            for name in global_names {
+                libc::free(name as *mut c_void);
+            }
+            set_last_error("Failed to allocate memory for global names array".to_string());
+            return -1;
+        }
+
+        // Copy pointers to array
+        for (i, name) in global_names.iter().enumerate() {
+            *array.add(i) = *name;
+        }
+
+        *names_buffer = array;
+        0
+    }
+}
+
+/// Free array of names allocated by get_function_names or get_global_names
+#[no_mangle]
+pub extern "C" fn wamr_free_names(names: *mut *mut c_char, count: c_int) {
+    if names.is_null() || count <= 0 {
+        return;
+    }
+
+    unsafe {
+        // Free each string
+        for i in 0..count {
+            let name = *names.add(i as usize);
+            if !name.is_null() {
+                libc::free(name as *mut c_void);
+            }
+        }
+        // Free the array itself
+        libc::free(names as *mut c_void);
+    }
+}
+
+/// Get a global variable value
+#[no_mangle]
+pub extern "C" fn wamr_get_global(
+    instance: *mut c_void,
+    name: *const c_char,
+    value_type: *mut c_int,
+    value: *mut c_void,
+    value_size: c_int,
+) -> c_int {
+    if instance.is_null() || name.is_null() || value_type.is_null() || value.is_null() {
+        set_last_error("Invalid parameters for get_global".to_string());
+        return -1;
+    }
+
+    unsafe {
+        let module_inst = instance as *mut WasmModuleInstT;
+        let mut global_inst: wasm_global_inst_t = std::mem::zeroed();
+
+        if !wasm_runtime_get_export_global_inst(module_inst, name, &mut global_inst) {
+            set_last_error("Global variable not found".to_string());
+            return -1;
+        }
+
+        // Set the type
+        *value_type = global_inst.kind as c_int;
+
+        // Copy the value based on type
+        let copy_size = match global_inst.kind as u32 {
+            WASM_I32 | WASM_F32 => 4,
+            WASM_I64 | WASM_F64 => 8,
+            _ => {
+                set_last_error("Unsupported global type".to_string());
+                return -1;
+            }
+        };
+
+        if value_size < copy_size {
+            set_last_error("Value buffer too small".to_string());
+            return -1;
+        }
+
+        if global_inst.global_data.is_null() {
+            set_last_error("Global data is null".to_string());
+            return -1;
+        }
+
+        std::ptr::copy_nonoverlapping(
+            global_inst.global_data as *const u8,
+            value as *mut u8,
+            copy_size as usize,
+        );
+
+        0
+    }
+}
+
+/// Set a global variable value
+#[no_mangle]
+pub extern "C" fn wamr_set_global(
+    instance: *mut c_void,
+    name: *const c_char,
+    value_type: c_int,
+    value: *const c_void,
+) -> c_int {
+    if instance.is_null() || name.is_null() || value.is_null() {
+        set_last_error("Invalid parameters for set_global".to_string());
+        return -1;
+    }
+
+    unsafe {
+        let module_inst = instance as *mut WasmModuleInstT;
+        let mut global_inst: wasm_global_inst_t = std::mem::zeroed();
+
+        if !wasm_runtime_get_export_global_inst(module_inst, name, &mut global_inst) {
+            set_last_error("Global variable not found".to_string());
+            return -1;
+        }
+
+        // Check if mutable
+        if !global_inst.is_mutable {
+            set_last_error("Global variable is immutable".to_string());
+            return -1;
+        }
+
+        // Verify type matches
+        if global_inst.kind as c_int != value_type {
+            set_last_error("Type mismatch for global variable".to_string());
+            return -1;
+        }
+
+        // Copy the value based on type
+        let copy_size = match value_type as u32 {
+            WASM_I32 | WASM_F32 => 4,
+            WASM_I64 | WASM_F64 => 8,
+            _ => {
+                set_last_error("Unsupported global type".to_string());
+                return -1;
+            }
+        };
+
+        if global_inst.global_data.is_null() {
+            set_last_error("Global data is null".to_string());
+            return -1;
+        }
+
+        std::ptr::copy_nonoverlapping(
+            value as *const u8,
+            global_inst.global_data as *mut u8,
+            copy_size as usize,
+        );
+
+        0
+    }
 }
 
 // FFI value types are defined in utils.rs to avoid duplication
