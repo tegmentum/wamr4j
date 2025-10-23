@@ -11,9 +11,19 @@ Comprehensive test suite for wamr4j WebAssembly runtime implementations.
 
 ## Overview
 
-This module provides a comparison test framework that validates behavioral consistency between JNI and Panama implementations of the wamr4j API. It also includes infrastructure for porting and running tests from the official WebAssembly specification test suite.
+This module provides a comprehensive test framework validating the wamr4j API through multiple test categories:
+- **Comparison tests** validate behavioral consistency between JNI and Panama implementations
+- **Integration tests** verify complex real-world WebAssembly programs
+- **WAMR engine tests** validate correct execution through Java bindings
 
-**Current Status:** 526 assertions across 18 test classes covering all four WebAssembly numeric types (i32, i64, f32, f64).
+**Current Status:** 167 tests across 23 test classes - all passing ✅
+
+**Test Breakdown:**
+- 134 comparison tests (JNI/Panama parity validation)
+- 4 integration tests (complex MVP scenarios)
+- 29 WAMR engine tests (bindings validation)
+
+See [`TEST_COVERAGE_REPORT.md`](TEST_COVERAGE_REPORT.md) for detailed coverage analysis.
 
 ## Architecture
 
@@ -91,37 +101,65 @@ This module provides a comparison test framework that validates behavioral consi
 
 ### Test Categories
 
-#### Comparison Tests
+#### Comparison Tests (134 tests)
 Tests that run on both JNI and Panama implementations to verify identical behavior:
-- `I32NumericComparisonTest` - i32 arithmetic (add, sub, mul) - 28 assertions
-- `I32DivisionComparisonTest` - i32 division (div_s, div_u) + traps - 33 assertions
-- `I32RemainderComparisonTest` - i32 remainder (rem_s, rem_u) + traps - 22 assertions
-- `I32BitwiseComparisonTest` - i32 bitwise (and, or, xor) - 24 assertions
-- `I32ShiftComparisonTest` - i32 shifts (shl, shr_s, shr_u) - 29 assertions
-- `I32ComparisonTest` - i32 comparisons (eq, ne, lt, gt, le, ge) - 43 assertions
-- `I64NumericComparisonTest` - i64 arithmetic (add, sub, mul) - 26 assertions
-- `I64DivisionComparisonTest` - i64 division (div_s, div_u) + traps - 33 assertions
-- `I64RemainderComparisonTest` - i64 remainder (rem_s, rem_u) + traps - 22 assertions
-- `I64BitwiseComparisonTest` - i64 bitwise (and, or, xor) - 24 assertions
-- `I64ShiftComparisonTest` - i64 shifts (shl, shr_s, shr_u) - 29 assertions
-- `I64ComparisonTest` - i64 comparisons (eq, ne, lt, gt, le, ge) - 43 assertions
-- `F32NumericComparisonTest` - f32 arithmetic and special ops - 41 assertions
-- `F32DivisionComparisonTest` - f32 division and edge cases - 18 assertions
-- `F32ComparisonTest` - f32 comparisons (eq, ne, lt, gt, le, ge) - 26 assertions
-- `F64NumericComparisonTest` - f64 arithmetic and special ops - 42 assertions
-- `F64DivisionComparisonTest` - f64 division and edge cases - 19 assertions
-- `F64ComparisonTest` - f64 comparisons (eq, ne, lt, gt, le, ge) - 24 assertions
-- **Total: 526 comparison assertions** (179 i32 + 177 i64 + 85 f32 + 85 f64)
-- Memory operations - to be added
-- Control flow operations - to be added
 
-#### Spec Tests (Planned)
-Official WebAssembly specification tests:
-- Numeric operations (~2000 tests)
-- Memory operations (~500 tests)
-- Control flow (~400 tests)
-- Tables, globals, imports/exports
-- Validation and edge cases
+**Integer Operations (i32 & i64) - 90 tests**
+- `I32NumericComparisonTest` - Addition, subtraction, multiplication
+- `I32DivisionComparisonTest` - Signed/unsigned division with edge cases
+- `I32RemainderComparisonTest` - Signed/unsigned remainder operations
+- `I32BitwiseComparisonTest` - AND, OR, XOR operations
+- `I32ShiftComparisonTest` - Left shift, right shift (signed/unsigned)
+- `I32ComparisonTest` - All comparison operators
+- `I64NumericComparisonTest` - 64-bit arithmetic operations
+- `I64DivisionComparisonTest` - 64-bit division operations
+- `I64RemainderComparisonTest` - 64-bit remainder operations
+- `I64BitwiseComparisonTest` - 64-bit bitwise operations
+- `I64ShiftComparisonTest` - 64-bit shift operations
+- `I64ComparisonTest` - 64-bit comparison operators
+
+**Floating-Point Operations (f32 & f64) - 44 tests**
+- `F32NumericComparisonTest` - 32-bit float arithmetic
+- `F32DivisionComparisonTest` - 32-bit float division
+- `F32ComparisonTest` - 32-bit float comparisons
+- `F64NumericComparisonTest` - 64-bit float arithmetic
+- `F64DivisionComparisonTest` - 64-bit float division
+- `F64ComparisonTest` - 64-bit float comparisons
+
+#### Integration Tests (4 tests)
+Complex real-world WebAssembly programs combining multiple features:
+- `MVPIntegrationTest.testFibonacciWithMemoization` - Memory + globals + recursion
+- `MVPIntegrationTest.testBufferWithGlobals` - Circular buffer implementation
+- `MVPIntegrationTest.testCalculatorWithDispatchTable` - Tables + indirect calls
+- `MVPIntegrationTest.testArraySum` - Memory + loops + locals
+
+#### WAMR Engine Tests (29 tests)
+Validate WAMR engine execution through Java bindings:
+
+**Control Flow (10 tests) - `ControlFlowSpecTest`**
+- Blocks, loops, conditionals (if/else)
+- Branches (br, br_if, br_table)
+- Function calls (direct and indirect)
+- Return statements, unreachable instruction
+
+**Memory Operations (7 tests) - `MemorySpecTest`**
+- Load/store operations
+- Memory addressing and alignment
+- Memory grow/size operations
+- Data segments, bounds checking
+
+**Type Conversions (7 tests) - `ConversionsSpecTest`**
+- Integer wrap/extend operations
+- Float to int truncation
+- Int to float conversion
+- Float promotion/demotion
+- Reinterpret operations
+
+**Table Operations (5 tests) - `TableSpecTest`**
+- Indirect calls via function tables
+- Multiple function signatures
+- Out-of-bounds handling
+- Recursive calls through tables
 
 ## Running Tests
 
