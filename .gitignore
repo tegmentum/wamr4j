@@ -126,3 +126,6 @@ $RECYCLE.BIN/
 
 # Claude epics (local workspace)
 /.claude/epics/
+
+# WebAssembly Test Suite (downloaded externally)
+wamr4j-tests/src/test/resources/testsuite/

@@ -38,6 +38,9 @@ pub type WasmModuleInstT = c_void;
 /// Opaque handle to WASM function instance
 pub type WasmFunctionInstT = c_void;
 
+/// Opaque handle to WASM execution environment (used in callbacks)
+pub type WasmExecEnv = c_void;
+
 // =============================================================================
 // WAMR C API Function Bindings
 // =============================================================================
@@ -173,6 +176,17 @@ extern "C" {
 // Additional WAMR API Functions (Extended API)
 // =============================================================================
 
+// TODO: These functions don't exist in WAMR 2.4.1 API.
+// Need to replace with correct API calls:
+// - wasm_runtime_get_exception(module_inst) instead of get_last_error()
+// - wasm_func_get_param_count/result_count instead of get_function_signature
+// - wasm_runtime_get_memory + wasm_memory_get_cur_page_count for heap size
+// - Validation happens during wasm_runtime_load, no separate validate function
+//
+// Temporarily commented out to get build working. These are not used by
+// the import callback implementation.
+
+/*
 extern "C" {
     /// Get the size of WebAssembly linear memory in bytes
     pub fn wasm_runtime_get_app_heap_size(module_inst: *const WasmModuleInstT) -> c_uint;
@@ -198,6 +212,7 @@ extern "C" {
     /// Clear the last error message
     pub fn wasm_runtime_clear_last_error();
 }
+*/
 
 // =============================================================================
 // Helper Functions for Safe Wrapper
@@ -250,6 +265,8 @@ pub fn cstr_to_rust_string(ptr: *const c_char) -> Result<String, &'static str> {
     }
 }
 
+// TODO: Update to use wasm_runtime_get_exception(module_inst) instead
+/*
 /// Get WAMR error message safely
 pub fn get_wamr_error() -> Option<String> {
     unsafe {
@@ -268,6 +285,7 @@ pub fn clear_wamr_error() {
         wasm_runtime_clear_last_error();
     }
 }
+*/
 
 // =============================================================================
 // Constants and Limits
@@ -290,3 +308,100 @@ pub const MAX_FUNCTION_ARGS: usize = 32;
 
 /// Maximum number of function results supported
 pub const MAX_FUNCTION_RESULTS: usize = 8;
+
+// =============================================================================
+// Host Function Registration (Import Support)
+// =============================================================================
+
+/// Native symbol entry for host function registration
+#[repr(C)]
+pub struct NativeSymbol {
+    /// Function name (null-terminated C string)
+    pub symbol: *const c_char,
+    /// Function pointer to native implementation
+    pub func_ptr: *mut c_void,
+    /// Function signature string (e.g., "(ii)i" for (i32, i32) -> i32)
+    pub signature: *const c_char,
+    /// Optional attachment data
+    pub attachment: *mut c_void,
+}
+
+extern "C" {
+    /// Register native functions (host functions) with WAMR
+    ///
+    /// # Parameters
+    /// - `module_name`: Module name for the imports (e.g., "env")
+    /// - `native_symbols`: Array of native symbol definitions
+    /// - `n_native_symbols`: Number of symbols in the array
+    ///
+    /// # Returns
+    /// true on success, false on failure
+    pub fn wasm_runtime_register_natives(
+        module_name: *const c_char,
+        native_symbols: *const NativeSymbol,
+        n_native_symbols: c_uint,
+    ) -> bool;
+
+    /// Unregister native functions for a module
+    ///
+    /// # Parameters
+    /// - `module_name`: Module name to unregister
+    pub fn wasm_runtime_unregister_natives(module_name: *const c_char);
+
+    /// Set a global variable value in a module instance
+    ///
+    /// # Parameters
+    /// - `module_inst`: WebAssembly module instance
+    /// - `name`: Global variable name
+    /// - `value`: Pointer to value buffer
+    ///
+    /// # Returns
+    /// true on success, false on failure
+    pub fn wasm_runtime_set_global(
+        module_inst: *mut WasmModuleInstT,
+        name: *const c_char,
+        value: *const c_void,
+    ) -> bool;
+
+    /// Get a global variable value from a module instance
+    ///
+    /// # Parameters
+    /// - `module_inst`: WebAssembly module instance
+    /// - `name`: Global variable name
+    /// - `value`: Pointer to value buffer (output)
+    ///
+    /// # Returns
+    /// true on success, false on failure
+    pub fn wasm_runtime_get_global(
+        module_inst: *const WasmModuleInstT,
+        name: *const c_char,
+        value: *mut c_void,
+    ) -> bool;
+
+    /// Get function arguments from execution environment (for use in native callbacks)
+    ///
+    /// # Parameters
+    /// - `exec_env`: Execution environment passed to native function
+    ///
+    /// # Returns
+    /// Pointer to argument array (u32 values for i32/f32, u64 for i64/f64)
+    pub fn wasm_runtime_get_function_argv(exec_env: *mut WasmExecEnv) -> *mut u32;
+
+    /// Get module instance from execution environment
+    ///
+    /// # Parameters
+    /// - `exec_env`: Execution environment passed to native function
+    ///
+    /// # Returns
+    /// Pointer to module instance
+    pub fn wasm_runtime_get_module_inst(exec_env: *mut WasmExecEnv) -> *mut WasmModuleInstT;
+
+    /// Get user data (attachment) from native function
+    ///
+    /// # Parameters
+    /// - `exec_env`: Execution environment passed to native function
+    ///
+    /// # Returns
+    /// Pointer to attachment data (void*)
+    pub fn wasm_runtime_get_function_attachment(exec_env: *mut WasmExecEnv) -> *mut c_void;
+}

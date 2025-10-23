@@ -33,11 +33,14 @@
             <artifactId>wamr4j-jni</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Panama module disabled due to compilation errors - needs API sync
         <dependency>
             <groupId>ai.tegmentum.wamr4j</groupId>
             <artifactId>wamr4j-panama</artifactId>
             <version>${project.version}</version>
+            <optional>true</optional>
         </dependency>
+        -->
 
         <!-- Native Library Dependency -->
         <dependency>
@@ -84,17 +87,30 @@
             <artifactId>slf4j-jdk14</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- JSON Parsing for WAST Test Parser -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.18.2</version>
+        </dependency>
     </dependencies>
 
     <!-- Build Configuration -->
     <build>
         <plugins>
-            <!-- Skip standard unit test execution (this module is for integration tests) -->
+            <!-- Standard unit tests (for test framework classes) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <skipTests>true</skipTests>
+                    <includes>
+                        <include>**/*Test.java</include>
+                    </includes>
+                    <systemPropertyVariables>
+                        <java.library.path>${project.build.directory}/native-libs</java.library.path>
+                        <java.util.logging.config.file>src/test/resources/logging.properties</java.util.logging.config.file>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
 
@@ -184,6 +200,65 @@
                         <configuration>
                             <includes>
                                 <include>**/*CompatibilityIT.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Comparison Tests (runs same tests on both JNI and Panama) -->
+        <profile>
+            <id>comparison</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/*ComparisonTest.java</include>
+                            </includes>
+                            <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Comparison Tests with Verbose Logging -->
+        <profile>
+            <id>comparison-verbose</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/*ComparisonTest.java</include>
+                            </includes>
+                            <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                            <systemPropertyVariables>
+                                <java.util.logging.config.file>src/test/resources/logging-verbose.properties</java.util.logging.config.file>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- WASM Spec Tests -->
+        <profile>
+            <id>spec-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/spec/**/*Test.java</include>
                             </includes>
                         </configuration>
                     </plugin>

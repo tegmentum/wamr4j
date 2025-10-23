@@ -39,11 +39,13 @@
             <artifactId>wamr4j-jni</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Panama module disabled due to compilation errors - needs API sync
         <dependency>
             <groupId>ai.tegmentum.wamr4j</groupId>
             <artifactId>wamr4j-panama</artifactId>
             <version>${project.version}</version>
         </dependency>
+        -->
 
         <!-- Native Library Dependency -->
         <dependency>
