@@ -15,6 +15,7 @@
 - **🚀 High Performance**: Optimized native bindings with minimal overhead
 - **🔄 Cross-Platform**: Support for Linux, macOS, and Windows (x86_64, ARM64)
 - **📦 Zero Dependencies**: No external runtime dependencies
+- **✨ Post-MVP Features**: Bulk Memory, Reference Types, and SIMD support
 
 ## Quick Start
 
@@ -216,14 +217,27 @@ WAMR4J is optimized for high-performance WebAssembly execution:
 - **Defensive Safety**: JVM crash prevention without performance compromise
 - **Benchmarking Suite**: Comprehensive performance testing and monitoring
 
+### Benchmark Categories
+
+- **Runtime Benchmarks**: Runtime creation, module compilation, function invocation
+- **Memory Operations**: Load, store, and copy throughput (1KB operations)
+- **Large Module Compilation**: Scaling behavior with 10/100/500 function modules
+- **Function Call Overhead**: Calling conventions with 0-8 parameters (JNI vs Panama)
+
 ### Running Benchmarks
 
 ```bash
-# Execute performance benchmarks
-./mvnw test -pl wamr4j-benchmarks
+# Build benchmark JAR
+./mvnw clean package -pl wamr4j-benchmarks
 
-# Profile specific operations
-./mvnw test -Dtest=WebAssemblyBenchmark -pl wamr4j-benchmarks
+# Run all benchmarks
+java -jar wamr4j-benchmarks/target/benchmarks.jar
+
+# Run specific benchmark
+java -jar wamr4j-benchmarks/target/benchmarks.jar MemoryOperationsBenchmark
+
+# Run with custom JMH options
+java -jar wamr4j-benchmarks/target/benchmarks.jar -wi 10 -i 20 -f 3
 ```
 
 ## Platform Support
@@ -239,7 +253,7 @@ WAMR4J is optimized for high-performance WebAssembly execution:
 
 ## Testing
 
-WAMR4J includes comprehensive test coverage with **167 passing tests**:
+WAMR4J includes comprehensive test coverage with **183 passing tests**:
 
 ### Test Categories
 
@@ -260,6 +274,11 @@ WAMR4J includes comprehensive test coverage with **167 passing tests**:
   - Type conversions: wrap, extend, trunc, convert, reinterpret
   - Tables: indirect calls, out-of-bounds, recursion
 
+- **Post-MVP Feature Tests** (16 tests): Validate post-MVP WebAssembly features
+  - Bulk Memory Operations (5 tests): memory.copy, memory.fill, overlapping regions
+  - Reference Types (6 tests): funcref, externref, ref.null, ref.is_null, ref.func
+  - SIMD Operations (5 tests): v128 load/store, i32x4 arithmetic, lane operations
+
 ### Test Coverage Report
 
 See [`wamr4j-tests/TEST_COVERAGE_REPORT.md`](wamr4j-tests/TEST_COVERAGE_REPORT.md) for detailed coverage analysis.
@@ -267,7 +286,7 @@ See [`wamr4j-tests/TEST_COVERAGE_REPORT.md`](wamr4j-tests/TEST_COVERAGE_REPORT.m
 ### Running Tests
 
 ```bash
-# Run all tests (167 tests)
+# Run all tests (183 tests)
 ./mvnw test
 
 # Run specific test module
@@ -277,6 +296,7 @@ See [`wamr4j-tests/TEST_COVERAGE_REPORT.md`](wamr4j-tests/TEST_COVERAGE_REPORT.m
 ./mvnw test -Dtest=*ComparisonTest     # Comparison tests
 ./mvnw test -Dtest=*IntegrationTest    # Integration tests
 ./mvnw test -Dtest=*SpecTest          # WAMR engine tests
+./mvnw test -Dtest=*postmvp.*         # Post-MVP feature tests
 
 # Run with coverage report
 ./mvnw test jacoco:report
