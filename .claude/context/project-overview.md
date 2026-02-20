@@ -95,7 +95,7 @@ wamr4j provides the **safest and most performant** way to execute WebAssembly mo
 - **Container Support**: Docker-friendly with no external dependencies
 
 ### WebAssembly Ecosystem Integration
-- **WAMR Runtime**: Integration with WebAssembly Micro Runtime 2.4.1
+- **WAMR Runtime**: Integration with WebAssembly Micro Runtime 2.4.4
 - **WASM Module Compatibility**: Support for standard WebAssembly modules
 - **WASI Support**: WebAssembly System Interface for file/network operations
 - **Tool Chain Compatibility**: Works with standard WebAssembly development tools

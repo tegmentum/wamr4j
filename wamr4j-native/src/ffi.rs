@@ -522,7 +522,7 @@ pub extern "C" fn wamr_memory_write(
 /// Get WAMR version string
 #[no_mangle]
 pub extern "C" fn wamr_get_version() -> *const c_char {
-    static VERSION: &str = "2.4.1\0";
+    static VERSION: &str = "2.4.4\0";
     VERSION.as_ptr() as *const c_char
 }
 

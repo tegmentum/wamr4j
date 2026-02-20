@@ -76,7 +76,7 @@ wamr4j addresses these issues through:
 - **Performance Profiling**: Detailed execution profiling tools (future version)
 
 ### Technical Boundaries
-- **WAMR Version**: Target WAMR 2.4.1 (latest stable release)
+- **WAMR Version**: Target WAMR 2.4.4 (latest stable release)
 - **Java Version Range**: Support Java 8 minimum through Java 23+
 - **Platform Support**: Linux, Windows, macOS on x86_64 and ARM64
 - **Build Requirements**: Self-contained build process with Maven wrapper
@@ -168,7 +168,7 @@ wamr4j addresses these issues through:
 ## Success Dependencies
 
 ### Technical Dependencies
-- **WAMR Runtime**: Stable release 2.4.1 availability
+- **WAMR Runtime**: Stable release 2.4.4 availability
 - **Rust Toolchain**: Cross-compilation support for all target platforms
 - **Java Ecosystem**: Panama FFI stability in Java 23+
 - **Build Infrastructure**: Maven Central publishing capabilities

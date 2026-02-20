@@ -237,12 +237,12 @@ git submodule update
 # Option 2: Clone WAMR manually
 cd wamr4j-native
 rm -rf wamr
-git clone --depth=1 --branch=WAMR-2.4.1 https://github.com/bytecodealliance/wasm-micro-runtime.git wamr
+git clone --depth=1 --branch=WAMR-2.4.4 https://github.com/bytecodealliance/wasm-micro-runtime.git wamr
 
 # Option 3: Download WAMR release
-wget https://github.com/bytecodealliance/wasm-micro-runtime/archive/refs/tags/WAMR-2.4.1.tar.gz
-tar -xzf WAMR-2.4.1.tar.gz
-mv wasm-micro-runtime-WAMR-2.4.1 wamr4j-native/wamr
+wget https://github.com/bytecodealliance/wasm-micro-runtime/archive/refs/tags/WAMR-2.4.4.tar.gz
+tar -xzf WAMR-2.4.4.tar.gz
+mv wasm-micro-runtime-WAMR-2.4.4 wamr4j-native/wamr
 ```
 
 **Impact:** Native library builds with placeholder stubs, tests cannot execute
@@ -255,7 +255,7 @@ mv wasm-micro-runtime-WAMR-2.4.1 wamr4j-native/wamr
 cd /Users/zacharywhitley/git/wamr4j/wamr4j-native
 
 # Clone WAMR source
-git clone --depth=1 --branch=WAMR-2.4.1 \
+git clone --depth=1 --branch=WAMR-2.4.4 \
   https://github.com/bytecodealliance/wasm-micro-runtime.git wamr
 
 # Verify CMakeLists.txt exists

@@ -1,6 +1,6 @@
 ---
 name: core-native-wamr-integration
-description: Foundational Rust native library providing complete WAMR 2.4.1 API integration for both JNI and Panama implementations
+description: Foundational Rust native library providing complete WAMR 2.4.4 API integration for both JNI and Panama implementations
 status: backlog
 created: 2025-09-01T18:43:56Z
 ---
@@ -9,7 +9,7 @@ created: 2025-09-01T18:43:56Z
 
 ## Executive Summary
 
-The core native WAMR integration is the foundational component of the wamr4j project that provides a unified Rust native library exposing the complete WAMR (WebAssembly Micro Runtime) 2.4.1 API surface. This shared native library will serve as the single source of truth for both JNI and Panama FFI implementations, eliminating code duplication while ensuring consistent behavior across all Java runtime versions (8-23+).
+The core native WAMR integration is the foundational component of the wamr4j project that provides a unified Rust native library exposing the complete WAMR (WebAssembly Micro Runtime) 2.4.4 API surface. This shared native library will serve as the single source of truth for both JNI and Panama FFI implementations, eliminating code duplication while ensuring consistent behavior across all Java runtime versions (8-23+).
 
 The library will implement comprehensive defensive programming practices to prevent JVM crashes, provide complete cross-platform support for all target architectures, and expose every WAMR API through both JNI and Panama-compatible interfaces.
 
@@ -62,7 +62,7 @@ Currently, there is no Java library that provides safe, comprehensive access to 
 
 **Story 2: Complete API Access**
 - As Marcus, I want access to all WAMR capabilities to build comprehensive WebAssembly tooling
-- Given the complete WAMR 2.4.1 API surface, when I use wamr4j, then every WAMR function should be accessible
+- Given the complete WAMR 2.4.4 API surface, when I use wamr4j, then every WAMR function should be accessible
 - Acceptance Criteria:
   - 100% WAMR API coverage including advanced features
   - Consistent API signatures between JNI and Panama implementations
@@ -81,7 +81,7 @@ Currently, there is no Java library that provides safe, comprehensive access to 
 ### Functional Requirements
 
 **Core WAMR Integration**
-- Complete binding of WAMR 2.4.1 API surface including:
+- Complete binding of WAMR 2.4.4 API surface including:
   - Runtime creation and configuration
   - Module loading, compilation, and validation
   - Instance creation and management
@@ -141,7 +141,7 @@ Currently, there is no Java library that provides safe, comprehensive access to 
 ## Success Criteria
 
 **Functional Success**
-- [ ] 100% WAMR 2.4.1 API coverage verified by test suite
+- [ ] 100% WAMR 2.4.4 API coverage verified by test suite
 - [ ] Both JNI and Panama interfaces pass identical test suites
 - [ ] All target platforms (6 combinations) have working native libraries
 - [ ] Zero JVM crashes in 10,000+ hour stress testing
@@ -167,7 +167,7 @@ Currently, there is no Java library that provides safe, comprehensive access to 
 ## Constraints & Assumptions
 
 ### Technical Constraints
-- Must target WAMR 2.4.1 specifically (latest stable release)
+- Must target WAMR 2.4.4 specifically (latest stable release)
 - Rust toolchain required for development and compilation
 - Native library size should remain <50MB per platform
 - Must work with both OpenJDK and Oracle JDK implementations
@@ -179,7 +179,7 @@ Currently, there is no Java library that provides safe, comprehensive access to 
 - Requires expertise in both Rust and Java native interfaces
 
 ### Assumptions
-- WAMR 2.4.1 API remains stable during development period
+- WAMR 2.4.4 API remains stable during development period
 - Target platforms maintain ABI compatibility
 - Java Panama FFI APIs remain stable in Java 23+
 - WAMR licensing (Apache 2.0) is compatible with project goals
@@ -215,7 +215,7 @@ The following items are explicitly excluded from this PRD:
 ## Dependencies
 
 ### External Dependencies
-- **WAMR 2.4.1**: Core WebAssembly runtime library
+- **WAMR 2.4.4**: Core WebAssembly runtime library
 - **Rust Toolchain**: For native library development and compilation
 - **Target Platform SDKs**: Platform-specific development tools for cross-compilation
 - **Java JDK Versions**: JDK 8, 11, 17, 21, 23+ for interface compatibility testing

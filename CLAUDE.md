@@ -27,7 +27,7 @@ Using the test-runner agent ensures:
 
 This project provides unified Java bindings for the WAMR (WebAssembly Micro Runtime). The core mission is to build a common interface for interacting with WAMR using both JNI and Panama bindings. The Panama bindings should target the latest stable Panama release Java 23 and JNI for older pre-23 Java releases.
 
-The WAMR GitHub repository is located at https://github.com/bytecodealliance/wamr and should target the latest WAMR release (2.4.1). JNI bindings should use the Rust API.
+The WAMR GitHub repository is located at https://github.com/bytecodealliance/wamr and should target the latest WAMR release (2.4.4). JNI bindings should use the Rust API.
 
 The project uses Maven as the build tool with the Maven wrapper and provides both JNI and Panama Foreign Function API implementations for native runtimes, with a unified API layer that abstracts engine-specific details.
 
