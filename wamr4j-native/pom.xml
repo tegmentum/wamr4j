@@ -25,7 +25,7 @@
         <!-- Rust Configuration -->
         <rust.target.dir>${project.basedir}/target</rust.target.dir>
         <rust.src.dir>${project.basedir}/src</rust.src.dir>
-        <wamr.version>2.4.1</wamr.version>
+        <wamr.version>2.4.4</wamr.version>
     </properties>
 
     <!-- Dependencies -->

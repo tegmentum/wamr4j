@@ -1750,7 +1750,7 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let version = "2.4.1";
+    let version = "2.4.4";
     match env.new_string(version) {
         Ok(s) => s.into_raw(),
         Err(_) => ptr::null_mut(),

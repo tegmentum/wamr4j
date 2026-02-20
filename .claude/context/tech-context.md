@@ -19,7 +19,7 @@ author: Claude Code PM System
   - **Purpose**: Single shared library with both JNI and Panama FFI exports
 
 ### WebAssembly Runtime
-- **WAMR (WebAssembly Micro Runtime)**: Version 2.4.1 (latest)
+- **WAMR (WebAssembly Micro Runtime)**: Version 2.4.4 (latest)
 - **Repository**: https://github.com/bytecodealliance/wamr
 - **Integration**: Build from source during Maven build process
 - **API Access**: Through Rust wrapper layer

@@ -139,7 +139,7 @@ pub fn module_validate(runtime: &WamrRuntime, wasm_bytes: &[u8]) -> Result<(), W
     }
 
     // Basic WASM header validation
-    // Note: Full validation happens during wasm_runtime_load in WAMR 2.4.1
+    // Note: Full validation happens during wasm_runtime_load in WAMR 2.4.4
     if !is_valid_wasm_header(wasm_bytes) {
         set_last_error("Invalid WASM header".to_string());
         return Err(WamrError::CompilationFailed);

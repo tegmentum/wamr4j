@@ -130,7 +130,7 @@ fn function<'local>(env: &mut JNIEnv<'local>, obj: &JObject<'local>) -> Result<T
 
 ### Notes
 
-- **WAMR Source**: Present at `wamr4j-native/wamr/` (v2.4.1)
+- **WAMR Source**: Present at `wamr4j-native/wamr/` (v2.4.4)
 - **Spec Tests**: Temporarily in `/tmp/spec.disabled` (separate from comparison tests)
 - **Build Time**: ~11 seconds for clean rebuild
 - **Test Time**: ~1.5 seconds for all 134 tests

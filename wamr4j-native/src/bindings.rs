@@ -176,7 +176,7 @@ extern "C" {
 // Additional WAMR API Functions (Extended API)
 // =============================================================================
 
-// TODO: These functions don't exist in WAMR 2.4.1 API.
+// TODO: These functions don't exist in WAMR 2.4.4 API.
 // Need to replace with correct API calls:
 // - wasm_runtime_get_exception(module_inst) instead of get_last_error()
 // - wasm_func_get_param_count/result_count instead of get_function_signature

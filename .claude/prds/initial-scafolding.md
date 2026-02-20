@@ -164,7 +164,7 @@ Without proper scaffolding:
 - **Maven Ecosystem**: Must use Maven as primary build tool (not Gradle or other alternatives)
 - **Google Java Style**: Strict adherence to Google Java Style Guide
 - **JNI and Panama Support**: Must support both binding approaches simultaneously
-- **WAMR Version Lock**: Use exactly WAMR 2.4.1 (latest stable at time of writing)
+- **WAMR Version Lock**: Use exactly WAMR 2.4.4 (latest stable at time of writing)
 - **Minimal External Dependencies**: Prefer built-in tools over external dependencies
 
 ### Timeline Constraints
@@ -182,7 +182,7 @@ Without proper scaffolding:
 ### Assumptions
 - **Rust Toolchain Availability**: Rust can be installed/configured automatically
 - **Maven Wrapper Effectiveness**: `mvnw` provides sufficient Maven functionality
-- **WAMR Build Stability**: WAMR 2.4.1 builds consistently across platforms
+- **WAMR Build Stability**: WAMR 2.4.4 builds consistently across platforms
 - **GitHub Actions Capability**: GitHub Actions provides sufficient build environment
 
 ## Out of Scope
@@ -225,7 +225,7 @@ These items are important but belong in later phases:
 - **Maven**: Version 3.6+ (provided via wrapper)
 - **Java Development Kit**: Java 8+ for compilation, Java 23+ for Panama testing
 - **Rust Toolchain**: Latest stable Rust with cross-compilation targets
-- **WAMR Source Code**: Version 2.4.1 from official GitHub repository
+- **WAMR Source Code**: Version 2.4.4 from official GitHub repository
 
 #### Static Analysis Tools
 - **Checkstyle**: Code style enforcement

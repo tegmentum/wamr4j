@@ -67,7 +67,7 @@ All files are currently untracked (new repository):
 
 ### 4. Native Development Environment
 - Rust toolchain setup for native library
-- WAMR source integration (version 2.4.1)
+- WAMR source integration (version 2.4.4)
 - Cross-compilation configuration for multiple platforms
 
 ## Blocked Items
