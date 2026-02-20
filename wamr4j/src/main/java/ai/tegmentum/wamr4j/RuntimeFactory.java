@@ -147,50 +147,14 @@ public final class RuntimeFactory {
         return createSpecificRuntime(providers, providerName.trim());
     }
 
-    /**
-     * Returns the names of all available runtime providers.
-     *
-     * <p>This method can be used to discover what runtime implementations are available in the
-     * current environment.
-     *
-     * @return a list of provider names, never null but may be empty
-     */
-    public static List<String> getAvailableRuntimeNames() {
+    // Returns the names of all available runtime providers (used for error messages).
+    static List<String> getAvailableRuntimeNames() {
         final List<RuntimeProvider> providers = getAvailableProviders();
         final List<String> names = new ArrayList<>(providers.size());
         for (final RuntimeProvider provider : providers) {
             names.add(provider.getName());
         }
         return names;
-    }
-
-    /**
-     * Returns detailed information about all discovered runtime providers.
-     *
-     * <p>This method provides diagnostic information about all providers, including those that are
-     * not available in the current environment.
-     *
-     * @return a list of provider information strings
-     */
-    public static List<String> getProviderInformation() {
-        final List<String> information = new ArrayList<>();
-
-        for (final RuntimeProvider provider : discoverAllProviders()) {
-            final StringBuilder info = new StringBuilder();
-            info.append("Provider: ").append(provider.getName());
-            info.append(", Priority: ").append(provider.getPriority());
-            info.append(", Available: ").append(provider.isAvailable());
-            info.append(", Min Java: ").append(provider.getMinimumJavaVersion());
-
-            final String description = provider.getDescription();
-            if (description != null && !description.trim().isEmpty()) {
-                info.append(", Description: ").append(description.trim());
-            }
-
-            information.add(info.toString());
-        }
-
-        return information;
     }
 
     private static List<RuntimeProvider> getAvailableProviders() {
