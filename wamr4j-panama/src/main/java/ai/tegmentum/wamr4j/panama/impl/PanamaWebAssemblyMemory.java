@@ -17,7 +17,7 @@
 package ai.tegmentum.wamr4j.panama.impl;
 
 import ai.tegmentum.wamr4j.WebAssemblyMemory;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import ai.tegmentum.wamr4j.panama.internal.NativeLibraryLoader;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
@@ -43,16 +43,32 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     
     // State tracking
     private final AtomicBoolean closed = new AtomicBoolean(false);
-    
-    // Function descriptors for native calls
-    private static final FunctionDescriptor DESTROY_MEMORY_DESC = 
-        FunctionDescriptor.ofVoid(ValueLayout.ADDRESS);
-    private static final FunctionDescriptor GET_SIZE_DESC = 
-        FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
-    private static final FunctionDescriptor GET_DATA_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
-    private static final FunctionDescriptor GROW_DESC = 
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+
+    // Cached ByteBuffer for performance
+    private volatile ByteBuffer cachedBuffer;
+
+    // Lazily cached MethodHandles for native calls
+    private static final class Handles {
+        static final MethodHandle GET_SIZE;
+        static final MethodHandle GET_DATA;
+        static final MethodHandle GROW;
+
+        static {
+            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
+            final Linker linker = Linker.nativeLinker();
+            GET_SIZE = linker.downcallHandle(
+                lookup.find("wamr_memory_size").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+            GET_DATA = linker.downcallHandle(
+                lookup.find("wamr_memory_data").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            final var growSymbol = lookup.find("wamr_memory_grow");
+            GROW = growSymbol.isPresent()
+                ? linker.downcallHandle(growSymbol.get(),
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG))
+                : null;
+        }
+    }
 
     /**
      * Creates a new Panama WebAssembly memory wrapper.
@@ -70,19 +86,11 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public int size() {
         ensureNotClosed();
-        
+
         try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getSizeFunc = lookup.find("wamr_memory_size")
-                .orElseThrow(() -> new RuntimeException(
-                    "Native function 'wamr_memory_size' not found"));
-            
-            final MethodHandle getSize = Linker.nativeLinker()
-                .downcallHandle(getSizeFunc, GET_SIZE_DESC);
-            
-            final long size = (long) getSize.invoke(nativeHandle);
+            final long size = (long) Handles.GET_SIZE.invoke(nativeHandle);
             if (size < 0) {
-                throw new RuntimeException("Invalid memory size returned: " + size);
+                throw new WasmRuntimeException("Invalid memory size returned: " + size);
             }
             
             return (int) size;
@@ -94,147 +102,122 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public ByteBuffer asByteBuffer() {
         ensureNotClosed();
-        
+
+        final ByteBuffer cached = cachedBuffer;
+        if (cached != null) {
+            return cached;
+        }
+
         try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getDataFunc = lookup.find("wamr_memory_data")
-                .orElseThrow(() -> new RuntimeException(
-                    "Native function 'wamr_memory_data' not found"));
-            
-            final MethodHandle getData = Linker.nativeLinker()
-                .downcallHandle(getDataFunc, GET_DATA_DESC);
-            
-            final MemorySegment dataPtr = (MemorySegment) getData.invoke(nativeHandle);
+            final MemorySegment dataPtr = (MemorySegment) Handles.GET_DATA.invoke(nativeHandle);
             if (dataPtr.equals(MemorySegment.NULL)) {
-                throw new RuntimeException("Failed to get memory data pointer");
+                throw new WasmRuntimeException("Failed to get memory data pointer");
             }
-            
+
             final long size = size();
             final MemorySegment memorySegment = dataPtr.reinterpret(size);
-            
-            return memorySegment.asByteBuffer();
+
+            final ByteBuffer buffer = memorySegment.asByteBuffer();
+            cachedBuffer = buffer;
+            return buffer;
         } catch (final Throwable e) {
             throw new IllegalStateException("Unexpected error getting memory buffer", e);
         }
     }
 
-    // Helper method - not part of public API
-    byte readByte(final int offset) throws RuntimeException {
-        ensureNotClosed();
-        validateOffset(offset, 1);
-        
-        try {
-            return asByteBuffer().get((int) offset);
-        } catch (final Exception e) {
-            throw new RuntimeException("Failed to read byte at offset " + offset, e);
-        }
-    }
-
-    // Helper method - not part of public API
-    void writeByte(final int offset, final byte value) throws RuntimeException {
-        ensureNotClosed();
-        validateOffset(offset, 1);
-        
-        try {
-            asByteBuffer().put((int) offset, value);
-        } catch (final Exception e) {
-            throw new RuntimeException("Failed to write byte at offset " + offset, e);
-        }
-    }
-
     @Override
-    public int readInt32(final int offset) throws RuntimeException {
+    public int readInt32(final int offset) throws WasmRuntimeException {
         ensureNotClosed();
         validateOffset(offset, 4);
         
         try {
-            return asByteBuffer().getInt((int) offset);
+            return asByteBuffer().getInt(offset);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to read int32 at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to read int32 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeInt32(final int offset, final int value) throws RuntimeException {
+    public void writeInt32(final int offset, final int value) throws WasmRuntimeException {
         ensureNotClosed();
         validateOffset(offset, 4);
         
         try {
-            asByteBuffer().putInt((int) offset, value);
+            asByteBuffer().putInt(offset, value);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to write int32 at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to write int32 at offset " + offset, e);
         }
     }
 
     @Override
-    public long readInt64(final int offset) throws RuntimeException {
+    public long readInt64(final int offset) throws WasmRuntimeException {
         ensureNotClosed();
         validateOffset(offset, 8);
         
         try {
-            return asByteBuffer().getLong((int) offset);
+            return asByteBuffer().getLong(offset);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to read int64 at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to read int64 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeInt64(final int offset, final long value) throws RuntimeException {
+    public void writeInt64(final int offset, final long value) throws WasmRuntimeException {
         ensureNotClosed();
         validateOffset(offset, 8);
         
         try {
-            asByteBuffer().putLong((int) offset, value);
+            asByteBuffer().putLong(offset, value);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to write int64 at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to write int64 at offset " + offset, e);
         }
     }
 
     @Override
-    public float readFloat32(final int offset) throws RuntimeException {
+    public float readFloat32(final int offset) throws WasmRuntimeException {
         ensureNotClosed();
         validateOffset(offset, 4);
         
         try {
-            return asByteBuffer().getFloat((int) offset);
+            return asByteBuffer().getFloat(offset);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to read float32 at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to read float32 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeFloat32(final int offset, final float value) throws RuntimeException {
+    public void writeFloat32(final int offset, final float value) throws WasmRuntimeException {
         ensureNotClosed();
         validateOffset(offset, 4);
         
         try {
-            asByteBuffer().putFloat((int) offset, value);
+            asByteBuffer().putFloat(offset, value);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to write float32 at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to write float32 at offset " + offset, e);
         }
     }
 
     @Override
-    public double readFloat64(final int offset) throws RuntimeException {
+    public double readFloat64(final int offset) throws WasmRuntimeException {
         ensureNotClosed();
         validateOffset(offset, 8);
         
         try {
-            return asByteBuffer().getDouble((int) offset);
+            return asByteBuffer().getDouble(offset);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to read float64 at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to read float64 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeFloat64(final int offset, final double value) throws RuntimeException {
+    public void writeFloat64(final int offset, final double value) throws WasmRuntimeException {
         ensureNotClosed();
         validateOffset(offset, 8);
         
         try {
-            asByteBuffer().putDouble((int) offset, value);
+            asByteBuffer().putDouble(offset, value);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to write float64 at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to write float64 at offset " + offset, e);
         }
     }
 
@@ -246,45 +229,26 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
 
         ensureNotClosed();
 
+        if (Handles.GROW == null) {
+            throw new UnsupportedOperationException("Memory growth is not supported");
+        }
+
         try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment growFunc = lookup.find("wamr_memory_grow")
-                .orElseThrow(() -> new RuntimeException(
-                    "Native function 'wamr_memory_grow' not found"));
-
-            final MethodHandle grow = Linker.nativeLinker()
-                .downcallHandle(growFunc, GROW_DESC);
-
-            final int result = (int) grow.invoke(nativeHandle, (long) pages);
+            final int result = (int) Handles.GROW.invoke(nativeHandle, (long) pages);
+            if (result >= 0) {
+                cachedBuffer = null; // Invalidate cached buffer after successful grow
+            }
             return result; // Returns previous page count, or -1 on failure
         } catch (final Throwable e) {
             throw new IllegalStateException("Unexpected error growing memory", e);
         }
     }
 
-    // Helper method for cleanup - not part of public API
+    // Memory is owned by the instance and has no separate native destroy
     void close() {
-        if (closed.compareAndSet(false, true)) {
-            final MemorySegment handle = nativeHandle;
-            nativeHandle = MemorySegment.NULL;
-            
-            if (handle != null && !handle.equals(MemorySegment.NULL)) {
-                try {
-                    final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-                    final MemorySegment destroyMemoryFunc = lookup.find("wamr_destroy_memory")
-                        .orElse(MemorySegment.NULL);
-                        
-                    if (!destroyMemoryFunc.equals(MemorySegment.NULL)) {
-                        final MethodHandle destroyMemory = Linker.nativeLinker()
-                            .downcallHandle(destroyMemoryFunc, DESTROY_MEMORY_DESC);
-                        destroyMemory.invoke(handle);
-                        LOGGER.fine("Destroyed Panama WebAssembly memory with handle: " + handle);
-                    }
-                } catch (final Throwable e) {
-                    LOGGER.warning("Error destroying native memory: " + e.getMessage());
-                }
-            }
-        }
+        closed.set(true);
+        cachedBuffer = null;
+        nativeHandle = MemorySegment.NULL;
     }
 
     private void ensureNotClosed() {
@@ -293,21 +257,21 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
         }
     }
     
-    private void validateOffset(final long offset, final int size) throws RuntimeException {
+    private void validateOffset(final long offset, final int size) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Memory offset cannot be negative: " + offset);
         }
         
         final long memorySize = size();
         if (offset + size > memorySize) {
-            throw new RuntimeException(
+            throw new WasmRuntimeException(
                 String.format("Memory access out of bounds: offset=%d, size=%d, memorySize=%d", 
                     offset, size, memorySize));
         }
     }
     
     @Override
-    public byte[] read(final int offset, final int length) throws RuntimeException {
+    public byte[] read(final int offset, final int length) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -325,12 +289,12 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
             buffer.get(result);
             return result;
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to read " + length + " bytes at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to read " + length + " bytes at offset " + offset, e);
         }
     }
 
     @Override
-    public void write(final int offset, final byte[] data) throws RuntimeException {
+    public void write(final int offset, final byte[] data) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -346,7 +310,7 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
             buffer.position(offset);
             buffer.put(data);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to write " + data.length + " bytes at offset " + offset, e);
+            throw new WasmRuntimeException("Failed to write " + data.length + " bytes at offset " + offset, e);
         }
     }
 

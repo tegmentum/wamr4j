@@ -17,9 +17,9 @@
 package ai.tegmentum.wamr4j.panama;
 
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
+import ai.tegmentum.wamr4j.internal.NativePlatform;
 import ai.tegmentum.wamr4j.panama.impl.PanamaWebAssemblyRuntime;
-import ai.tegmentum.wamr4j.panama.internal.NativeLibraryLoader;
 import ai.tegmentum.wamr4j.spi.RuntimeProvider;
 
 /**
@@ -69,22 +69,17 @@ public final class PanamaRuntimeProvider implements RuntimeProvider {
     }
 
     @Override
-    public WebAssemblyRuntime createRuntime() throws RuntimeException {
+    public WebAssemblyRuntime createRuntime() throws WasmRuntimeException {
         if (!isAvailable()) {
-            throw new RuntimeException(
+            throw new WasmRuntimeException(
                 "Panama runtime is not available. Requires Java 23+ with Panama FFI support.");
         }
         
         try {
             return new PanamaWebAssemblyRuntime();
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to create Panama WebAssembly runtime", e);
+            throw new WasmRuntimeException("Failed to create Panama WebAssembly runtime", e);
         }
-    }
-
-    @Override
-    public String getDescription() {
-        return "Panama FFI-based WebAssembly runtime using WAMR native library (Java 23+)";
     }
 
     @Override
@@ -98,15 +93,17 @@ public final class PanamaRuntimeProvider implements RuntimeProvider {
         if (javaVersion < MINIMUM_JAVA_VERSION) {
             return false;
         }
-        
+
         try {
             // Check if Panama FFI classes are available
             Class.forName("java.lang.foreign.MemorySegment");
             Class.forName("java.lang.foreign.FunctionDescriptor");
-            
-            // Try to load the native library via Panama
-            NativeLibraryLoader.ensureLoaded();
-            return true;
+
+            // Check if native library resource exists without loading it
+            final String resourcePath = "/META-INF/native/"
+                + NativePlatform.getPlatformName() + "/"
+                + NativePlatform.getLibraryFileName("wamr4j_native");
+            return getClass().getResource(resourcePath) != null;
         } catch (final Exception e) {
             return false;
         }
@@ -119,9 +116,15 @@ public final class PanamaRuntimeProvider implements RuntimeProvider {
                 // Java 8 and below use 1.x format
                 return Integer.parseInt(version.substring(2, 3));
             } else {
-                // Java 9+ use x.y.z format
-                final int dotIndex = version.indexOf('.');
-                final int endIndex = dotIndex > 0 ? dotIndex : version.length();
+                // Java 9+ use x.y.z, x-ea, or x+build format
+                int endIndex = version.length();
+                for (int i = 0; i < version.length(); i++) {
+                    final char ch = version.charAt(i);
+                    if (ch == '.' || ch == '-' || ch == '+') {
+                        endIndex = i;
+                        break;
+                    }
+                }
                 return Integer.parseInt(version.substring(0, endIndex));
             }
         } catch (final Exception e) {

@@ -53,21 +53,21 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
     /**
      * Creates a new JNI WebAssembly runtime instance.
      * 
-     * @throws ai.tegmentum.wamr4j.exception.RuntimeException if the runtime cannot be initialized
+     * @throws ai.tegmentum.wamr4j.exception.WasmRuntimeException if the runtime cannot be initialized
      */
-    public JniWebAssemblyRuntime() throws ai.tegmentum.wamr4j.exception.RuntimeException {
+    public JniWebAssemblyRuntime() throws ai.tegmentum.wamr4j.exception.WasmRuntimeException {
         // Ensure native library is loaded
         NativeLibraryLoader.ensureLoaded();
         
         try {
             this.nativeHandle = nativeCreateRuntime();
             if (nativeHandle == 0L) {
-                throw new ai.tegmentum.wamr4j.exception.RuntimeException(
+                throw new ai.tegmentum.wamr4j.exception.WasmRuntimeException(
                     "Failed to create native WebAssembly runtime");
             }
             LOGGER.fine("Created JNI WebAssembly runtime with handle: " + nativeHandle);
         } catch (final Exception e) {
-            throw new ai.tegmentum.wamr4j.exception.RuntimeException(
+            throw new ai.tegmentum.wamr4j.exception.WasmRuntimeException(
                 "Failed to initialize JNI WebAssembly runtime", e);
         }
     }

@@ -17,9 +17,9 @@
 package ai.tegmentum.wamr4j.jni;
 
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
+import ai.tegmentum.wamr4j.internal.NativePlatform;
 import ai.tegmentum.wamr4j.jni.impl.JniWebAssemblyRuntime;
-import ai.tegmentum.wamr4j.jni.internal.NativeLibraryLoader;
 import ai.tegmentum.wamr4j.spi.RuntimeProvider;
 
 /**
@@ -71,22 +71,17 @@ public final class JniRuntimeProvider implements RuntimeProvider {
     }
 
     @Override
-    public WebAssemblyRuntime createRuntime() throws RuntimeException {
+    public WebAssemblyRuntime createRuntime() throws WasmRuntimeException {
         if (!isAvailable()) {
-            throw new RuntimeException(
+            throw new WasmRuntimeException(
                 "JNI runtime is not available. Ensure native library can be loaded.");
         }
         
         try {
             return new JniWebAssemblyRuntime();
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to create JNI WebAssembly runtime", e);
+            throw new WasmRuntimeException("Failed to create JNI WebAssembly runtime", e);
         }
-    }
-
-    @Override
-    public String getDescription() {
-        return "JNI-based WebAssembly runtime using WAMR native library";
     }
 
     @Override
@@ -95,13 +90,11 @@ public final class JniRuntimeProvider implements RuntimeProvider {
     }
 
     private boolean checkAvailability() {
-        try {
-            // Try to load the native library
-            NativeLibraryLoader.ensureLoaded();
-            return true;
-        } catch (final Exception e) {
-            return false;
-        }
+        // Check if native library resource exists without loading it
+        final String resourcePath = "/META-INF/native/"
+            + NativePlatform.getPlatformName() + "/"
+            + NativePlatform.getLibraryFileName("wamr4j_native");
+        return getClass().getResource(resourcePath) != null;
     }
 
     private static int getJavaMajorVersion() {
@@ -111,9 +104,15 @@ public final class JniRuntimeProvider implements RuntimeProvider {
                 // Java 8 and below use 1.x format
                 return Integer.parseInt(version.substring(2, 3));
             } else {
-                // Java 9+ use x.y.z format
-                final int dotIndex = version.indexOf('.');
-                final int endIndex = dotIndex > 0 ? dotIndex : version.length();
+                // Java 9+ use x.y.z, x-ea, or x+build format
+                int endIndex = version.length();
+                for (int i = 0; i < version.length(); i++) {
+                    final char ch = version.charAt(i);
+                    if (ch == '.' || ch == '-' || ch == '+') {
+                        endIndex = i;
+                        break;
+                    }
+                }
                 return Integer.parseInt(version.substring(0, endIndex));
             }
         } catch (final Exception e) {

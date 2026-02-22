@@ -69,7 +69,7 @@ public final class NativePlatform {
      *     or {@code "unknown"}
      */
     public static String getNormalizedArchitecture() {
-        final String arch = OS_ARCH.toLowerCase();
+        final String arch = OS_ARCH;
 
         if (arch.contains("amd64") || arch.contains("x86_64") || arch.contains("x64")) {
             return "x86_64";

@@ -15,7 +15,7 @@
  */
 package ai.tegmentum.wamr4j;
 
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 
 /**
  * Represents an instantiated WebAssembly module with its own execution state.
@@ -52,11 +52,11 @@ public interface WebAssemblyInstance extends AutoCloseable {
      *
      * @param functionName the name of the exported function, must not be null
      * @return the WebAssembly function, never null
-     * @throws RuntimeException if the function is not found or cannot be retrieved
+     * @throws WasmRuntimeException if the function is not found or cannot be retrieved
      * @throws IllegalArgumentException if functionName is null
      * @throws IllegalStateException if the instance has been closed
      */
-    WebAssemblyFunction getFunction(String functionName) throws RuntimeException;
+    WebAssemblyFunction getFunction(String functionName) throws WasmRuntimeException;
 
     /**
      * Retrieves the memory exported by this instance.
@@ -65,32 +65,32 @@ public interface WebAssemblyInstance extends AutoCloseable {
      * all modules export memory - this method will throw an exception if memory is not available.
      *
      * @return the WebAssembly memory, never null
-     * @throws RuntimeException if memory is not exported or cannot be retrieved
+     * @throws WasmRuntimeException if memory is not exported or cannot be retrieved
      * @throws IllegalStateException if the instance has been closed
      */
-    WebAssemblyMemory getMemory() throws RuntimeException;
+    WebAssemblyMemory getMemory() throws WasmRuntimeException;
 
     /**
      * Retrieves a global variable exported by this instance.
      *
      * @param globalName the name of the exported global variable, must not be null
      * @return the current value of the global variable
-     * @throws RuntimeException if the global is not found or cannot be retrieved
+     * @throws WasmRuntimeException if the global is not found or cannot be retrieved
      * @throws IllegalArgumentException if globalName is null
      * @throws IllegalStateException if the instance has been closed
      */
-    Object getGlobal(String globalName) throws RuntimeException;
+    Object getGlobal(String globalName) throws WasmRuntimeException;
 
     /**
      * Sets the value of a mutable global variable.
      *
      * @param globalName the name of the global variable, must not be null
      * @param value the new value for the global variable
-     * @throws RuntimeException if the global is not found, immutable, or the value is invalid
+     * @throws WasmRuntimeException if the global is not found, immutable, or the value is invalid
      * @throws IllegalArgumentException if globalName is null
      * @throws IllegalStateException if the instance has been closed
      */
-    void setGlobal(String globalName, Object value) throws RuntimeException;
+    void setGlobal(String globalName, Object value) throws WasmRuntimeException;
 
     /**
      * Returns the names of all functions exported by this instance.

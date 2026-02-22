@@ -108,11 +108,21 @@ public final class NativeLibraryLoader {
     }
 
     private static void loadNativeLibrary() throws Exception {
+        // Try system library path first
+        try {
+            System.loadLibrary(LIBRARY_NAME);
+            LOGGER.fine("Loaded native library from system path: " + LIBRARY_NAME);
+            return;
+        } catch (final UnsatisfiedLinkError e) {
+            LOGGER.fine("System library loading failed: " + e.getMessage());
+        }
+
+        // Fall back to extracting from JAR resources
         final String platformName = NativePlatform.getPlatformName();
         final String libraryFileName = NativePlatform.getLibraryFileName(LIBRARY_NAME);
         final String resourcePath = LIBRARY_PATH_PREFIX + platformName + "/" + libraryFileName;
 
-        LOGGER.fine("Attempting to load native library: " + resourcePath);
+        LOGGER.fine("Attempting to load native library from resources: " + resourcePath);
 
         final Path extracted = NativePlatform.extractLibraryFromResources(
                 NativeLibraryLoader.class, resourcePath);

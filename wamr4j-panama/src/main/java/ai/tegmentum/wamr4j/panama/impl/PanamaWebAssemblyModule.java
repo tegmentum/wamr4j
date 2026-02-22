@@ -19,7 +19,7 @@ package ai.tegmentum.wamr4j.panama.impl;
 import ai.tegmentum.wamr4j.FunctionSignature;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import ai.tegmentum.wamr4j.panama.internal.NativeLibraryLoader;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
@@ -29,37 +29,49 @@ import java.util.logging.Logger;
 
 /**
  * Panama FFI-based implementation of WebAssembly module.
- * 
+ *
  * <p>This class represents a compiled WebAssembly module using Panama FFI
  * to communicate with the native WAMR library. It provides thread-safe
  * access to module information and instance creation with better type
  * safety than JNI.
- * 
+ *
  * @since 1.0.0
  */
 public final class PanamaWebAssemblyModule implements WebAssemblyModule {
 
     private static final Logger LOGGER = Logger.getLogger(PanamaWebAssemblyModule.class.getName());
-    
+
+    private static final long DEFAULT_STACK_SIZE = 16L * 1024;
+    private static final long DEFAULT_HEAP_SIZE = 16L * 1024 * 1024;
+
     // Native module handle as MemorySegment
     private volatile MemorySegment nativeHandle;
-    
+
     // State tracking
     private final AtomicBoolean closed = new AtomicBoolean(false);
-    
-    // Function descriptors for native calls
-    private static final FunctionDescriptor DESTROY_MODULE_DESC = 
-        FunctionDescriptor.ofVoid(ValueLayout.ADDRESS);
-    private static final FunctionDescriptor INSTANTIATE_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
-    private static final FunctionDescriptor GET_EXPORTS_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
-    private static final FunctionDescriptor GET_IMPORTS_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+    // Lazily cached MethodHandles for native calls
+    private static final class Handles {
+        static final MethodHandle DESTROY_MODULE;
+        static final MethodHandle INSTANTIATE;
+
+        static {
+            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
+            final Linker linker = Linker.nativeLinker();
+            DESTROY_MODULE = linker.downcallHandle(
+                lookup.find("wamr_module_destroy").orElseThrow(),
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            INSTANTIATE = linker.downcallHandle(
+                lookup.find("wamr_instance_create").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT));
+        }
+    }
 
     /**
      * Creates a new Panama WebAssembly module wrapper.
-     * 
+     *
      * @param nativeHandle the native module handle, must not be NULL
      */
     public PanamaWebAssemblyModule(final MemorySegment nativeHandle) {
@@ -71,96 +83,53 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
     }
 
     @Override
-    public WebAssemblyInstance instantiate() throws RuntimeException {
-        return instantiate(null);
+    public WebAssemblyInstance instantiate() throws WasmRuntimeException {
+        return instantiate(Map.of());
     }
 
     @Override
-    public WebAssemblyInstance instantiate(final Map<String, Map<String, Object>> imports) throws RuntimeException {
+    public WebAssemblyInstance instantiate(final Map<String, Map<String, Object>> imports) throws WasmRuntimeException {
         if (imports == null) {
             throw new IllegalArgumentException("Imports map cannot be null");
         }
-        
+        if (!imports.isEmpty()) {
+            throw new UnsupportedOperationException("Import handling is not yet supported");
+        }
+
         ensureNotClosed();
-        
-        try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment instantiateFunc = lookup.find("wamr_instantiate_module")
-                .orElseThrow(() -> new RuntimeException(
-                    "Native function 'wamr_instantiate_module' not found"));
-            
-            final MethodHandle instantiate = Linker.nativeLinker()
-                .downcallHandle(instantiateFunc, INSTANTIATE_DESC);
-            
-            final MemorySegment instanceHandle = (MemorySegment) instantiate.invoke(nativeHandle);
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final int errorBufSize = 1024;
+            final MemorySegment errorBuf = arena.allocate(errorBufSize);
+
+            final MemorySegment instanceHandle = (MemorySegment) Handles.INSTANTIATE.invoke(
+                nativeHandle, DEFAULT_STACK_SIZE, DEFAULT_HEAP_SIZE, errorBuf, errorBufSize);
             if (instanceHandle.equals(MemorySegment.NULL)) {
-                throw new RuntimeException("Failed to instantiate WebAssembly module");
+                final String errorMsg = errorBuf.getString(0);
+                throw new WasmRuntimeException(
+                    errorMsg.isEmpty() ? "Failed to instantiate WebAssembly module" : errorMsg);
             }
-            
+
             return new PanamaWebAssemblyInstance(instanceHandle);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Throwable e) {
-            throw new RuntimeException("Unexpected error during module instantiation", e);
+            throw new WasmRuntimeException("Unexpected error during module instantiation", e);
         }
     }
 
     @Override
     public String[] getExportNames() {
         ensureNotClosed();
-        
-        try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getExportsFunc = lookup.find("wamr_get_exports")
-                .orElse(MemorySegment.NULL);
-                
-            if (getExportsFunc.equals(MemorySegment.NULL)) {
-                return new String[0];
-            }
-            
-            final MethodHandle getExports = Linker.nativeLinker()
-                .downcallHandle(getExportsFunc, GET_EXPORTS_DESC);
-            
-            final MemorySegment exportsPtr = (MemorySegment) getExports.invoke(nativeHandle);
-            if (exportsPtr.equals(MemorySegment.NULL)) {
-                return new String[0];
-            }
-            
-            // Parse native string array (implementation depends on native format)
-            return parseNativeStringArray(exportsPtr);
-        } catch (final Throwable e) {
-            LOGGER.warning("Failed to get export names: " + e.getMessage());
-            return new String[0];
-        }
+        // Export names are only available on the instance level via wamr_get_function_names
+        return new String[0];
     }
 
     @Override
     public String[] getImportNames() {
         ensureNotClosed();
-        
-        try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getImportsFunc = lookup.find("wamr_get_imports")
-                .orElse(MemorySegment.NULL);
-                
-            if (getImportsFunc.equals(MemorySegment.NULL)) {
-                return new String[0];
-            }
-            
-            final MethodHandle getImports = Linker.nativeLinker()
-                .downcallHandle(getImportsFunc, GET_IMPORTS_DESC);
-            
-            final MemorySegment importsPtr = (MemorySegment) getImports.invoke(nativeHandle);
-            if (importsPtr.equals(MemorySegment.NULL)) {
-                return new String[0];
-            }
-            
-            // Parse native string array (implementation depends on native format)
-            return parseNativeStringArray(importsPtr);
-        } catch (final Throwable e) {
-            LOGGER.warning("Failed to get import names: " + e.getMessage());
-            return new String[0];
-        }
+        // WAMR does not expose import enumeration at the module level
+        return new String[0];
     }
 
     @Override
@@ -169,27 +138,8 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
             throw new IllegalArgumentException("Function name cannot be null");
         }
         ensureNotClosed();
-        
-        try {
-            // Placeholder implementation - would require native support
-            return null;
-        } catch (final Exception e) {
-            LOGGER.warning("Failed to get export signature for " + functionName + ": " + e.getMessage());
-            return null;
-        }
-    }
-    
-    @Override
-    public boolean validateImports(final Map<String, Map<String, Object>> imports) {
-        ensureNotClosed();
-        
-        try {
-            // Placeholder implementation - would require native validation support
-            return true;
-        } catch (final Exception e) {
-            LOGGER.warning("Failed to validate imports: " + e.getMessage());
-            return false;
-        }
+        // Function signatures are only available on instantiated function handles
+        return null;
     }
 
     @Override
@@ -202,19 +152,11 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
         if (closed.compareAndSet(false, true)) {
             final MemorySegment handle = nativeHandle;
             nativeHandle = MemorySegment.NULL;
-            
+
             if (handle != null && !handle.equals(MemorySegment.NULL)) {
                 try {
-                    final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-                    final MemorySegment destroyModuleFunc = lookup.find("wamr_destroy_module")
-                        .orElse(MemorySegment.NULL);
-                        
-                    if (!destroyModuleFunc.equals(MemorySegment.NULL)) {
-                        final MethodHandle destroyModule = Linker.nativeLinker()
-                            .downcallHandle(destroyModuleFunc, DESTROY_MODULE_DESC);
-                        destroyModule.invoke(handle);
-                        LOGGER.fine("Destroyed Panama WebAssembly module with handle: " + handle);
-                    }
+                    Handles.DESTROY_MODULE.invoke(handle);
+                    LOGGER.fine("Destroyed Panama WebAssembly module with handle: " + handle);
                 } catch (final Throwable e) {
                     LOGGER.warning("Error destroying native module: " + e.getMessage());
                 }
@@ -226,11 +168,5 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
         if (closed.get()) {
             throw new IllegalStateException("WebAssembly module has been closed");
         }
-    }
-    
-    private String[] parseNativeStringArray(final MemorySegment arrayPtr) {
-        // Placeholder implementation - actual parsing depends on native format
-        // This would typically involve iterating through null-terminated string pointers
-        return new String[0];
     }
 }

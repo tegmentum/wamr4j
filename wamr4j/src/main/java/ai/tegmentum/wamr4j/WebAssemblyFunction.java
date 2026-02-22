@@ -15,7 +15,7 @@
  */
 package ai.tegmentum.wamr4j;
 
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 
 /**
  * Represents a callable WebAssembly function.
@@ -59,11 +59,11 @@ public interface WebAssemblyFunction {
      *
      * @param args the arguments to pass to the function, must match signature
      * @return the function result, or null for void functions
-     * @throws RuntimeException if execution fails or arguments are invalid
+     * @throws WasmRuntimeException if execution fails or arguments are invalid
      * @throws IllegalArgumentException if the argument count or types don't match
      * @throws IllegalStateException if the parent instance has been closed
      */
-    Object invoke(Object... args) throws RuntimeException;
+    Object invoke(Object... args) throws WasmRuntimeException;
 
     /**
      * Returns the signature of this function.

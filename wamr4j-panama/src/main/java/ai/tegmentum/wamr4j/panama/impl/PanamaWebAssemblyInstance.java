@@ -19,7 +19,7 @@ package ai.tegmentum.wamr4j.panama.impl;
 import ai.tegmentum.wamr4j.WebAssemblyFunction;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyMemory;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import ai.tegmentum.wamr4j.panama.internal.NativeLibraryLoader;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
@@ -45,13 +45,54 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
     // State tracking
     private final AtomicBoolean closed = new AtomicBoolean(false);
     
-    // Function descriptors for native calls
-    private static final FunctionDescriptor DESTROY_INSTANCE_DESC = 
-        FunctionDescriptor.ofVoid(ValueLayout.ADDRESS);
-    private static final FunctionDescriptor GET_FUNCTION_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
-    private static final FunctionDescriptor GET_MEMORY_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+    // Lazily cached MethodHandles for native calls
+    private static final class Handles {
+        static final MethodHandle DESTROY_INSTANCE;
+        static final MethodHandle GET_FUNCTION;
+        static final MethodHandle GET_MEMORY;
+        static final MethodHandle GET_FUNCTION_NAMES;
+        static final MethodHandle GET_GLOBAL_NAMES;
+        static final MethodHandle FREE_NAMES;
+        static final MethodHandle GET_GLOBAL;
+        static final MethodHandle SET_GLOBAL;
+
+        private static final FunctionDescriptor NAMES_DESC = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+        private static final FunctionDescriptor FREE_NAMES_DESC = FunctionDescriptor.ofVoid(
+            ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
+        private static final FunctionDescriptor GET_GLOBAL_DESC = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
+        private static final FunctionDescriptor SET_GLOBAL_DESC = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
+
+        static {
+            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
+            final Linker linker = Linker.nativeLinker();
+            DESTROY_INSTANCE = linker.downcallHandle(
+                lookup.find("wamr_instance_destroy").orElseThrow(),
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            GET_FUNCTION = linker.downcallHandle(
+                lookup.find("wamr_function_lookup").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            GET_MEMORY = linker.downcallHandle(
+                lookup.find("wamr_memory_get").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            GET_FUNCTION_NAMES = resolveOptional(lookup, linker, "wamr_get_function_names", NAMES_DESC);
+            GET_GLOBAL_NAMES = resolveOptional(lookup, linker, "wamr_get_global_names", NAMES_DESC);
+            FREE_NAMES = resolveOptional(lookup, linker, "wamr_free_names", FREE_NAMES_DESC);
+            GET_GLOBAL = resolveOptional(lookup, linker, "wamr_get_global", GET_GLOBAL_DESC);
+            SET_GLOBAL = resolveOptional(lookup, linker, "wamr_set_global", SET_GLOBAL_DESC);
+        }
+
+        private static MethodHandle resolveOptional(final SymbolLookup lookup, final Linker linker,
+                final String name, final FunctionDescriptor desc) {
+            final var symbol = lookup.find(name);
+            return symbol.isPresent() ? linker.downcallHandle(symbol.get(), desc) : null;
+        }
+    }
 
     /**
      * Creates a new Panama WebAssembly instance wrapper.
@@ -67,7 +108,7 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
     }
 
     @Override
-    public WebAssemblyFunction getFunction(final String name) throws RuntimeException {
+    public WebAssemblyFunction getFunction(final String name) throws WasmRuntimeException {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Function name cannot be null or empty");
         }
@@ -75,228 +116,79 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
         ensureNotClosed();
         
         try (final Arena arena = Arena.ofConfined()) {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getFunctionFunc = lookup.find("wamr_get_function")
-                .orElseThrow(() -> new RuntimeException(
-                    "Native function 'wamr_get_function' not found"));
-            
-            final MethodHandle getFunction = Linker.nativeLinker()
-                .downcallHandle(getFunctionFunc, GET_FUNCTION_DESC);
-            
-            // Allocate memory for function name
+            // Allocate memory for function name and error buffer
             final MemorySegment nameBuffer = arena.allocateFrom(name);
-            
-            final MemorySegment functionHandle = (MemorySegment) getFunction.invoke(
-                nativeHandle, nameBuffer);
-                
+            final int errorBufSize = 1024;
+            final MemorySegment errorBuf = arena.allocate(errorBufSize);
+
+            final MemorySegment functionHandle = (MemorySegment) Handles.GET_FUNCTION.invoke(
+                nativeHandle, nameBuffer, errorBuf, errorBufSize);
+
             if (functionHandle.equals(MemorySegment.NULL)) {
-                throw new RuntimeException("Function not found: " + name);
+                final String errorMsg = errorBuf.getString(0);
+                throw new WasmRuntimeException(
+                    errorMsg.isEmpty() ? "Function not found: " + name : errorMsg);
             }
             
             return new PanamaWebAssemblyFunction(functionHandle, name);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Throwable e) {
-            throw new RuntimeException("Unexpected error getting function: " + name, e);
+            throw new WasmRuntimeException("Unexpected error getting function: " + name, e);
         }
     }
 
     @Override
-    public WebAssemblyMemory getMemory() throws RuntimeException {
+    public WebAssemblyMemory getMemory() throws WasmRuntimeException {
         ensureNotClosed();
-        
+
         try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getMemoryFunc = lookup.find("wamr_get_memory")
-                .orElseThrow(() -> new RuntimeException(
-                    "Native function 'wamr_get_memory' not found"));
-            
-            final MethodHandle getMemory = Linker.nativeLinker()
-                .downcallHandle(getMemoryFunc, GET_MEMORY_DESC);
-            
-            final MemorySegment memoryHandle = (MemorySegment) getMemory.invoke(nativeHandle);
+            final MemorySegment memoryHandle = (MemorySegment) Handles.GET_MEMORY.invoke(nativeHandle);
             if (memoryHandle.equals(MemorySegment.NULL)) {
-                throw new RuntimeException("No memory exported by WebAssembly module");
+                throw new WasmRuntimeException("No memory exported by WebAssembly module");
             }
             
             return new PanamaWebAssemblyMemory(memoryHandle);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Throwable e) {
-            throw new RuntimeException("Unexpected error getting memory", e);
+            throw new WasmRuntimeException("Unexpected error getting memory", e);
         }
     }
 
     @Override
     public String[] getFunctionNames() {
-        ensureNotClosed();
-
-        try (final Arena arena = Arena.ofConfined()) {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getFunctionNamesFunc = lookup.find("wamr_get_function_names")
-                .orElse(MemorySegment.NULL);
-
-            if (getFunctionNamesFunc.equals(MemorySegment.NULL)) {
-                LOGGER.warning("wamr_get_function_names not found in native library");
-                return new String[0];
-            }
-
-            final FunctionDescriptor descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS
-            );
-
-            final MethodHandle getFunctionNames = Linker.nativeLinker()
-                .downcallHandle(getFunctionNamesFunc, descriptor);
-
-            final MemorySegment namesBufferPtr = arena.allocate(ValueLayout.ADDRESS);
-            final MemorySegment countPtr = arena.allocate(ValueLayout.JAVA_INT);
-
-            final int result = (int) getFunctionNames.invoke(nativeHandle, namesBufferPtr, countPtr);
-
-            if (result != 0) {
-                LOGGER.warning("Failed to get function names from native library");
-                return new String[0];
-            }
-
-            final int count = countPtr.get(ValueLayout.JAVA_INT, 0);
-            if (count == 0) {
-                return new String[0];
-            }
-
-            final MemorySegment namesArray = namesBufferPtr.get(ValueLayout.ADDRESS, 0);
-            final String[] names = new String[count];
-
-            for (int i = 0; i < count; i++) {
-                final MemorySegment namePtr = namesArray.getAtIndex(ValueLayout.ADDRESS, i);
-                names[i] = namePtr.getString(0);
-            }
-
-            // Free the native array
-            final MemorySegment freeNamesFunc = lookup.find("wamr_free_names")
-                .orElse(MemorySegment.NULL);
-            if (!freeNamesFunc.equals(MemorySegment.NULL)) {
-                final FunctionDescriptor freeDescriptor = FunctionDescriptor.ofVoid(
-                    ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT
-                );
-                final MethodHandle freeNames = Linker.nativeLinker()
-                    .downcallHandle(freeNamesFunc, freeDescriptor);
-                freeNames.invoke(namesArray, count);
-            }
-
-            return names;
-        } catch (final Throwable e) {
-            LOGGER.warning("Error getting function names: " + e.getMessage());
-            return new String[0];
-        }
+        return getExportedNames(Handles.GET_FUNCTION_NAMES, "function");
     }
 
     @Override
     public String[] getGlobalNames() {
-        ensureNotClosed();
-
-        try (final Arena arena = Arena.ofConfined()) {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getGlobalNamesFunc = lookup.find("wamr_get_global_names")
-                .orElse(MemorySegment.NULL);
-
-            if (getGlobalNamesFunc.equals(MemorySegment.NULL)) {
-                LOGGER.warning("wamr_get_global_names not found in native library");
-                return new String[0];
-            }
-
-            final FunctionDescriptor descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS
-            );
-
-            final MethodHandle getGlobalNames = Linker.nativeLinker()
-                .downcallHandle(getGlobalNamesFunc, descriptor);
-
-            final MemorySegment namesBufferPtr = arena.allocate(ValueLayout.ADDRESS);
-            final MemorySegment countPtr = arena.allocate(ValueLayout.JAVA_INT);
-
-            final int result = (int) getGlobalNames.invoke(nativeHandle, namesBufferPtr, countPtr);
-
-            if (result != 0) {
-                LOGGER.warning("Failed to get global names from native library");
-                return new String[0];
-            }
-
-            final int count = countPtr.get(ValueLayout.JAVA_INT, 0);
-            if (count == 0) {
-                return new String[0];
-            }
-
-            final MemorySegment namesArray = namesBufferPtr.get(ValueLayout.ADDRESS, 0);
-            final String[] names = new String[count];
-
-            for (int i = 0; i < count; i++) {
-                final MemorySegment namePtr = namesArray.getAtIndex(ValueLayout.ADDRESS, i);
-                names[i] = namePtr.getString(0);
-            }
-
-            // Free the native array
-            final MemorySegment freeNamesFunc = lookup.find("wamr_free_names")
-                .orElse(MemorySegment.NULL);
-            if (!freeNamesFunc.equals(MemorySegment.NULL)) {
-                final FunctionDescriptor freeDescriptor = FunctionDescriptor.ofVoid(
-                    ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT
-                );
-                final MethodHandle freeNames = Linker.nativeLinker()
-                    .downcallHandle(freeNamesFunc, freeDescriptor);
-                freeNames.invoke(namesArray, count);
-            }
-
-            return names;
-        } catch (final Throwable e) {
-            LOGGER.warning("Error getting global names: " + e.getMessage());
-            return new String[0];
-        }
+        return getExportedNames(Handles.GET_GLOBAL_NAMES, "global");
     }
 
     @Override
-    public Object getGlobal(final String globalName) throws RuntimeException {
+    public Object getGlobal(final String globalName) throws WasmRuntimeException {
         if (globalName == null || globalName.trim().isEmpty()) {
             throw new IllegalArgumentException("Global name cannot be null or empty");
         }
 
         ensureNotClosed();
 
+        if (Handles.GET_GLOBAL == null) {
+            throw new WasmRuntimeException("Native function 'wamr_get_global' not available");
+        }
+
         try (final Arena arena = Arena.ofConfined()) {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getGlobalFunc = lookup.find("wamr_get_global")
-                .orElseThrow(() -> new RuntimeException(
-                    "Native function 'wamr_get_global' not found"));
-
-            final FunctionDescriptor descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS,
-                ValueLayout.JAVA_INT
-            );
-
-            final MethodHandle getGlobal = Linker.nativeLinker()
-                .downcallHandle(getGlobalFunc, descriptor);
-
             final MemorySegment nameBuffer = arena.allocateFrom(globalName);
             final MemorySegment valueTypePtr = arena.allocate(ValueLayout.JAVA_INT);
             final MemorySegment valueBuffer = arena.allocate(8); // 8 bytes for i64/f64
             final int valueSize = 8;
 
-            final int result = (int) getGlobal.invoke(
+            final int result = (int) Handles.GET_GLOBAL.invoke(
                 nativeHandle, nameBuffer, valueTypePtr, valueBuffer, valueSize);
 
             if (result != 0) {
-                throw new RuntimeException("Failed to get global variable: " + globalName);
+                throw new WasmRuntimeException("Failed to get global variable: " + globalName);
             }
 
             final int valueType = valueTypePtr.get(ValueLayout.JAVA_INT, 0);
@@ -312,17 +204,17 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
                 case 3: // WASM_F64
                     return valueBuffer.get(ValueLayout.JAVA_DOUBLE, 0);
                 default:
-                    throw new RuntimeException("Unsupported global type: " + valueType);
+                    throw new WasmRuntimeException("Unsupported global type: " + valueType);
             }
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Throwable e) {
-            throw new RuntimeException("Unexpected error getting global: " + globalName, e);
+            throw new WasmRuntimeException("Unexpected error getting global: " + globalName, e);
         }
     }
 
     @Override
-    public void setGlobal(final String globalName, final Object value) throws RuntimeException {
+    public void setGlobal(final String globalName, final Object value) throws WasmRuntimeException {
         if (globalName == null || globalName.trim().isEmpty()) {
             throw new IllegalArgumentException("Global name cannot be null or empty");
         }
@@ -332,23 +224,11 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
 
         ensureNotClosed();
 
+        if (Handles.SET_GLOBAL == null) {
+            throw new WasmRuntimeException("Native function 'wamr_set_global' not available");
+        }
+
         try (final Arena arena = Arena.ofConfined()) {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment setGlobalFunc = lookup.find("wamr_set_global")
-                .orElseThrow(() -> new RuntimeException(
-                    "Native function 'wamr_set_global' not found"));
-
-            final FunctionDescriptor descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS,
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS
-            );
-
-            final MethodHandle setGlobal = Linker.nativeLinker()
-                .downcallHandle(setGlobalFunc, descriptor);
-
             final MemorySegment nameBuffer = arena.allocateFrom(globalName);
             final MemorySegment valueBuffer = arena.allocate(8); // 8 bytes for i64/f64
 
@@ -372,16 +252,16 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
                     ". Expected Integer, Long, Float, or Double.");
             }
 
-            final int result = (int) setGlobal.invoke(
+            final int result = (int) Handles.SET_GLOBAL.invoke(
                 nativeHandle, nameBuffer, valueType, valueBuffer);
 
             if (result != 0) {
-                throw new RuntimeException("Failed to set global variable: " + globalName);
+                throw new WasmRuntimeException("Failed to set global variable: " + globalName);
             }
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Throwable e) {
-            throw new RuntimeException("Unexpected error setting global: " + globalName, e);
+            throw new WasmRuntimeException("Unexpected error setting global: " + globalName, e);
         }
     }
 
@@ -395,23 +275,61 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
         if (closed.compareAndSet(false, true)) {
             final MemorySegment handle = nativeHandle;
             nativeHandle = MemorySegment.NULL;
-            
+
             if (handle != null && !handle.equals(MemorySegment.NULL)) {
                 try {
-                    final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-                    final MemorySegment destroyInstanceFunc = lookup.find("wamr_destroy_instance")
-                        .orElse(MemorySegment.NULL);
-                        
-                    if (!destroyInstanceFunc.equals(MemorySegment.NULL)) {
-                        final MethodHandle destroyInstance = Linker.nativeLinker()
-                            .downcallHandle(destroyInstanceFunc, DESTROY_INSTANCE_DESC);
-                        destroyInstance.invoke(handle);
-                        LOGGER.fine("Destroyed Panama WebAssembly instance with handle: " + handle);
-                    }
+                    Handles.DESTROY_INSTANCE.invoke(handle);
+                    LOGGER.fine("Destroyed Panama WebAssembly instance with handle: " + handle);
                 } catch (final Throwable e) {
                     LOGGER.warning("Error destroying native instance: " + e.getMessage());
                 }
             }
+        }
+    }
+
+    private String[] getExportedNames(final MethodHandle namesHandle, final String kind) {
+        ensureNotClosed();
+
+        if (namesHandle == null) {
+            LOGGER.warning("wamr_get_" + kind + "_names not found in native library");
+            return new String[0];
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment namesBufferPtr = arena.allocate(ValueLayout.ADDRESS);
+            final MemorySegment countPtr = arena.allocate(ValueLayout.JAVA_INT);
+
+            final int result = (int) namesHandle.invoke(nativeHandle, namesBufferPtr, countPtr);
+
+            if (result != 0) {
+                LOGGER.warning("Failed to get " + kind + " names from native library");
+                return new String[0];
+            }
+
+            final int count = countPtr.get(ValueLayout.JAVA_INT, 0);
+            if (count == 0) {
+                return new String[0];
+            }
+
+            final MemorySegment namesArray = namesBufferPtr.get(ValueLayout.ADDRESS, 0)
+                .reinterpret((long) count * ValueLayout.ADDRESS.byteSize());
+            final String[] names = new String[count];
+
+            for (int i = 0; i < count; i++) {
+                final MemorySegment namePtr = namesArray.getAtIndex(ValueLayout.ADDRESS, i)
+                    .reinterpret(1024);
+                names[i] = namePtr.getString(0);
+            }
+
+            // Free the native array
+            if (Handles.FREE_NAMES != null) {
+                Handles.FREE_NAMES.invoke(namesArray, count);
+            }
+
+            return names;
+        } catch (final Throwable e) {
+            LOGGER.warning("Error getting " + kind + " names: " + e.getMessage());
+            return new String[0];
         }
     }
 
@@ -427,7 +345,7 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
         try {
             getMemory();
             return true;
-        } catch (RuntimeException e) {
+        } catch (WasmRuntimeException e) {
             return false;
         }
     }

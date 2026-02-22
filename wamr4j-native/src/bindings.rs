@@ -172,120 +172,6 @@ extern "C" {
     ) -> c_uint;
 }
 
-// =============================================================================
-// Additional WAMR API Functions (Extended API)
-// =============================================================================
-
-// TODO: These functions don't exist in WAMR 2.4.4 API.
-// Need to replace with correct API calls:
-// - wasm_runtime_get_exception(module_inst) instead of get_last_error()
-// - wasm_func_get_param_count/result_count instead of get_function_signature
-// - wasm_runtime_get_memory + wasm_memory_get_cur_page_count for heap size
-// - Validation happens during wasm_runtime_load, no separate validate function
-//
-// Temporarily commented out to get build working. These are not used by
-// the import callback implementation.
-
-/*
-extern "C" {
-    /// Get the size of WebAssembly linear memory in bytes
-    pub fn wasm_runtime_get_app_heap_size(module_inst: *const WasmModuleInstT) -> c_uint;
-
-    /// Validate WebAssembly bytecode without compilation
-    pub fn wasm_runtime_validate_module(
-        buf: *const c_uchar,
-        size: c_uint,
-        error_buf: *mut c_char,
-        error_buf_size: c_uint,
-    ) -> c_int;
-
-    /// Get function signature information
-    pub fn wasm_runtime_get_function_signature(
-        function: *const WasmFunctionInstT,
-        param_count: *mut c_uint,
-        result_count: *mut c_uint,
-    ) -> c_int;
-
-    /// Get the last error message from WAMR
-    pub fn wasm_runtime_get_last_error() -> *const c_char;
-
-    /// Clear the last error message
-    pub fn wasm_runtime_clear_last_error();
-}
-*/
-
-// =============================================================================
-// Helper Functions for Safe Wrapper
-// =============================================================================
-
-/// Convert pointer to handle for storage
-pub fn ptr_to_handle<T>(ptr: *mut T) -> usize {
-    ptr as usize
-}
-
-/// Convert handle back to pointer
-pub fn handle_to_ptr<T>(handle: usize) -> *mut T {
-    handle as *mut T
-}
-
-// =============================================================================
-// Safety and Validation Helpers
-// =============================================================================
-
-/// Check if a WAMR handle pointer is valid (non-null)
-#[inline(always)]
-pub fn is_valid_handle<T>(ptr: *const T) -> bool {
-    !ptr.is_null()
-}
-
-/// Validate a buffer pointer and size
-#[inline(always)]
-pub fn is_valid_buffer(ptr: *const c_uchar, size: c_uint) -> bool {
-    !ptr.is_null() && size > 0
-}
-
-/// Validate a C string pointer
-#[inline(always)]
-pub fn is_valid_cstr(ptr: *const c_char) -> bool {
-    !ptr.is_null()
-}
-
-/// Convert a C string to Rust string safely
-pub fn cstr_to_rust_string(ptr: *const c_char) -> Result<String, &'static str> {
-    if ptr.is_null() {
-        return Err("Null pointer");
-    }
-
-    unsafe {
-        let cstr = std::ffi::CStr::from_ptr(ptr);
-        match cstr.to_str() {
-            Ok(s) => Ok(s.to_string()),
-            Err(_) => Err("Invalid UTF-8"),
-        }
-    }
-}
-
-// TODO: Update to use wasm_runtime_get_exception(module_inst) instead
-/*
-/// Get WAMR error message safely
-pub fn get_wamr_error() -> Option<String> {
-    unsafe {
-        let error_ptr = wasm_runtime_get_last_error();
-        if is_valid_cstr(error_ptr) {
-            cstr_to_rust_string(error_ptr).ok()
-        } else {
-            None
-        }
-    }
-}
-
-/// Clear WAMR error state
-pub fn clear_wamr_error() {
-    unsafe {
-        wasm_runtime_clear_last_error();
-    }
-}
-*/
 
 // =============================================================================
 // Constants and Limits
@@ -303,24 +189,12 @@ pub const MAX_ERROR_BUF_SIZE: c_uint = 1024;
 /// WebAssembly page size (64KB)
 pub const WASM_PAGE_SIZE: c_uint = 65536;
 
-/// Maximum number of function arguments supported
-pub const MAX_FUNCTION_ARGS: usize = 32;
-
-/// Maximum number of function results supported
-pub const MAX_FUNCTION_RESULTS: usize = 8;
-
 // =============================================================================
 // Export/Import Kind Constants
 // =============================================================================
 
 /// WebAssembly export/import kind: Function
 pub const WASM_IMPORT_EXPORT_KIND_FUNC: u32 = 0;
-
-/// WebAssembly export/import kind: Table
-pub const WASM_IMPORT_EXPORT_KIND_TABLE: u32 = 1;
-
-/// WebAssembly export/import kind: Memory
-pub const WASM_IMPORT_EXPORT_KIND_MEMORY: u32 = 2;
 
 /// WebAssembly export/import kind: Global
 pub const WASM_IMPORT_EXPORT_KIND_GLOBAL: u32 = 3;

@@ -57,33 +57,6 @@ public enum ValueType {
     }
 
     /**
-     * Returns the WebAssembly name for this value type.
-     *
-     * @return the WebAssembly type name (e.g., "i32", "f64")
-     */
-    public String getWasmName() {
-        return wasmName;
-    }
-
-    /**
-     * Returns the Java primitive type corresponding to this value type.
-     *
-     * @return the primitive Java class (e.g., int.class, double.class)
-     */
-    public Class<?> getPrimitiveType() {
-        return primitiveType;
-    }
-
-    /**
-     * Returns the Java wrapper type corresponding to this value type.
-     *
-     * @return the wrapper Java class (e.g., Integer.class, Double.class)
-     */
-    public Class<?> getWrapperType() {
-        return wrapperType;
-    }
-
-    /**
      * Checks if the given Java object is compatible with this value type.
      *
      * <p>This method performs type checking to determine if a Java object can be used as a
@@ -130,78 +103,6 @@ public enum ValueType {
             default:
                 return false;
         }
-    }
-
-    /**
-     * Converts a Java object to the appropriate type for this value type.
-     *
-     * <p>This method performs the actual conversion from Java objects to the expected WebAssembly
-     * types. It should only be called after {@link #isCompatible(Object)} returns true.
-     *
-     * @param value the Java object to convert, must be compatible
-     * @return the converted value in the appropriate Java type
-     * @throws IllegalArgumentException if the value is not compatible
-     */
-    public Object convert(final Object value) {
-        if (!isCompatible(value)) {
-            throw new IllegalArgumentException(
-                    "Value " + value + " is not compatible with type " + this);
-        }
-
-        if (value == null) {
-            throw new IllegalArgumentException("Cannot convert null value");
-        }
-
-        switch (this) {
-            case I32:
-                return ((Number) value).intValue();
-            case I64:
-                return ((Number) value).longValue();
-            case F32:
-                return ((Number) value).floatValue();
-            case F64:
-                return ((Number) value).doubleValue();
-            default:
-                throw new IllegalArgumentException("Unknown value type: " + this);
-        }
-    }
-
-    /**
-     * Returns the value type corresponding to the given WebAssembly type name.
-     *
-     * @param wasmName the WebAssembly type name (e.g., "i32", "f64")
-     * @return the corresponding ValueType, or null if not found
-     */
-    public static ValueType fromWasmName(final String wasmName) {
-        if (wasmName == null) {
-            return null;
-        }
-
-        for (final ValueType type : values()) {
-            if (type.wasmName.equals(wasmName)) {
-                return type;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Returns the value type corresponding to the given Java class.
-     *
-     * @param javaClass the Java class to map
-     * @return the corresponding ValueType, or null if not mappable
-     */
-    public static ValueType fromJavaClass(final Class<?> javaClass) {
-        if (javaClass == null) {
-            return null;
-        }
-
-        for (final ValueType type : values()) {
-            if (type.primitiveType.equals(javaClass) || type.wrapperType.equals(javaClass)) {
-                return type;
-            }
-        }
-        return null;
     }
 
     @Override

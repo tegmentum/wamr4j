@@ -23,31 +23,27 @@ package ai.tegmentum.wamr4j.test.wast;
  */
 public enum TestExpectedResult {
     /** Test is expected to pass successfully. */
-    PASS("pass", "Pass", "Test should execute successfully"),
+    PASS("pass"),
 
     /** Test is expected to fail with an error. */
-    FAIL("fail", "Fail", "Test should fail with an error"),
+    FAIL("fail"),
 
     /** Test is expected to trap during execution. */
-    TRAP("trap", "Trap", "Test should trap during execution"),
+    TRAP("trap"),
 
     /** Test is expected to timeout. */
-    TIMEOUT("timeout", "Timeout", "Test should timeout"),
+    TIMEOUT("timeout"),
 
     /** Test is expected to be skipped. */
-    SKIP("skip", "Skip", "Test should be skipped"),
+    SKIP("skip"),
 
     /** Test result is unknown or undetermined. */
-    UNKNOWN("unknown", "Unknown", "Test result is unknown");
+    UNKNOWN("unknown");
 
     private final String id;
-    private final String displayName;
-    private final String description;
 
-    TestExpectedResult(final String id, final String displayName, final String description) {
+    TestExpectedResult(final String id) {
         this.id = id;
-        this.displayName = displayName;
-        this.description = description;
     }
 
     /**
@@ -57,41 +53,5 @@ public enum TestExpectedResult {
      */
     public String getId() {
         return id;
-    }
-
-    /**
-     * Gets the display name of this expected result.
-     *
-     * @return the display name
-     */
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    /**
-     * Gets the description of this expected result.
-     *
-     * @return the description
-     */
-    public String getDescription() {
-        return description;
-    }
-
-    /**
-     * Gets TestExpectedResult by ID.
-     *
-     * @param id result ID
-     * @return TestExpectedResult or UNKNOWN if not found
-     */
-    public static TestExpectedResult fromId(final String id) {
-        if (id == null) {
-            return UNKNOWN;
-        }
-        for (final TestExpectedResult result : values()) {
-            if (result.id.equalsIgnoreCase(id)) {
-                return result;
-            }
-        }
-        return UNKNOWN;
     }
 }

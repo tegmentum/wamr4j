@@ -17,7 +17,7 @@ package ai.tegmentum.wamr4j;
 
 import java.nio.ByteBuffer;
 
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 
 /**
  * Represents WebAssembly linear memory.
@@ -26,7 +26,7 @@ import ai.tegmentum.wamr4j.exception.RuntimeException;
  * zero-indexed and provides methods for reading and writing data at specific offsets.
  *
  * <p>Memory operations are bounds-checked to prevent buffer overflows and security vulnerabilities.
- * Invalid memory access will result in a {@link RuntimeException}.
+ * Invalid memory access will result in a {@link WasmRuntimeException}.
  *
  * <p>Memory objects maintain a reference to their parent instance and become invalid when the
  * instance is closed. Memory is not thread-safe - concurrent access should be synchronized by the
@@ -61,11 +61,11 @@ public interface WebAssemblyMemory {
      * @param offset the byte offset to read from, must be >= 0
      * @param length the number of bytes to read, must be > 0
      * @return a new byte array containing the read data
-     * @throws RuntimeException if the read operation is out of bounds
+     * @throws WasmRuntimeException if the read operation is out of bounds
      * @throws IllegalArgumentException if offset < 0 or length <= 0
      * @throws IllegalStateException if the parent instance has been closed
      */
-    byte[] read(int offset, int length) throws RuntimeException;
+    byte[] read(int offset, int length) throws WasmRuntimeException;
 
     /**
      * Writes bytes to memory at the specified offset.
@@ -75,11 +75,11 @@ public interface WebAssemblyMemory {
      *
      * @param offset the byte offset to write to, must be >= 0
      * @param data the data to write, must not be null
-     * @throws RuntimeException if the write operation is out of bounds
+     * @throws WasmRuntimeException if the write operation is out of bounds
      * @throws IllegalArgumentException if offset < 0 or data is null
      * @throws IllegalStateException if the parent instance has been closed
      */
-    void write(int offset, byte[] data) throws RuntimeException;
+    void write(int offset, byte[] data) throws WasmRuntimeException;
 
     /**
      * Reads a signed 32-bit integer from memory at the specified offset.
@@ -88,11 +88,11 @@ public interface WebAssemblyMemory {
      *
      * @param offset the byte offset to read from, must be >= 0
      * @return the 32-bit integer value
-     * @throws RuntimeException if the read operation is out of bounds
+     * @throws WasmRuntimeException if the read operation is out of bounds
      * @throws IllegalArgumentException if offset < 0
      * @throws IllegalStateException if the parent instance has been closed
      */
-    int readInt32(int offset) throws RuntimeException;
+    int readInt32(int offset) throws WasmRuntimeException;
 
     /**
      * Writes a signed 32-bit integer to memory at the specified offset.
@@ -101,11 +101,11 @@ public interface WebAssemblyMemory {
      *
      * @param offset the byte offset to write to, must be >= 0
      * @param value the 32-bit integer value to write
-     * @throws RuntimeException if the write operation is out of bounds
+     * @throws WasmRuntimeException if the write operation is out of bounds
      * @throws IllegalArgumentException if offset < 0
      * @throws IllegalStateException if the parent instance has been closed
      */
-    void writeInt32(int offset, int value) throws RuntimeException;
+    void writeInt32(int offset, int value) throws WasmRuntimeException;
 
     /**
      * Reads a signed 64-bit integer from memory at the specified offset.
@@ -114,11 +114,11 @@ public interface WebAssemblyMemory {
      *
      * @param offset the byte offset to read from, must be >= 0
      * @return the 64-bit integer value
-     * @throws RuntimeException if the read operation is out of bounds
+     * @throws WasmRuntimeException if the read operation is out of bounds
      * @throws IllegalArgumentException if offset < 0
      * @throws IllegalStateException if the parent instance has been closed
      */
-    long readInt64(int offset) throws RuntimeException;
+    long readInt64(int offset) throws WasmRuntimeException;
 
     /**
      * Writes a signed 64-bit integer to memory at the specified offset.
@@ -127,55 +127,55 @@ public interface WebAssemblyMemory {
      *
      * @param offset the byte offset to write to, must be >= 0
      * @param value the 64-bit integer value to write
-     * @throws RuntimeException if the write operation is out of bounds
+     * @throws WasmRuntimeException if the write operation is out of bounds
      * @throws IllegalArgumentException if offset < 0
      * @throws IllegalStateException if the parent instance has been closed
      */
-    void writeInt64(int offset, long value) throws RuntimeException;
+    void writeInt64(int offset, long value) throws WasmRuntimeException;
 
     /**
      * Reads a 32-bit floating-point number from memory at the specified offset.
      *
      * @param offset the byte offset to read from, must be >= 0
      * @return the floating-point value
-     * @throws RuntimeException if the read operation is out of bounds
+     * @throws WasmRuntimeException if the read operation is out of bounds
      * @throws IllegalArgumentException if offset < 0
      * @throws IllegalStateException if the parent instance has been closed
      */
-    float readFloat32(int offset) throws RuntimeException;
+    float readFloat32(int offset) throws WasmRuntimeException;
 
     /**
      * Writes a 32-bit floating-point number to memory at the specified offset.
      *
      * @param offset the byte offset to write to, must be >= 0
      * @param value the floating-point value to write
-     * @throws RuntimeException if the write operation is out of bounds
+     * @throws WasmRuntimeException if the write operation is out of bounds
      * @throws IllegalArgumentException if offset < 0
      * @throws IllegalStateException if the parent instance has been closed
      */
-    void writeFloat32(int offset, float value) throws RuntimeException;
+    void writeFloat32(int offset, float value) throws WasmRuntimeException;
 
     /**
      * Reads a 64-bit floating-point number from memory at the specified offset.
      *
      * @param offset the byte offset to read from, must be >= 0
      * @return the floating-point value
-     * @throws RuntimeException if the read operation is out of bounds
+     * @throws WasmRuntimeException if the read operation is out of bounds
      * @throws IllegalArgumentException if offset < 0
      * @throws IllegalStateException if the parent instance has been closed
      */
-    double readFloat64(int offset) throws RuntimeException;
+    double readFloat64(int offset) throws WasmRuntimeException;
 
     /**
      * Writes a 64-bit floating-point number to memory at the specified offset.
      *
      * @param offset the byte offset to write to, must be >= 0
      * @param value the floating-point value to write
-     * @throws RuntimeException if the write operation is out of bounds
+     * @throws WasmRuntimeException if the write operation is out of bounds
      * @throws IllegalArgumentException if offset < 0
      * @throws IllegalStateException if the parent instance has been closed
      */
-    void writeFloat64(int offset, double value) throws RuntimeException;
+    void writeFloat64(int offset, double value) throws WasmRuntimeException;
 
     /**
      * Returns the current size of memory in bytes.

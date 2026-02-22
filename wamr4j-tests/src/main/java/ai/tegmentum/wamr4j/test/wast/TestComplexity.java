@@ -19,37 +19,22 @@ package ai.tegmentum.wamr4j.test.wast;
 /**
  * Complexity levels for WebAssembly test cases.
  *
- * <p>Used for test scheduling, timeout determination, and resource allocation.
- *
  * @since 1.0.0
  */
 public enum TestComplexity {
     /** Simple test case with minimal resource requirements. */
-    SIMPLE("simple", "Simple", "Basic test with minimal complexity", 1000, 1),
+    SIMPLE("simple"),
 
     /** Moderate test case with average resource requirements. */
-    MODERATE("moderate", "Moderate", "Test with moderate complexity", 5000, 2),
+    MODERATE("moderate"),
 
     /** Complex test case with high resource requirements. */
-    COMPLEX("complex", "Complex", "Test with high complexity", 30000, 4);
+    COMPLEX("complex");
 
     private final String id;
-    private final String displayName;
-    private final String description;
-    private final long defaultTimeoutMs;
-    private final int resourceMultiplier;
 
-    TestComplexity(
-            final String id,
-            final String displayName,
-            final String description,
-            final long defaultTimeoutMs,
-            final int resourceMultiplier) {
+    TestComplexity(final String id) {
         this.id = id;
-        this.displayName = displayName;
-        this.description = description;
-        this.defaultTimeoutMs = defaultTimeoutMs;
-        this.resourceMultiplier = resourceMultiplier;
     }
 
     /**
@@ -59,59 +44,5 @@ public enum TestComplexity {
      */
     public String getId() {
         return id;
-    }
-
-    /**
-     * Gets the display name of this complexity level.
-     *
-     * @return the display name
-     */
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    /**
-     * Gets the description of this complexity level.
-     *
-     * @return the description
-     */
-    public String getDescription() {
-        return description;
-    }
-
-    /**
-     * Gets the default timeout in milliseconds for this complexity level.
-     *
-     * @return the default timeout
-     */
-    public long getDefaultTimeoutMs() {
-        return defaultTimeoutMs;
-    }
-
-    /**
-     * Gets the resource multiplier for this complexity level.
-     *
-     * @return the resource multiplier
-     */
-    public int getResourceMultiplier() {
-        return resourceMultiplier;
-    }
-
-    /**
-     * Gets TestComplexity by ID.
-     *
-     * @param id complexity ID
-     * @return TestComplexity or SIMPLE if not found
-     */
-    public static TestComplexity fromId(final String id) {
-        if (id == null) {
-            return SIMPLE;
-        }
-        for (final TestComplexity complexity : values()) {
-            if (complexity.id.equalsIgnoreCase(id)) {
-                return complexity;
-            }
-        }
-        return SIMPLE;
     }
 }

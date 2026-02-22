@@ -17,7 +17,7 @@ package ai.tegmentum.wamr4j;
 
 import java.util.Map;
 
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 
 /**
  * Represents a compiled WebAssembly module.
@@ -53,10 +53,10 @@ public interface WebAssemblyModule extends AutoCloseable {
      * state.
      *
      * @return a new WebAssembly instance
-     * @throws RuntimeException if instantiation fails
+     * @throws WasmRuntimeException if instantiation fails
      * @throws IllegalStateException if the module has been closed
      */
-    WebAssemblyInstance instantiate() throws RuntimeException;
+    WebAssemblyInstance instantiate() throws WasmRuntimeException;
 
     /**
      * Creates a new instance of this WebAssembly module with import bindings.
@@ -67,11 +67,11 @@ public interface WebAssemblyModule extends AutoCloseable {
      *
      * @param imports a map of module names to import bindings, may be null or empty
      * @return a new WebAssembly instance with the provided imports
-     * @throws RuntimeException if instantiation fails or imports are invalid
+     * @throws WasmRuntimeException if instantiation fails or imports are invalid
      * @throws IllegalStateException if the module has been closed
      */
     WebAssemblyInstance instantiate(Map<String, Map<String, Object>> imports)
-            throws RuntimeException;
+            throws WasmRuntimeException;
 
     /**
      * Returns the names of all exports defined by this module.
@@ -104,15 +104,6 @@ public interface WebAssemblyModule extends AutoCloseable {
      * @throws IllegalStateException if the module has been closed
      */
     FunctionSignature getExportFunctionSignature(String functionName);
-
-    /**
-     * Validates that all required imports can be satisfied by the provided bindings.
-     *
-     * @param imports a map of module names to import bindings to validate
-     * @return true if all imports can be satisfied, false otherwise
-     * @throws IllegalStateException if the module has been closed
-     */
-    boolean validateImports(Map<String, Map<String, Object>> imports);
 
     /**
      * Checks if the module has been closed.

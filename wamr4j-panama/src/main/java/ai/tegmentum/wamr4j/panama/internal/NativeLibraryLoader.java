@@ -111,13 +111,14 @@ public final class NativeLibraryLoader {
             verifyRequiredSymbols(lookup);
 
             symbolLookup = lookup;
-            loaded.set(true);
             LOGGER.info("Successfully loaded native library: " + LIBRARY_NAME);
 
         } catch (final Exception e) {
             loadError = e.getMessage();
             LOGGER.severe("Failed to load native library: " + e.getMessage());
             throw new RuntimeException("Native library loading failed", e);
+        } finally {
+            loaded.set(true);
         }
     }
 

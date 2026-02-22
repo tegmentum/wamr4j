@@ -23,7 +23,7 @@ package ai.tegmentum.wamr4j.exception;
  *
  * @since 1.0.0
  */
-public class RuntimeException extends WebAssemblyException {
+public class WasmRuntimeException extends WebAssemblyException {
 
     private static final long serialVersionUID = 1L;
 
@@ -33,7 +33,7 @@ public class RuntimeException extends WebAssemblyException {
      * @param message the detail message, saved for later retrieval by the {@link #getMessage()}
      *     method
      */
-    public RuntimeException(final String message) {
+    public WasmRuntimeException(final String message) {
         super(message);
     }
 
@@ -45,7 +45,7 @@ public class RuntimeException extends WebAssemblyException {
      * @param cause the cause, saved for later retrieval by the {@link #getCause()} method (a null
      *     value is permitted, and indicates that the cause is nonexistent or unknown)
      */
-    public RuntimeException(final String message, final Throwable cause) {
+    public WasmRuntimeException(final String message, final Throwable cause) {
         super(message, cause);
     }
 
@@ -56,7 +56,7 @@ public class RuntimeException extends WebAssemblyException {
      * @param cause the cause, saved for later retrieval by the {@link #getCause()} method (a null
      *     value is permitted, and indicates that the cause is nonexistent or unknown)
      */
-    public RuntimeException(final Throwable cause) {
+    public WasmRuntimeException(final Throwable cause) {
         super(cause);
     }
 }

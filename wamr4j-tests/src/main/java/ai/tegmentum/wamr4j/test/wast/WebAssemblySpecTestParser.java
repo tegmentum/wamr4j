@@ -153,30 +153,52 @@ public final class WebAssemblySpecTestParser {
 
     private WebAssemblyTestCase parseModuleCommand(
             final JsonNode commandNode, final String testId, final Path specTestFile) {
-        return WebAssemblyTestCase.builder()
+        final WebAssemblyTestCase.Builder builder = WebAssemblyTestCase.builder()
                 .testId(testId)
                 .testName("module_" + testId.substring(testId.lastIndexOf('_') + 1))
                 .category(TestCategory.SPEC_CORE)
                 .testFilePath(specTestFile)
                 .description("WebAssembly module instantiation test")
                 .expected(TestExpectedResult.PASS)
-                .tags(List.of("spec", "module", "instantiation"))
-                .complexity(TestComplexity.SIMPLE)
-                .build();
+                .tags(List.of("spec", "module", "instantiation"));
+
+        if (commandNode.has("filename")) {
+            builder.metadata("module.filename", commandNode.get("filename").asText());
+        }
+        if (commandNode.has("name")) {
+            builder.metadata("module.name", commandNode.get("name").asText());
+        }
+
+        return builder.build();
     }
 
     private WebAssemblyTestCase parseAssertReturnCommand(
             final JsonNode commandNode, final String testId, final Path specTestFile) {
-        return WebAssemblyTestCase.builder()
+        final WebAssemblyTestCase.Builder builder = WebAssemblyTestCase.builder()
                 .testId(testId)
                 .testName("assert_return_" + testId.substring(testId.lastIndexOf('_') + 1))
                 .category(TestCategory.SPEC_CORE)
                 .testFilePath(specTestFile)
                 .description("Function invocation should return expected value")
                 .expected(TestExpectedResult.PASS)
-                .tags(List.of("spec", "assert_return", "function_call"))
-                .complexity(TestComplexity.SIMPLE)
-                .build();
+                .tags(List.of("spec", "assert_return", "function_call"));
+
+        // Extract action details (function name, arguments)
+        if (commandNode.has("action")) {
+            final JsonNode action = commandNode.get("action");
+            builder.metadata("action.type", action.has("type") ? action.get("type").asText() : "invoke");
+            builder.metadata("action.field", action.has("field") ? action.get("field").asText() : "");
+            if (action.has("args")) {
+                builder.metadata("action.args", action.get("args").toString());
+            }
+        }
+
+        // Extract expected return values
+        if (commandNode.has("expected")) {
+            builder.metadata("expected.values", commandNode.get("expected").toString());
+        }
+
+        return builder.build();
     }
 
     private WebAssemblyTestCase parseAssertTrapCommand(
@@ -186,16 +208,26 @@ public final class WebAssemblySpecTestParser {
             trapMessage = commandNode.get("text").asText();
         }
 
-        return WebAssemblyTestCase.builder()
+        final WebAssemblyTestCase.Builder builder = WebAssemblyTestCase.builder()
                 .testId(testId)
                 .testName("assert_trap_" + testId.substring(testId.lastIndexOf('_') + 1))
                 .category(TestCategory.SPEC_CORE)
                 .testFilePath(specTestFile)
                 .description("Function invocation should trap: " + trapMessage)
                 .expected(TestExpectedResult.TRAP)
-                .tags(List.of("spec", "assert_trap", "trap", "negative"))
-                .complexity(TestComplexity.SIMPLE)
-                .build();
+                .tags(List.of("spec", "assert_trap", "trap", "negative"));
+
+        builder.metadata("trap.message", trapMessage);
+        if (commandNode.has("action")) {
+            final JsonNode action = commandNode.get("action");
+            builder.metadata("action.type", action.has("type") ? action.get("type").asText() : "invoke");
+            builder.metadata("action.field", action.has("field") ? action.get("field").asText() : "");
+            if (action.has("args")) {
+                builder.metadata("action.args", action.get("args").toString());
+            }
+        }
+
+        return builder.build();
     }
 
     private WebAssemblyTestCase parseAssertInvalidCommand(
@@ -213,7 +245,7 @@ public final class WebAssemblySpecTestParser {
                 .description("Module should be invalid: " + errorMessage)
                 .expected(TestExpectedResult.FAIL)
                 .tags(List.of("spec", "assert_invalid", "validation", "negative"))
-                .complexity(TestComplexity.SIMPLE)
+                .metadata("error.message", errorMessage)
                 .build();
     }
 
@@ -232,7 +264,7 @@ public final class WebAssemblySpecTestParser {
                 .description("Module should be malformed: " + errorMessage)
                 .expected(TestExpectedResult.FAIL)
                 .tags(List.of("spec", "assert_malformed", "parsing", "negative"))
-                .complexity(TestComplexity.SIMPLE)
+                .metadata("error.message", errorMessage)
                 .build();
     }
 
@@ -251,7 +283,7 @@ public final class WebAssemblySpecTestParser {
                 .description("Module should be uninstantiable: " + errorMessage)
                 .expected(TestExpectedResult.FAIL)
                 .tags(List.of("spec", "assert_uninstantiable", "instantiation", "negative"))
-                .complexity(TestComplexity.SIMPLE)
+                .metadata("error.message", errorMessage)
                 .build();
     }
 
@@ -262,16 +294,22 @@ public final class WebAssemblySpecTestParser {
             functionName = commandNode.get("field").asText();
         }
 
-        return WebAssemblyTestCase.builder()
+        final WebAssemblyTestCase.Builder builder = WebAssemblyTestCase.builder()
                 .testId(testId)
                 .testName("invoke_" + functionName + "_" + testId.substring(testId.lastIndexOf('_') + 1))
                 .category(TestCategory.SPEC_CORE)
                 .testFilePath(specTestFile)
                 .description("Invoke function: " + functionName)
                 .expected(TestExpectedResult.PASS)
-                .tags(List.of("spec", "invoke", "function_call"))
-                .complexity(TestComplexity.SIMPLE)
-                .build();
+                .tags(List.of("spec", "invoke", "function_call"));
+
+        builder.metadata("action.type", "invoke");
+        builder.metadata("action.field", functionName);
+        if (commandNode.has("args")) {
+            builder.metadata("action.args", commandNode.get("args").toString());
+        }
+
+        return builder.build();
     }
 
     private WebAssemblyTestCase parseRegisterCommand(
@@ -289,7 +327,7 @@ public final class WebAssemblySpecTestParser {
                 .description("Register module: " + moduleName)
                 .expected(TestExpectedResult.PASS)
                 .tags(List.of("spec", "register", "module"))
-                .complexity(TestComplexity.SIMPLE)
+                .metadata("module.name", moduleName)
                 .build();
     }
 

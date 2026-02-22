@@ -34,11 +34,11 @@ use crate::runtime::{
 use crate::utils::{
     write_error_to_buffer, get_last_error, clear_last_error, set_last_error,
     wasm_value_from_ffi, wasm_value_to_ffi, wasm_type_to_ffi,
-    WasmValueFFI, WASM_TYPE_I32, WASM_TYPE_I64, WASM_TYPE_F32, WASM_TYPE_F64,
+    WasmValueFFI,
 };
-use crate::wamr_wrapper::{
+use crate::types::{
     WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory,
-    WasmValue, WasmType, WamrError, RuntimeConfig,
+    WasmValue, RuntimeConfig,
 };
 use crate::bindings::{
     WasmModuleInstT,
@@ -311,32 +311,13 @@ pub extern "C" fn wamr_function_call(
     unsafe {
         let function_ref = &*(function as *const WamrFunction);
         
-        // Optimized argument conversion using batch operations
         let arg_slice = if arg_count > 0 && !args.is_null() {
             std::slice::from_raw_parts(args, arg_count as usize)
         } else {
             &[]
         };
-        
-        // Use stack allocation for small argument counts to avoid heap allocation
-        let mut stack_args = [WasmValue::I32(0); 16]; // Stack buffer for up to 16 args
-        let wasm_args: Vec<WasmValue> = if arg_slice.len() <= 16 {
-            // Use stack buffer - no heap allocation
-            let mut converted_count = 0;
-            for (i, ffi_val) in arg_slice.iter().enumerate() {
-                if i < 16 {
-                    stack_args[i] = wasm_value_from_ffi(ffi_val);
-                    converted_count += 1;
-                }
-            }
-            stack_args[..converted_count].to_vec()
-        } else {
-            // Fall back to heap allocation for large argument counts
-            arg_slice
-                .iter()
-                .map(|ffi_val| wasm_value_from_ffi(ffi_val))
-                .collect()
-        };
+
+        let wasm_args: Vec<WasmValue> = arg_slice.iter().map(|v| wasm_value_from_ffi(v)).collect();
         
         match function_call(function_ref, &wasm_args) {
             Ok(wasm_results) => {
@@ -580,7 +561,8 @@ pub extern "C" fn wamr_get_function_names(
     }
 
     unsafe {
-        let module_inst = instance as *mut WasmModuleInstT;
+        let instance_ref = &*(instance as *const WamrInstance);
+        let module_inst = instance_ref.handle as *mut WasmModuleInstT;
         let module = wasm_runtime_get_module(module_inst);
 
         if module.is_null() {
@@ -651,7 +633,8 @@ pub extern "C" fn wamr_get_global_names(
     }
 
     unsafe {
-        let module_inst = instance as *mut WasmModuleInstT;
+        let instance_ref = &*(instance as *const WamrInstance);
+        let module_inst = instance_ref.handle as *mut WasmModuleInstT;
         let module = wasm_runtime_get_module(module_inst);
 
         if module.is_null() {
@@ -744,7 +727,8 @@ pub extern "C" fn wamr_get_global(
     }
 
     unsafe {
-        let module_inst = instance as *mut WasmModuleInstT;
+        let instance_ref = &*(instance as *const WamrInstance);
+        let module_inst = instance_ref.handle as *mut WasmModuleInstT;
         let mut global_inst: wasm_global_inst_t = std::mem::zeroed();
 
         if !wasm_runtime_get_export_global_inst(module_inst, name, &mut global_inst) {
@@ -799,7 +783,8 @@ pub extern "C" fn wamr_set_global(
     }
 
     unsafe {
-        let module_inst = instance as *mut WasmModuleInstT;
+        let instance_ref = &*(instance as *const WamrInstance);
+        let module_inst = instance_ref.handle as *mut WasmModuleInstT;
         let mut global_inst: wasm_global_inst_t = std::mem::zeroed();
 
         if !wasm_runtime_get_export_global_inst(module_inst, name, &mut global_inst) {

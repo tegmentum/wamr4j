@@ -17,6 +17,7 @@
 package ai.tegmentum.wamr4j.test.wast;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -36,9 +37,6 @@ public final class WebAssemblyTestCase {
     private final TestExpectedResult expected;
     private final List<String> tags;
     private final Map<String, Object> metadata;
-    private final List<WebAssemblyTestCase> subTests;
-    private final TestComplexity complexity;
-    private final long estimatedExecutionTimeMs;
 
     private WebAssemblyTestCase(final Builder builder) {
         this.testId = builder.testId;
@@ -49,9 +47,6 @@ public final class WebAssemblyTestCase {
         this.expected = builder.expected;
         this.tags = List.copyOf(builder.tags);
         this.metadata = Map.copyOf(builder.metadata);
-        this.subTests = List.copyOf(builder.subTests);
-        this.complexity = builder.complexity;
-        this.estimatedExecutionTimeMs = builder.estimatedExecutionTimeMs;
     }
 
     /**
@@ -127,42 +122,6 @@ public final class WebAssemblyTestCase {
     }
 
     /**
-     * Gets the sub-tests.
-     *
-     * @return the sub-tests
-     */
-    public List<WebAssemblyTestCase> getSubTests() {
-        return subTests;
-    }
-
-    /**
-     * Gets the test complexity.
-     *
-     * @return the test complexity
-     */
-    public TestComplexity getComplexity() {
-        return complexity;
-    }
-
-    /**
-     * Gets the estimated execution time in milliseconds.
-     *
-     * @return the estimated execution time
-     */
-    public long getEstimatedExecutionTimeMs() {
-        return estimatedExecutionTimeMs;
-    }
-
-    /**
-     * Checks if this test case has any sub-tests.
-     *
-     * @return true if sub-tests exist
-     */
-    public boolean hasSubTests() {
-        return !subTests.isEmpty();
-    }
-
-    /**
      * Checks if this test case has the specified tag.
      *
      * @param tag tag to check
@@ -217,9 +176,7 @@ public final class WebAssemblyTestCase {
                 + ", testName='" + testName + '\''
                 + ", category=" + category
                 + ", expected=" + expected
-                + ", complexity=" + complexity
                 + ", tags=" + tags.size()
-                + ", subTests=" + subTests.size()
                 + '}';
     }
 
@@ -236,10 +193,7 @@ public final class WebAssemblyTestCase {
         private String description = "";
         private TestExpectedResult expected = TestExpectedResult.PASS;
         private List<String> tags = List.of();
-        private Map<String, Object> metadata = Map.of();
-        private List<WebAssemblyTestCase> subTests = List.of();
-        private TestComplexity complexity = TestComplexity.SIMPLE;
-        private long estimatedExecutionTimeMs = 1000;
+        private Map<String, Object> metadata = new HashMap<>();
 
         /**
          * Sets the test ID.
@@ -337,46 +291,19 @@ public final class WebAssemblyTestCase {
          * @return this builder
          */
         public Builder metadata(final Map<String, Object> metadata) {
-            this.metadata = metadata != null ? Map.copyOf(metadata) : Map.of();
+            this.metadata = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
             return this;
         }
 
         /**
-         * Sets the sub-tests.
+         * Adds a single metadata entry.
          *
-         * @param subTests sub-tests
+         * @param key metadata key
+         * @param value metadata value
          * @return this builder
          */
-        public Builder subTests(final List<WebAssemblyTestCase> subTests) {
-            this.subTests = subTests != null ? List.copyOf(subTests) : List.of();
-            return this;
-        }
-
-        /**
-         * Sets the test complexity.
-         *
-         * @param complexity test complexity
-         * @return this builder
-         */
-        public Builder complexity(final TestComplexity complexity) {
-            if (complexity == null) {
-                throw new IllegalArgumentException("Complexity cannot be null");
-            }
-            this.complexity = complexity;
-            return this;
-        }
-
-        /**
-         * Sets the estimated execution time in milliseconds.
-         *
-         * @param estimatedExecutionTimeMs estimated execution time
-         * @return this builder
-         */
-        public Builder estimatedExecutionTimeMs(final long estimatedExecutionTimeMs) {
-            if (estimatedExecutionTimeMs < 0) {
-                throw new IllegalArgumentException("Estimated execution time cannot be negative");
-            }
-            this.estimatedExecutionTimeMs = estimatedExecutionTimeMs;
+        public Builder metadata(final String key, final Object value) {
+            this.metadata.put(key, value);
             return this;
         }
 
@@ -393,50 +320,7 @@ public final class WebAssemblyTestCase {
                 throw new IllegalStateException("Test name must be set");
             }
 
-            // Auto-infer complexity based on sub-tests and tags
-            if (complexity == TestComplexity.SIMPLE && determineComplexity() != TestComplexity.SIMPLE) {
-                this.complexity = determineComplexity();
-            }
-
             return new WebAssemblyTestCase(this);
-        }
-
-        private TestComplexity determineComplexity() {
-            if (!subTests.isEmpty()) {
-                return subTests.size() > 10 ? TestComplexity.COMPLEX : TestComplexity.MODERATE;
-            }
-
-            final int complexityScore = calculateComplexityScore();
-            if (complexityScore > 5) {
-                return TestComplexity.COMPLEX;
-            } else if (complexityScore > 2) {
-                return TestComplexity.MODERATE;
-            }
-            return TestComplexity.SIMPLE;
-        }
-
-        private int calculateComplexityScore() {
-            int score = 0;
-
-            // Score based on tags indicating complex features
-            for (final String tag : tags) {
-                switch (tag.toLowerCase()) {
-                    case "simd", "threading", "atomic", "gc", "component" -> score += 2;
-                    case "memory", "table", "import", "export" -> score += 1;
-                    default -> {
-                        // Other tags don't affect complexity score
-                    }
-                }
-            }
-
-            // Score based on estimated execution time
-            if (estimatedExecutionTimeMs > 10000) {
-                score += 2;
-            } else if (estimatedExecutionTimeMs > 5000) {
-                score += 1;
-            }
-
-            return score;
         }
     }
 }
