@@ -19,7 +19,7 @@ package ai.tegmentum.wamr4j.jni.impl;
 import ai.tegmentum.wamr4j.WebAssemblyFunction;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyMemory;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
@@ -56,7 +56,7 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
     }
 
     @Override
-    public WebAssemblyFunction getFunction(final String functionName) throws RuntimeException {
+    public WebAssemblyFunction getFunction(final String functionName) throws WasmRuntimeException {
         if (functionName == null) {
             throw new IllegalArgumentException("Function name cannot be null");
         }
@@ -66,37 +66,37 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
         try {
             final long functionHandle = nativeGetFunction(nativeHandle, functionName);
             if (functionHandle == 0L) {
-                throw new RuntimeException("Function not found: " + functionName);
+                throw new WasmRuntimeException("Function not found: " + functionName);
             }
             
             return new JniWebAssemblyFunction(functionHandle, functionName, this);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error getting function: " + functionName, e);
+            throw new WasmRuntimeException("Unexpected error getting function: " + functionName, e);
         }
     }
 
     @Override
-    public WebAssemblyMemory getMemory() throws RuntimeException {
+    public WebAssemblyMemory getMemory() throws WasmRuntimeException {
         ensureNotClosed();
         
         try {
             final long memoryHandle = nativeGetMemory(nativeHandle);
             if (memoryHandle == 0L) {
-                throw new RuntimeException("Memory not exported by instance");
+                throw new WasmRuntimeException("Memory not exported by instance");
             }
             
             return new JniWebAssemblyMemory(memoryHandle, this);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error getting memory", e);
+            throw new WasmRuntimeException("Unexpected error getting memory", e);
         }
     }
 
     @Override
-    public Object getGlobal(final String globalName) throws RuntimeException {
+    public Object getGlobal(final String globalName) throws WasmRuntimeException {
         if (globalName == null) {
             throw new IllegalArgumentException("Global name cannot be null");
         }
@@ -106,12 +106,12 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
         try {
             return nativeGetGlobal(nativeHandle, globalName);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to get global variable: " + globalName, e);
+            throw new WasmRuntimeException("Failed to get global variable: " + globalName, e);
         }
     }
 
     @Override
-    public void setGlobal(final String globalName, final Object value) throws RuntimeException {
+    public void setGlobal(final String globalName, final Object value) throws WasmRuntimeException {
         if (globalName == null) {
             throw new IllegalArgumentException("Global name cannot be null");
         }
@@ -121,7 +121,7 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
         try {
             nativeSetGlobal(nativeHandle, globalName, value);
         } catch (final Exception e) {
-            throw new RuntimeException("Failed to set global variable: " + globalName, e);
+            throw new WasmRuntimeException("Failed to set global variable: " + globalName, e);
         }
     }
 
@@ -233,9 +233,9 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
      * @param instanceHandle the native instance handle
      * @param globalName the name of the global variable
      * @return the global variable value
-     * @throws RuntimeException if the global is not found
+     * @throws WasmRuntimeException if the global is not found
      */
-    private static native Object nativeGetGlobal(long instanceHandle, String globalName) throws RuntimeException;
+    private static native Object nativeGetGlobal(long instanceHandle, String globalName) throws WasmRuntimeException;
 
     /**
      * Sets a global variable value.
@@ -243,10 +243,10 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
      * @param instanceHandle the native instance handle
      * @param globalName the name of the global variable
      * @param value the new value for the global variable
-     * @throws RuntimeException if the global is not found or cannot be set
+     * @throws WasmRuntimeException if the global is not found or cannot be set
      */
     private static native void nativeSetGlobal(long instanceHandle, String globalName, Object value) 
-        throws RuntimeException;
+        throws WasmRuntimeException;
 
     /**
      * Gets the names of all exported functions.

@@ -18,7 +18,7 @@ package ai.tegmentum.wamr4j.jni.impl;
 
 import ai.tegmentum.wamr4j.FunctionSignature;
 import ai.tegmentum.wamr4j.WebAssemblyFunction;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import java.util.logging.Logger;
 
 /**
@@ -71,7 +71,7 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
     }
 
     @Override
-    public Object invoke(final Object... args) throws RuntimeException {
+    public Object invoke(final Object... args) throws WasmRuntimeException {
         // Defensive programming - validate state
         if (!isValid()) {
             throw new IllegalStateException("Function is no longer valid - parent instance has been closed");
@@ -87,10 +87,10 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
         
         try {
             return nativeInvokeFunction(nativeHandle, args);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error invoking function: " + functionName, e);
+            throw new WasmRuntimeException("Unexpected error invoking function: " + functionName, e);
         }
     }
 
@@ -138,9 +138,9 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
      * @param functionHandle the native function handle
      * @param args the function arguments
      * @return the function result, or null for void functions
-     * @throws RuntimeException if execution fails
+     * @throws WasmRuntimeException if execution fails
      */
-    private static native Object nativeInvokeFunction(long functionHandle, Object[] args) throws RuntimeException;
+    private static native Object nativeInvokeFunction(long functionHandle, Object[] args) throws WasmRuntimeException;
 
     /**
      * Gets the signature of a WebAssembly function.

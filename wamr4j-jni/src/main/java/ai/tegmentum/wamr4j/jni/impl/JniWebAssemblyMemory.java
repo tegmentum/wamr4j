@@ -17,7 +17,7 @@
 package ai.tegmentum.wamr4j.jni.impl;
 
 import ai.tegmentum.wamr4j.WebAssemblyMemory;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.logging.Logger;
@@ -65,7 +65,7 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
     }
 
     @Override
-    public byte[] read(final int offset, final int length) throws RuntimeException {
+    public byte[] read(final int offset, final int length) throws WasmRuntimeException {
         // Defensive programming - validate inputs
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
@@ -78,15 +78,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             return nativeReadMemory(nativeHandle, offset, length);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error reading memory at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error reading memory at offset " + offset, e);
         }
     }
 
     @Override
-    public void write(final int offset, final byte[] data) throws RuntimeException {
+    public void write(final int offset, final byte[] data) throws WasmRuntimeException {
         // Defensive programming - validate inputs
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
@@ -99,15 +99,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             nativeWriteMemory(nativeHandle, offset, data);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error writing memory at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error writing memory at offset " + offset, e);
         }
     }
 
     @Override
-    public int readInt32(final int offset) throws RuntimeException {
+    public int readInt32(final int offset) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -116,15 +116,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             return nativeReadInt32(nativeHandle, offset);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error reading int32 at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error reading int32 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeInt32(final int offset, final int value) throws RuntimeException {
+    public void writeInt32(final int offset, final int value) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -133,15 +133,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             nativeWriteInt32(nativeHandle, offset, value);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error writing int32 at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error writing int32 at offset " + offset, e);
         }
     }
 
     @Override
-    public long readInt64(final int offset) throws RuntimeException {
+    public long readInt64(final int offset) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -150,15 +150,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             return nativeReadInt64(nativeHandle, offset);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error reading int64 at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error reading int64 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeInt64(final int offset, final long value) throws RuntimeException {
+    public void writeInt64(final int offset, final long value) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -167,15 +167,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             nativeWriteInt64(nativeHandle, offset, value);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error writing int64 at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error writing int64 at offset " + offset, e);
         }
     }
 
     @Override
-    public float readFloat32(final int offset) throws RuntimeException {
+    public float readFloat32(final int offset) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -184,15 +184,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             return nativeReadFloat32(nativeHandle, offset);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error reading float32 at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error reading float32 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeFloat32(final int offset, final float value) throws RuntimeException {
+    public void writeFloat32(final int offset, final float value) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -201,15 +201,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             nativeWriteFloat32(nativeHandle, offset, value);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error writing float32 at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error writing float32 at offset " + offset, e);
         }
     }
 
     @Override
-    public double readFloat64(final int offset) throws RuntimeException {
+    public double readFloat64(final int offset) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -218,15 +218,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             return nativeReadFloat64(nativeHandle, offset);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error reading float64 at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error reading float64 at offset " + offset, e);
         }
     }
 
     @Override
-    public void writeFloat64(final int offset, final double value) throws RuntimeException {
+    public void writeFloat64(final int offset, final double value) throws WasmRuntimeException {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
@@ -235,10 +235,10 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         
         try {
             nativeWriteFloat64(nativeHandle, offset, value);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e;
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error writing float64 at offset " + offset, e);
+            throw new WasmRuntimeException("Unexpected error writing float64 at offset " + offset, e);
         }
     }
 
@@ -311,9 +311,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param offset the byte offset to read from
      * @param length the number of bytes to read
      * @return the read bytes
-     * @throws RuntimeException if the read is out of bounds
+     * @throws WasmRuntimeException if the read is out of bounds
      */
-    private static native byte[] nativeReadMemory(long memoryHandle, int offset, int length) throws RuntimeException;
+    private static native byte[] nativeReadMemory(long memoryHandle, int offset, int length) throws WasmRuntimeException;
 
     /**
      * Writes bytes to WebAssembly memory.
@@ -321,9 +321,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      * @param offset the byte offset to write to
      * @param data the bytes to write
-     * @throws RuntimeException if the write is out of bounds
+     * @throws WasmRuntimeException if the write is out of bounds
      */
-    private static native void nativeWriteMemory(long memoryHandle, int offset, byte[] data) throws RuntimeException;
+    private static native void nativeWriteMemory(long memoryHandle, int offset, byte[] data) throws WasmRuntimeException;
 
     /**
      * Reads a 32-bit integer from memory.
@@ -331,9 +331,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      * @param offset the byte offset
      * @return the integer value
-     * @throws RuntimeException if the read is out of bounds
+     * @throws WasmRuntimeException if the read is out of bounds
      */
-    private static native int nativeReadInt32(long memoryHandle, int offset) throws RuntimeException;
+    private static native int nativeReadInt32(long memoryHandle, int offset) throws WasmRuntimeException;
 
     /**
      * Writes a 32-bit integer to memory.
@@ -341,9 +341,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      * @param offset the byte offset
      * @param value the integer value
-     * @throws RuntimeException if the write is out of bounds
+     * @throws WasmRuntimeException if the write is out of bounds
      */
-    private static native void nativeWriteInt32(long memoryHandle, int offset, int value) throws RuntimeException;
+    private static native void nativeWriteInt32(long memoryHandle, int offset, int value) throws WasmRuntimeException;
 
     /**
      * Reads a 64-bit integer from memory.
@@ -351,9 +351,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      * @param offset the byte offset
      * @return the integer value
-     * @throws RuntimeException if the read is out of bounds
+     * @throws WasmRuntimeException if the read is out of bounds
      */
-    private static native long nativeReadInt64(long memoryHandle, int offset) throws RuntimeException;
+    private static native long nativeReadInt64(long memoryHandle, int offset) throws WasmRuntimeException;
 
     /**
      * Writes a 64-bit integer to memory.
@@ -361,9 +361,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      * @param offset the byte offset
      * @param value the integer value
-     * @throws RuntimeException if the write is out of bounds
+     * @throws WasmRuntimeException if the write is out of bounds
      */
-    private static native void nativeWriteInt64(long memoryHandle, int offset, long value) throws RuntimeException;
+    private static native void nativeWriteInt64(long memoryHandle, int offset, long value) throws WasmRuntimeException;
 
     /**
      * Reads a 32-bit float from memory.
@@ -371,9 +371,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      * @param offset the byte offset
      * @return the float value
-     * @throws RuntimeException if the read is out of bounds
+     * @throws WasmRuntimeException if the read is out of bounds
      */
-    private static native float nativeReadFloat32(long memoryHandle, int offset) throws RuntimeException;
+    private static native float nativeReadFloat32(long memoryHandle, int offset) throws WasmRuntimeException;
 
     /**
      * Writes a 32-bit float to memory.
@@ -381,9 +381,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      * @param offset the byte offset
      * @param value the float value
-     * @throws RuntimeException if the write is out of bounds
+     * @throws WasmRuntimeException if the write is out of bounds
      */
-    private static native void nativeWriteFloat32(long memoryHandle, int offset, float value) throws RuntimeException;
+    private static native void nativeWriteFloat32(long memoryHandle, int offset, float value) throws WasmRuntimeException;
 
     /**
      * Reads a 64-bit double from memory.
@@ -391,9 +391,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      * @param offset the byte offset
      * @return the double value
-     * @throws RuntimeException if the read is out of bounds
+     * @throws WasmRuntimeException if the read is out of bounds
      */
-    private static native double nativeReadFloat64(long memoryHandle, int offset) throws RuntimeException;
+    private static native double nativeReadFloat64(long memoryHandle, int offset) throws WasmRuntimeException;
 
     /**
      * Writes a 64-bit double to memory.
@@ -401,9 +401,9 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      * @param offset the byte offset
      * @param value the double value
-     * @throws RuntimeException if the write is out of bounds
+     * @throws WasmRuntimeException if the write is out of bounds
      */
-    private static native void nativeWriteFloat64(long memoryHandle, int offset, double value) throws RuntimeException;
+    private static native void nativeWriteFloat64(long memoryHandle, int offset, double value) throws WasmRuntimeException;
 
     /**
      * Gets the current size of memory in bytes.

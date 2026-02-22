@@ -80,33 +80,6 @@ public final class FunctionSignature {
     }
 
     /**
-     * Returns the number of parameters this function accepts.
-     *
-     * @return the parameter count, always >= 0
-     */
-    public int getParameterCount() {
-        return parameterTypes.length;
-    }
-
-    /**
-     * Returns the number of return values this function produces.
-     *
-     * @return the return count, always >= 0
-     */
-    public int getReturnCount() {
-        return returnTypes.length;
-    }
-
-    /**
-     * Checks if this function has a void return type.
-     *
-     * @return true if the function returns no values, false otherwise
-     */
-    public boolean isVoid() {
-        return returnTypes.length == 0;
-    }
-
-    /**
      * Validates that the provided arguments match this function's signature.
      *
      * @param args the arguments to validate, may be null or empty
@@ -151,15 +124,6 @@ public final class FunctionSignature {
         return Objects.hash(Arrays.hashCode(parameterTypes), Arrays.hashCode(returnTypes));
     }
 
-    /**
-     * Creates a new builder for constructing function signatures.
-     *
-     * @return a new FunctionSignature.Builder instance
-     */
-    public static Builder builder() {
-        return new Builder();
-    }
-
     @Override
     public String toString() {
         final StringBuilder sb = new StringBuilder();
@@ -188,52 +152,4 @@ public final class FunctionSignature {
         return sb.toString();
     }
 
-    /**
-     * Builder for constructing FunctionSignature instances.
-     */
-    public static final class Builder {
-        private ValueType[] parameterTypes = new ValueType[0];
-        private ValueType[] returnTypes = new ValueType[0];
-
-        private Builder() {}
-
-        /**
-         * Sets the parameter types for this function signature.
-         *
-         * @param parameterTypes the parameter types, may be null or empty
-         * @return this builder instance
-         */
-        public Builder parameterTypes(final ValueType... parameterTypes) {
-            if (parameterTypes != null) {
-                this.parameterTypes = parameterTypes.clone();
-            } else {
-                this.parameterTypes = new ValueType[0];
-            }
-            return this;
-        }
-
-        /**
-         * Sets the return types for this function signature.
-         *
-         * @param returnTypes the return types, may be null or empty
-         * @return this builder instance
-         */
-        public Builder returnTypes(final ValueType... returnTypes) {
-            if (returnTypes != null) {
-                this.returnTypes = returnTypes.clone();
-            } else {
-                this.returnTypes = new ValueType[0];
-            }
-            return this;
-        }
-
-        /**
-         * Builds the FunctionSignature instance.
-         *
-         * @return a new FunctionSignature with the configured types
-         */
-        public FunctionSignature build() {
-            return new FunctionSignature(parameterTypes, returnTypes);
-        }
-    }
 }

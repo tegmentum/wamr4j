@@ -16,7 +16,7 @@
 package ai.tegmentum.wamr4j.spi;
 
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 
 /**
  * Service provider interface for WebAssembly runtime implementations.
@@ -89,24 +89,11 @@ public interface RuntimeProvider {
      * leave the system in an inconsistent state.
      *
      * @return a new WebAssembly runtime instance, never null
-     * @throws RuntimeException if the runtime cannot be created
+     * @throws WasmRuntimeException if the runtime cannot be created
      * @throws UnsupportedOperationException if the runtime is not supported in the current
      *     environment
      */
-    WebAssemblyRuntime createRuntime() throws RuntimeException;
-
-    /**
-     * Returns additional information about this runtime provider.
-     *
-     * <p>This method can return implementation-specific details such as version information,
-     * supported features, or configuration options. The returned information is primarily for
-     * debugging and diagnostic purposes.
-     *
-     * @return additional provider information, may be null
-     */
-    default String getDescription() {
-        return null;
-    }
+    WebAssemblyRuntime createRuntime() throws WasmRuntimeException;
 
     /**
      * Returns the minimum Java version required by this provider.

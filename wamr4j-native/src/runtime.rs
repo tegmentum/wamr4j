@@ -20,11 +20,10 @@
 //! including initialization, configuration, and resource management
 //! for the WAMR WebAssembly runtime.
 
-use crate::wamr_wrapper::{WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory, WamrError, WasmValue, WasmType, RuntimeConfig};
-use crate::bindings::{self, WasmRuntimeT, WasmModuleT, WasmModuleInstT, WasmFunctionInstT};
-use crate::utils::{set_last_error};
+use crate::types::{WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory, WamrError, WasmValue, WasmType, RuntimeConfig};
+use crate::bindings;
+use crate::utils::set_last_error;
 use std::ffi::CString;
-use std::ptr;
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
@@ -75,11 +74,6 @@ pub fn runtime_init_with_config(config: &RuntimeConfig) -> Result<WamrRuntime, W
 /// Check if runtime is valid and properly initialized
 pub fn runtime_is_valid(runtime: &WamrRuntime) -> bool {
     !runtime.handle.is_null()
-}
-
-/// Get runtime configuration
-pub fn runtime_get_config(runtime: &WamrRuntime) -> &RuntimeConfig {
-    &runtime.config
 }
 
 // =============================================================================
@@ -206,16 +200,6 @@ pub fn instance_is_valid(instance: &WamrInstance) -> bool {
     !instance.handle.is_null()
 }
 
-/// Get instance stack size
-pub fn instance_get_stack_size(instance: &WamrInstance) -> usize {
-    instance.stack_size
-}
-
-/// Get instance heap size
-pub fn instance_get_heap_size(instance: &WamrInstance) -> usize {
-    instance.heap_size
-}
-
 // =============================================================================
 // Function Management
 // =============================================================================
@@ -267,20 +251,13 @@ pub fn function_lookup(instance: &WamrInstance, name: &str) -> Result<WamrFuncti
 
 /// Call a WebAssembly function with arguments
 pub fn function_call(
-    function: &WamrFunction, 
+    function: &WamrFunction,
     args: &[WasmValue]
 ) -> Result<Vec<WasmValue>, WamrError> {
-    // Basic argument validation
-    if args.len() != function.param_types.len() {
-        return Err(WamrError::FunctionSignatureMismatch);
-    }
-
-    // Type checking
-    for (arg, expected_type) in args.iter().zip(function.param_types.iter()) {
-        if !is_compatible_type(arg, expected_type) {
-            return Err(WamrError::FunctionSignatureMismatch);
-        }
-    }
+    // Note: Argument count and type validation is deferred to WAMR's
+    // wasm_runtime_call_wasm which performs its own validation.
+    // Signature introspection (param_types/result_types) is not yet
+    // implemented — see TODO in function_lookup.
 
     if !function.is_valid() {
         return Err(WamrError::FunctionNotFound);
@@ -403,11 +380,6 @@ pub fn function_get_signature(function: &WamrFunction) -> Result<(Vec<WasmType>,
     Ok((function.param_types.clone(), function.result_types.clone()))
 }
 
-/// Get function name
-pub fn function_get_name(function: &WamrFunction) -> &str {
-    &function.name
-}
-
 // =============================================================================
 // Memory Management
 // =============================================================================
@@ -447,22 +419,11 @@ pub fn memory_data(memory: &WamrMemory) -> *mut u8 {
 }
 
 /// Grow memory by specified pages
-pub fn memory_grow(memory: &mut WamrMemory, pages: u32) -> Result<u32, WamrError> {
-    let old_pages = memory.size / 65536;
-    
-    // WAMR doesn't provide direct memory growth API in the basic export
-    // This would typically be handled by the WebAssembly runtime itself
-    // For now, we simulate the growth by checking if it's valid
-    let new_size = memory.size + (pages as usize * 65536);
-    
-    // Check for overflow or excessive size
-    if new_size < memory.size || new_size > (1024 * 1024 * 1024) { // 1GB max
-        return Err(WamrError::MemoryGrowthFailed);
-    }
-    
-    // Update size tracking
-    memory.size = new_size;
-    Ok(old_pages as u32)
+///
+/// Not yet implemented — requires WAMR's `wasm_runtime_module_enlarge_memory`
+/// binding which is not yet exposed in `bindings.rs`.
+pub fn memory_grow(_memory: &mut WamrMemory, _pages: u32) -> Result<u32, WamrError> {
+    Err(WamrError::MemoryGrowthFailed)
 }
 
 /// Read data from memory at specified offset
@@ -554,23 +515,3 @@ fn is_valid_wasm_header(bytes: &[u8]) -> bool {
     true
 }
 
-/// Check if a WasmValue is compatible with expected type
-fn is_compatible_type(value: &WasmValue, expected: &WasmType) -> bool {
-    match (value, expected) {
-        (WasmValue::I32(_), WasmType::I32) => true,
-        (WasmValue::I64(_), WasmType::I64) => true,
-        (WasmValue::F32(_), WasmType::F32) => true,
-        (WasmValue::F64(_), WasmType::F64) => true,
-        _ => false,
-    }
-}
-
-/// Create a default value for a given type
-fn create_default_value(wasm_type: &WasmType) -> WasmValue {
-    match wasm_type {
-        WasmType::I32 => WasmValue::I32(0),
-        WasmType::I64 => WasmValue::I64(0),
-        WasmType::F32 => WasmValue::F32(0.0),
-        WasmType::F64 => WasmValue::F64(0.0),
-    }
-}

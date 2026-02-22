@@ -17,47 +17,74 @@
 package ai.tegmentum.wamr4j.panama.impl;
 
 import ai.tegmentum.wamr4j.FunctionSignature;
+import ai.tegmentum.wamr4j.ValueType;
 import ai.tegmentum.wamr4j.WebAssemblyFunction;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import ai.tegmentum.wamr4j.panama.internal.NativeLibraryLoader;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 /**
  * Panama FFI-based implementation of WebAssembly function.
- * 
+ *
  * <p>This class represents a callable WebAssembly function using Panama FFI
  * to communicate with the native WAMR library. It provides type-safe
  * function invocation with comprehensive parameter validation.
- * 
+ *
  * @since 1.0.0
  */
 public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
 
     private static final Logger LOGGER = Logger.getLogger(PanamaWebAssemblyFunction.class.getName());
-    
+
+    /** Size of WasmValueFFI struct: i32 type + padding + f64 value = 16 bytes. */
+    private static final long WASM_VALUE_FFI_SIZE = 16;
+
+    private static final int WASM_TYPE_I32 = 0;
+    private static final int WASM_TYPE_I64 = 1;
+    private static final int WASM_TYPE_F32 = 2;
+    private static final int WASM_TYPE_F64 = 3;
+
     // Native function handle as MemorySegment
     private volatile MemorySegment nativeHandle;
-    
+
     // Function metadata
     private final String name;
-    
+
     // State tracking
     private final AtomicBoolean closed = new AtomicBoolean(false);
-    
-    // Function descriptors for native calls
-    private static final FunctionDescriptor DESTROY_FUNCTION_DESC = 
-        FunctionDescriptor.ofVoid(ValueLayout.ADDRESS);
-    private static final FunctionDescriptor CALL_FUNCTION_DESC = 
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT);
-    private static final FunctionDescriptor GET_SIGNATURE_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+    // Lazily cached MethodHandles for native calls
+    private static final class Handles {
+        static final MethodHandle CALL_FUNCTION;
+        static final MethodHandle GET_SIGNATURE;
+
+        static {
+            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
+            final Linker linker = Linker.nativeLinker();
+            CALL_FUNCTION = linker.downcallHandle(
+                lookup.find("wamr_function_call").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            final var sigSymbol = lookup.find("wamr_function_get_signature");
+            GET_SIGNATURE = sigSymbol.isPresent()
+                ? linker.downcallHandle(sigSymbol.get(),
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS))
+                : null;
+        }
+    }
 
     /**
      * Creates a new Panama WebAssembly function wrapper.
-     * 
+     *
      * @param nativeHandle the native function handle, must not be NULL
      * @param name the function name for debugging purposes
      */
@@ -68,7 +95,7 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Function name cannot be null or empty");
         }
-        
+
         this.nativeHandle = nativeHandle;
         this.name = name;
         LOGGER.fine("Created Panama WebAssembly function '" + name + "' with handle: " + nativeHandle);
@@ -82,105 +109,90 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
     @Override
     public FunctionSignature getSignature() {
         ensureNotClosed();
-        
-        try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getSignatureFunc = lookup.find("wamr_get_function_signature")
-                .orElse(MemorySegment.NULL);
-                
-            if (getSignatureFunc.equals(MemorySegment.NULL)) {
-                // Fallback to unknown signature
-                return FunctionSignature.builder()
-                    .build();
+
+        if (Handles.GET_SIGNATURE == null) {
+            return new FunctionSignature(new ValueType[0], new ValueType[0]);
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            // Allocate output buffers for counts and up to 32 param/result types
+            final MemorySegment paramCountPtr = arena.allocate(ValueLayout.JAVA_INT);
+            final MemorySegment resultCountPtr = arena.allocate(ValueLayout.JAVA_INT);
+            final MemorySegment paramTypesPtr = arena.allocate(ValueLayout.JAVA_INT, 32);
+            final MemorySegment resultTypesPtr = arena.allocate(ValueLayout.JAVA_INT, 32);
+
+            final int rc = (int) Handles.GET_SIGNATURE.invoke(
+                nativeHandle, paramTypesPtr, paramCountPtr, resultTypesPtr, resultCountPtr);
+
+            if (rc != 0) {
+                return new FunctionSignature(new ValueType[0], new ValueType[0]);
             }
-            
-            final MethodHandle getSignature = Linker.nativeLinker()
-                .downcallHandle(getSignatureFunc, GET_SIGNATURE_DESC);
-            
-            final MemorySegment signaturePtr = (MemorySegment) getSignature.invoke(nativeHandle);
-            if (signaturePtr.equals(MemorySegment.NULL)) {
-                return FunctionSignature.builder()
-                    .build();
+
+            final int paramCount = paramCountPtr.get(ValueLayout.JAVA_INT, 0);
+            final int resultCount = resultCountPtr.get(ValueLayout.JAVA_INT, 0);
+
+            final ValueType[] paramTypes = new ValueType[paramCount];
+            for (int i = 0; i < paramCount; i++) {
+                paramTypes[i] = wasmTypeToValueType(paramTypesPtr.getAtIndex(ValueLayout.JAVA_INT, i));
             }
-            
-            // Parse native signature format (implementation depends on native format)
-            return parseNativeSignature(signaturePtr);
+
+            final ValueType[] resultTypes = new ValueType[resultCount];
+            for (int i = 0; i < resultCount; i++) {
+                resultTypes[i] = wasmTypeToValueType(resultTypesPtr.getAtIndex(ValueLayout.JAVA_INT, i));
+            }
+
+            return new FunctionSignature(paramTypes, resultTypes);
         } catch (final Throwable e) {
             LOGGER.warning("Failed to get function signature for '" + name + "': " + e.getMessage());
-            return FunctionSignature.builder()
-                .build();
+            return new FunctionSignature(new ValueType[0], new ValueType[0]);
         }
     }
 
     @Override
-    public Object invoke(final Object... args) throws RuntimeException {
-        // Defensive programming - validate inputs
+    public Object invoke(final Object... args) throws WasmRuntimeException {
         if (args == null) {
             throw new IllegalArgumentException("Function arguments cannot be null");
         }
-        
+
         ensureNotClosed();
-        
+
         try (final Arena arena = Arena.ofConfined()) {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment callFunctionFunc = lookup.find("wamr_call_function")
-                .orElseThrow(() -> new RuntimeException(
-                    "Native function 'wamr_call_function' not found"));
-            
-            final MethodHandle callFunction = Linker.nativeLinker()
-                .downcallHandle(callFunctionFunc, CALL_FUNCTION_DESC);
-            
-            // Convert arguments to native format
+            // Convert arguments to WasmValueFFI structs
             final MemorySegment argsBuffer = convertArgumentsToNative(args, arena);
-            final MemorySegment resultsBuffer = arena.allocate(1024); // Placeholder size
-            
-            final int resultCode = (int) callFunction.invoke(
-                nativeHandle, argsBuffer, args.length, resultsBuffer, 1024);
-                
-            if (resultCode != 0) {
-                throw new RuntimeException("Function call failed with code: " + resultCode);
+            final int maxResults = 8;
+            final MemorySegment resultsBuffer = arena.allocate(WASM_VALUE_FFI_SIZE * maxResults);
+            final int errorBufSize = 1024;
+            final MemorySegment errorBuf = arena.allocate(errorBufSize);
+
+            final int resultCount = (int) Handles.CALL_FUNCTION.invoke(
+                nativeHandle, argsBuffer, args.length,
+                resultsBuffer, maxResults,
+                errorBuf, errorBufSize);
+
+            if (resultCount < 0) {
+                final String errorMsg = errorBuf.getString(0);
+                throw new WasmRuntimeException(
+                    errorMsg.isEmpty() ? "Function call failed for: " + name : errorMsg);
             }
 
-            // Convert native results back to Java object (single value or null)
-            final Object[] results = convertResultsFromNative(resultsBuffer);
-            if (results == null || results.length == 0) {
+            // Convert native results back to Java objects
+            if (resultCount == 0) {
                 return null; // Void function
-            } else if (results.length == 1) {
-                return results[0]; // Single return value
-            } else {
-                // Multi-value returns not yet supported - return first value
-                return results[0];
             }
-        } catch (final RuntimeException e) {
-            throw e; // Re-throw WebAssembly exceptions as-is
+
+            final Object[] results = convertResultsFromNative(resultsBuffer, resultCount);
+            return results.length == 1 ? results[0] : results;
+        } catch (final WasmRuntimeException e) {
+            throw e;
         } catch (final Throwable e) {
-            throw new RuntimeException("Unexpected error calling function: " + name, e);
+            throw new WasmRuntimeException("Unexpected error calling function: " + name, e);
         }
     }
 
-    // Helper method for cleanup - not part of public API
+    // Functions are owned by instances and have no separate native destroy
     void close() {
-        if (closed.compareAndSet(false, true)) {
-            final MemorySegment handle = nativeHandle;
-            nativeHandle = MemorySegment.NULL;
-            
-            if (handle != null && !handle.equals(MemorySegment.NULL)) {
-                try {
-                    final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-                    final MemorySegment destroyFunctionFunc = lookup.find("wamr_destroy_function")
-                        .orElse(MemorySegment.NULL);
-                        
-                    if (!destroyFunctionFunc.equals(MemorySegment.NULL)) {
-                        final MethodHandle destroyFunction = Linker.nativeLinker()
-                            .downcallHandle(destroyFunctionFunc, DESTROY_FUNCTION_DESC);
-                        destroyFunction.invoke(handle);
-                        LOGGER.fine("Destroyed Panama WebAssembly function '" + name + "' with handle: " + handle);
-                    }
-                } catch (final Throwable e) {
-                    LOGGER.warning("Error destroying native function: " + e.getMessage());
-                }
-            }
-        }
+        closed.set(true);
+        nativeHandle = MemorySegment.NULL;
     }
 
     private void ensureNotClosed() {
@@ -188,23 +200,81 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
             throw new IllegalStateException("WebAssembly function has been closed");
         }
     }
-    
-    private FunctionSignature parseNativeSignature(final MemorySegment signaturePtr) {
-        // Placeholder implementation - actual parsing depends on native format
-        return FunctionSignature.builder()
-            .build();
-    }
-    
+
     private MemorySegment convertArgumentsToNative(final Object[] args, final Arena arena) {
-        // Placeholder implementation - actual conversion depends on type system
-        return arena.allocate(ValueLayout.JAVA_LONG, args.length);
+        final MemorySegment buffer = arena.allocate(WASM_VALUE_FFI_SIZE * Math.max(args.length, 1));
+
+        for (int i = 0; i < args.length; i++) {
+            final long offset = i * WASM_VALUE_FFI_SIZE;
+            final Object arg = args[i];
+
+            if (arg instanceof Integer) {
+                buffer.set(ValueLayout.JAVA_INT, offset, WASM_TYPE_I32);
+                // Value at offset + 8 (aligned to 8 bytes for the union)
+                buffer.set(ValueLayout.JAVA_INT, offset + 8, (Integer) arg);
+            } else if (arg instanceof Long) {
+                buffer.set(ValueLayout.JAVA_INT, offset, WASM_TYPE_I64);
+                buffer.set(ValueLayout.JAVA_LONG, offset + 8, (Long) arg);
+            } else if (arg instanceof Float) {
+                buffer.set(ValueLayout.JAVA_INT, offset, WASM_TYPE_F32);
+                buffer.set(ValueLayout.JAVA_FLOAT, offset + 8, (Float) arg);
+            } else if (arg instanceof Double) {
+                buffer.set(ValueLayout.JAVA_INT, offset, WASM_TYPE_F64);
+                buffer.set(ValueLayout.JAVA_DOUBLE, offset + 8, (Double) arg);
+            } else {
+                throw new IllegalArgumentException(
+                    "Unsupported argument type: " + (arg == null ? "null" : arg.getClass().getName()));
+            }
+        }
+
+        return buffer;
     }
-    
-    private Object[] convertResultsFromNative(final MemorySegment resultsBuffer) {
-        // Placeholder implementation - actual conversion depends on return types
-        return new Object[0];
+
+    private Object[] convertResultsFromNative(final MemorySegment resultsBuffer, final int count) {
+        final List<Object> results = new ArrayList<>(count);
+
+        for (int i = 0; i < count; i++) {
+            final long offset = i * WASM_VALUE_FFI_SIZE;
+            final int type = resultsBuffer.get(ValueLayout.JAVA_INT, offset);
+
+            switch (type) {
+                case WASM_TYPE_I32:
+                    results.add(resultsBuffer.get(ValueLayout.JAVA_INT, offset + 8));
+                    break;
+                case WASM_TYPE_I64:
+                    results.add(resultsBuffer.get(ValueLayout.JAVA_LONG, offset + 8));
+                    break;
+                case WASM_TYPE_F32:
+                    results.add(resultsBuffer.get(ValueLayout.JAVA_FLOAT, offset + 8));
+                    break;
+                case WASM_TYPE_F64:
+                    results.add(resultsBuffer.get(ValueLayout.JAVA_DOUBLE, offset + 8));
+                    break;
+                default:
+                    LOGGER.warning("Unknown result type: " + type);
+                    results.add(0);
+                    break;
+            }
+        }
+
+        return results.toArray();
     }
-    
+
+    private static ValueType wasmTypeToValueType(final int type) {
+        switch (type) {
+            case WASM_TYPE_I32:
+                return ValueType.I32;
+            case WASM_TYPE_I64:
+                return ValueType.I64;
+            case WASM_TYPE_F32:
+                return ValueType.F32;
+            case WASM_TYPE_F64:
+                return ValueType.F64;
+            default:
+                return ValueType.I32;
+        }
+    }
+
     @Override
     public boolean isValid() {
         return !closed.get() && nativeHandle != null && !nativeHandle.equals(MemorySegment.NULL);

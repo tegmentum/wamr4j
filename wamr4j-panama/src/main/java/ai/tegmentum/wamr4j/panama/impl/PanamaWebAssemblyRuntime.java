@@ -52,42 +52,50 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
     // State tracking
     private final AtomicBoolean closed = new AtomicBoolean(false);
     
-    // Function descriptors for native calls
-    private static final FunctionDescriptor CREATE_RUNTIME_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS);
-    private static final FunctionDescriptor DESTROY_RUNTIME_DESC = 
-        FunctionDescriptor.ofVoid(ValueLayout.ADDRESS);
-    private static final FunctionDescriptor COMPILE_MODULE_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
-    private static final FunctionDescriptor GET_VERSION_DESC = 
-        FunctionDescriptor.of(ValueLayout.ADDRESS);
+    // Lazily cached MethodHandles for native calls
+    private static final class Handles {
+        static final MethodHandle CREATE_RUNTIME;
+        static final MethodHandle DESTROY_RUNTIME;
+        static final MethodHandle COMPILE_MODULE;
+        static final MethodHandle GET_VERSION;
+
+        static {
+            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
+            final Linker linker = Linker.nativeLinker();
+            CREATE_RUNTIME = linker.downcallHandle(
+                lookup.find("wamr_runtime_init").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS));
+            DESTROY_RUNTIME = linker.downcallHandle(
+                lookup.find("wamr_runtime_destroy").orElseThrow(),
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            COMPILE_MODULE = linker.downcallHandle(
+                lookup.find("wamr_module_compile").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            GET_VERSION = linker.downcallHandle(
+                lookup.find("wamr_get_version").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS));
+        }
+    }
 
     /**
      * Creates a new Panama WebAssembly runtime instance.
      * 
-     * @throws ai.tegmentum.wamr4j.exception.RuntimeException if the runtime cannot be initialized
+     * @throws ai.tegmentum.wamr4j.exception.WasmRuntimeException if the runtime cannot be initialized
      */
-    public PanamaWebAssemblyRuntime() throws ai.tegmentum.wamr4j.exception.RuntimeException {
+    public PanamaWebAssemblyRuntime() throws ai.tegmentum.wamr4j.exception.WasmRuntimeException {
         // Ensure native library is loaded
         NativeLibraryLoader.ensureLoaded();
         
         try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment createRuntimeFunc = lookup.find("wamr_create_runtime")
-                .orElseThrow(() -> new ai.tegmentum.wamr4j.exception.RuntimeException(
-                    "Native function 'wamr_create_runtime' not found"));
-            
-            final MethodHandle createRuntime = Linker.nativeLinker()
-                .downcallHandle(createRuntimeFunc, CREATE_RUNTIME_DESC);
-            
-            this.nativeHandle = (MemorySegment) createRuntime.invoke();
+            this.nativeHandle = (MemorySegment) Handles.CREATE_RUNTIME.invoke();
             if (nativeHandle.equals(MemorySegment.NULL)) {
-                throw new ai.tegmentum.wamr4j.exception.RuntimeException(
+                throw new ai.tegmentum.wamr4j.exception.WasmRuntimeException(
                     "Failed to create native WebAssembly runtime");
             }
             LOGGER.fine("Created Panama WebAssembly runtime with handle: " + nativeHandle);
         } catch (final Throwable e) {
-            throw new ai.tegmentum.wamr4j.exception.RuntimeException(
+            throw new ai.tegmentum.wamr4j.exception.WasmRuntimeException(
                 "Failed to initialize Panama WebAssembly runtime", e);
         }
     }
@@ -105,23 +113,19 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
         ensureNotClosed();
         
         try (final Arena arena = Arena.ofConfined()) {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment compileModuleFunc = lookup.find("wamr_compile_module")
-                .orElseThrow(() -> new CompilationException(
-                    "Native function 'wamr_compile_module' not found"));
-            
-            final MethodHandle compileModule = Linker.nativeLinker()
-                .downcallHandle(compileModuleFunc, COMPILE_MODULE_DESC);
-            
-            // Allocate memory for WASM bytes
+            // Allocate memory for WASM bytes and error buffer
             final MemorySegment wasmBuffer = arena.allocate(wasmBytes.length);
             MemorySegment.copy(wasmBytes, 0, wasmBuffer, ValueLayout.JAVA_BYTE, 0, wasmBytes.length);
-            
-            final MemorySegment moduleHandle = (MemorySegment) compileModule.invoke(
-                nativeHandle, wasmBuffer, wasmBytes.length);
-                
+            final int errorBufSize = 1024;
+            final MemorySegment errorBuf = arena.allocate(errorBufSize);
+
+            final MemorySegment moduleHandle = (MemorySegment) Handles.COMPILE_MODULE.invoke(
+                nativeHandle, wasmBuffer, (long) wasmBytes.length, errorBuf, errorBufSize);
+
             if (moduleHandle.equals(MemorySegment.NULL)) {
-                throw new CompilationException("Failed to compile WebAssembly module");
+                final String errorMsg = errorBuf.getString(0);
+                throw new CompilationException(
+                    errorMsg.isEmpty() ? "Failed to compile WebAssembly module" : errorMsg);
             }
             
             return new PanamaWebAssemblyModule(moduleHandle);
@@ -161,23 +165,12 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
         ensureNotClosed();
         
         try {
-            final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-            final MemorySegment getVersionFunc = lookup.find("wamr_get_version")
-                .orElse(MemorySegment.NULL);
-                
-            if (getVersionFunc.equals(MemorySegment.NULL)) {
-                return "unknown";
-            }
-            
-            final MethodHandle getVersion = Linker.nativeLinker()
-                .downcallHandle(getVersionFunc, GET_VERSION_DESC);
-            
-            final MemorySegment versionPtr = (MemorySegment) getVersion.invoke();
+            final MemorySegment versionPtr = (MemorySegment) Handles.GET_VERSION.invoke();
             if (versionPtr.equals(MemorySegment.NULL)) {
                 return "unknown";
             }
-            
-            return versionPtr.getString(0);
+
+            return versionPtr.reinterpret(256).getString(0);
         } catch (final Throwable e) {
             LOGGER.warning("Failed to get WAMR version: " + e.getMessage());
             return "unknown";
@@ -197,16 +190,8 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
             
             if (handle != null && !handle.equals(MemorySegment.NULL)) {
                 try {
-                    final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
-                    final MemorySegment destroyRuntimeFunc = lookup.find("wamr_destroy_runtime")
-                        .orElse(MemorySegment.NULL);
-                        
-                    if (!destroyRuntimeFunc.equals(MemorySegment.NULL)) {
-                        final MethodHandle destroyRuntime = Linker.nativeLinker()
-                            .downcallHandle(destroyRuntimeFunc, DESTROY_RUNTIME_DESC);
-                        destroyRuntime.invoke(handle);
-                        LOGGER.fine("Destroyed Panama WebAssembly runtime with handle: " + handle);
-                    }
+                    Handles.DESTROY_RUNTIME.invoke(handle);
+                    LOGGER.fine("Destroyed Panama WebAssembly runtime with handle: " + handle);
                 } catch (final Throwable e) {
                     LOGGER.warning("Error destroying native runtime: " + e.getMessage());
                 }

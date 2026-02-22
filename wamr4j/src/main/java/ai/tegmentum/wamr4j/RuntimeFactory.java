@@ -23,7 +23,7 @@ import java.util.ServiceLoader;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import ai.tegmentum.wamr4j.spi.RuntimeProvider;
 
 /**
@@ -45,7 +45,6 @@ import ai.tegmentum.wamr4j.spi.RuntimeProvider;
  *
  * <ul>
  *   <li>{@code wamr4j.runtime} - Force specific runtime ("jni", "panama")
- *   <li>{@code wamr4j.runtime.debug} - Enable debug logging
  * </ul>
  *
  * <p>Example usage:
@@ -70,7 +69,6 @@ public final class RuntimeFactory {
     private static final Logger LOGGER = Logger.getLogger(RuntimeFactory.class.getName());
 
     private static final String RUNTIME_PROPERTY = "wamr4j.runtime";
-    private static final String DEBUG_PROPERTY = "wamr4j.runtime.debug";
 
     // Cached providers list to avoid repeated ServiceLoader calls
     private static volatile List<RuntimeProvider> cachedProviders;
@@ -90,15 +88,15 @@ public final class RuntimeFactory {
      * based on system properties, provider priority, and environment compatibility.
      *
      * @return a new WebAssembly runtime instance, never null
-     * @throws RuntimeException if no suitable runtime provider is available
+     * @throws WasmRuntimeException if no suitable runtime provider is available
      * @throws UnsupportedOperationException if WebAssembly is not supported in the current
      *     environment
      */
-    public static WebAssemblyRuntime createRuntime() throws RuntimeException {
+    public static WebAssemblyRuntime createRuntime() throws WasmRuntimeException {
         final List<RuntimeProvider> providers = getAvailableProviders();
 
         if (providers.isEmpty()) {
-            throw new RuntimeException(
+            throw new WasmRuntimeException(
                     "No WebAssembly runtime providers found. Ensure wamr4j-jni or wamr4j-panama "
                             + "is on the classpath.");
         }
@@ -121,7 +119,7 @@ public final class RuntimeFactory {
         try {
             return provider.createRuntime();
         } catch (final Exception e) {
-            throw new RuntimeException(
+            throw new WasmRuntimeException(
                     "Failed to create runtime using provider: " + provider.getName(), e);
         }
     }
@@ -134,11 +132,11 @@ public final class RuntimeFactory {
      *
      * @param providerName the name of the runtime provider to use
      * @return a new WebAssembly runtime instance, never null
-     * @throws RuntimeException if the specified provider is not available
+     * @throws WasmRuntimeException if the specified provider is not available
      * @throws IllegalArgumentException if providerName is null or empty
      */
     public static WebAssemblyRuntime createRuntime(final String providerName)
-            throws RuntimeException {
+            throws WasmRuntimeException {
         if (providerName == null || providerName.trim().isEmpty()) {
             throw new IllegalArgumentException("Provider name cannot be null or empty");
         }
@@ -230,7 +228,7 @@ public final class RuntimeFactory {
 
     private static WebAssemblyRuntime createSpecificRuntime(
             final List<RuntimeProvider> providers, final String requestedName)
-            throws RuntimeException {
+            throws WasmRuntimeException {
 
         for (final RuntimeProvider provider : providers) {
             if (provider.getName().equalsIgnoreCase(requestedName)) {
@@ -238,13 +236,13 @@ public final class RuntimeFactory {
                 try {
                     return provider.createRuntime();
                 } catch (final Exception e) {
-                    throw new RuntimeException(
+                    throw new WasmRuntimeException(
                             "Failed to create requested runtime: " + requestedName, e);
                 }
             }
         }
 
-        throw new RuntimeException(
+        throw new WasmRuntimeException(
                 "Requested runtime provider '"
                         + requestedName
                         + "' is not available. "
@@ -257,16 +255,16 @@ public final class RuntimeFactory {
             final String version = System.getProperty("java.version");
             if (version.startsWith("1.")) {
                 // Java 8 and below use 1.x format
-                final int legacyVersionIndex = 3;
-                return Integer.parseInt(version.substring(2, legacyVersionIndex));
+                return Integer.parseInt(version.substring(2, 3));
             } else {
-                // Java 9+ use x.y.z format
-                final int dotIndex = version.indexOf('.');
-                final int endIndex;
-                if (dotIndex > 0) {
-                    endIndex = dotIndex;
-                } else {
-                    endIndex = version.length();
+                // Java 9+ use x.y.z, x-ea, or x+build format
+                int endIndex = version.length();
+                for (int i = 0; i < version.length(); i++) {
+                    final char ch = version.charAt(i);
+                    if (ch == '.' || ch == '-' || ch == '+') {
+                        endIndex = i;
+                        break;
+                    }
                 }
                 return Integer.parseInt(version.substring(0, endIndex));
             }
@@ -283,13 +281,9 @@ public final class RuntimeFactory {
     }
 
     private static void logDebug(final String message, final Object... args) {
-        if (isDebugEnabled() && LOGGER.isLoggable(Level.FINE)) {
+        if (LOGGER.isLoggable(Level.FINE)) {
             LOGGER.fine(formatMessage(message, args));
         }
-    }
-
-    private static boolean isDebugEnabled() {
-        return Boolean.parseBoolean(System.getProperty(DEBUG_PROPERTY, "false"));
     }
 
     private static String formatMessage(final String message, final Object... args) {
@@ -297,10 +291,18 @@ public final class RuntimeFactory {
             return message;
         }
 
-        String formatted = message;
-        for (final Object arg : args) {
-            formatted = formatted.replaceFirst("\\{\\}", String.valueOf(arg));
+        final StringBuilder sb = new StringBuilder(message.length() + args.length * 16);
+        int argIndex = 0;
+        int start = 0;
+        int pos;
+
+        while ((pos = message.indexOf("{}", start)) >= 0 && argIndex < args.length) {
+            sb.append(message, start, pos);
+            sb.append(args[argIndex++]);
+            start = pos + 2;
         }
-        return formatted;
+
+        sb.append(message, start, message.length());
+        return sb.toString();
     }
 }

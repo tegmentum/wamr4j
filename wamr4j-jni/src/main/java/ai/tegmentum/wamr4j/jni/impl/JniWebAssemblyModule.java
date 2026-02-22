@@ -19,7 +19,7 @@ package ai.tegmentum.wamr4j.jni.impl;
 import ai.tegmentum.wamr4j.FunctionSignature;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
-import ai.tegmentum.wamr4j.exception.RuntimeException;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -57,25 +57,29 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
     }
 
     @Override
-    public WebAssemblyInstance instantiate() throws RuntimeException {
+    public WebAssemblyInstance instantiate() throws WasmRuntimeException {
         return instantiate(null);
     }
 
     @Override
-    public WebAssemblyInstance instantiate(final Map<String, Map<String, Object>> imports) throws RuntimeException {
+    public WebAssemblyInstance instantiate(final Map<String, Map<String, Object>> imports) throws WasmRuntimeException {
+        if (imports != null && !imports.isEmpty()) {
+            throw new UnsupportedOperationException("Import handling is not yet supported");
+        }
+
         ensureNotClosed();
         
         try {
             final long instanceHandle = nativeInstantiateModule(nativeHandle, imports);
             if (instanceHandle == 0L) {
-                throw new RuntimeException("Failed to instantiate WebAssembly module");
+                throw new WasmRuntimeException("Failed to instantiate WebAssembly module");
             }
             
             return new JniWebAssemblyInstance(instanceHandle);
-        } catch (final RuntimeException e) {
+        } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Exception e) {
-            throw new RuntimeException("Unexpected error during module instantiation", e);
+            throw new WasmRuntimeException("Unexpected error during module instantiation", e);
         }
     }
 
@@ -122,18 +126,6 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
     }
 
     @Override
-    public boolean validateImports(final Map<String, Map<String, Object>> imports) {
-        ensureNotClosed();
-        
-        try {
-            return nativeValidateImports(nativeHandle, imports);
-        } catch (final Exception e) {
-            LOGGER.warning("Error validating imports: " + e.getMessage());
-            return false;
-        }
-    }
-
-    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -176,10 +168,10 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
      * @param moduleHandle the native module handle
      * @param imports the import bindings, may be null
      * @return the native instance handle, or 0 on failure
-     * @throws RuntimeException if instantiation fails
+     * @throws WasmRuntimeException if instantiation fails
      */
     private static native long nativeInstantiateModule(long moduleHandle, Map<String, Map<String, Object>> imports)
-        throws RuntimeException;
+        throws WasmRuntimeException;
 
     /**
      * Gets the names of all exports defined by the module.
@@ -206,12 +198,4 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
      */
     private static native FunctionSignature nativeGetExportFunctionSignature(long moduleHandle, String functionName);
 
-    /**
-     * Validates import bindings against module requirements.
-     * 
-     * @param moduleHandle the native module handle
-     * @param imports the import bindings to validate
-     * @return true if imports are valid, false otherwise
-     */
-    private static native boolean nativeValidateImports(long moduleHandle, Map<String, Map<String, Object>> imports);
 }
