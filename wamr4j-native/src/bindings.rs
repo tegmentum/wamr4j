@@ -38,9 +38,6 @@ pub type WasmModuleInstT = c_void;
 /// Opaque handle to WASM function instance
 pub type WasmFunctionInstT = c_void;
 
-/// Opaque handle to WASM execution environment (used in callbacks)
-pub type WasmExecEnv = c_void;
-
 // =============================================================================
 // WAMR C API Function Bindings
 // =============================================================================
@@ -120,7 +117,7 @@ extern "C" {
     /// - `argv`: Array of argument values (32-bit integers)
     /// 
     /// # Returns
-    /// 0 on success, -1 on failure
+    /// true (nonzero) on success, false (0) on failure
     pub fn wasm_runtime_call_wasm(
         function: *mut WasmFunctionInstT,
         argc: c_uint,
@@ -201,22 +198,6 @@ extern "C" {
 
 
 // =============================================================================
-// Constants and Limits
-// =============================================================================
-
-/// Default stack size for WebAssembly instances (16KB)
-pub const DEFAULT_STACK_SIZE: c_uint = 16 * 1024;
-
-/// Default heap size for WebAssembly instances (16MB)
-pub const DEFAULT_HEAP_SIZE: c_uint = 16 * 1024 * 1024;
-
-/// Maximum error buffer size
-pub const MAX_ERROR_BUF_SIZE: c_uint = 1024;
-
-/// WebAssembly page size (64KB)
-pub const WASM_PAGE_SIZE: c_uint = 65536;
-
-// =============================================================================
 // Export/Import Kind Constants
 // =============================================================================
 
@@ -268,45 +249,7 @@ pub struct wasm_global_inst_t {
     pub global_data: *mut c_void,
 }
 
-// =============================================================================
-// Host Function Registration (Import Support)
-// =============================================================================
-
-/// Native symbol entry for host function registration
-#[repr(C)]
-pub struct NativeSymbol {
-    /// Function name (null-terminated C string)
-    pub symbol: *const c_char,
-    /// Function pointer to native implementation
-    pub func_ptr: *mut c_void,
-    /// Function signature string (e.g., "(ii)i" for (i32, i32) -> i32)
-    pub signature: *const c_char,
-    /// Optional attachment data
-    pub attachment: *mut c_void,
-}
-
 extern "C" {
-    /// Register native functions (host functions) with WAMR
-    ///
-    /// # Parameters
-    /// - `module_name`: Module name for the imports (e.g., "env")
-    /// - `native_symbols`: Array of native symbol definitions
-    /// - `n_native_symbols`: Number of symbols in the array
-    ///
-    /// # Returns
-    /// true on success, false on failure
-    pub fn wasm_runtime_register_natives(
-        module_name: *const c_char,
-        native_symbols: *const NativeSymbol,
-        n_native_symbols: c_uint,
-    ) -> bool;
-
-    /// Unregister native functions for a module
-    ///
-    /// # Parameters
-    /// - `module_name`: Module name to unregister
-    pub fn wasm_runtime_unregister_natives(module_name: *const c_char);
-
     /// Set a global variable value in a module instance
     ///
     /// # Parameters
@@ -336,33 +279,6 @@ extern "C" {
         name: *const c_char,
         value: *mut c_void,
     ) -> bool;
-
-    /// Get function arguments from execution environment (for use in native callbacks)
-    ///
-    /// # Parameters
-    /// - `exec_env`: Execution environment passed to native function
-    ///
-    /// # Returns
-    /// Pointer to argument array (u32 values for i32/f32, u64 for i64/f64)
-    pub fn wasm_runtime_get_function_argv(exec_env: *mut WasmExecEnv) -> *mut u32;
-
-    /// Get module instance from execution environment
-    ///
-    /// # Parameters
-    /// - `exec_env`: Execution environment passed to native function
-    ///
-    /// # Returns
-    /// Pointer to module instance
-    pub fn wasm_runtime_get_module_inst(exec_env: *mut WasmExecEnv) -> *mut WasmModuleInstT;
-
-    /// Get user data (attachment) from native function
-    ///
-    /// # Parameters
-    /// - `exec_env`: Execution environment passed to native function
-    ///
-    /// # Returns
-    /// Pointer to attachment data (void*)
-    pub fn wasm_runtime_get_function_attachment(exec_env: *mut WasmExecEnv) -> *mut c_void;
 
     /// Get module from module instance
     ///

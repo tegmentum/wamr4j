@@ -324,10 +324,28 @@ void wasm_runtime_deinstantiate(wasm_module_inst_t* module_inst);
 wasm_function_inst_t* wasm_runtime_lookup_function(const wasm_module_inst_t* module_inst, const char* name);
 int wasm_runtime_call_wasm(wasm_function_inst_t* function, unsigned int argc, unsigned int* argv);
 
+// Function signature introspection
+unsigned int wasm_func_get_param_count(const wasm_function_inst_t* func_inst, const wasm_module_inst_t* module_inst);
+unsigned int wasm_func_get_result_count(const wasm_function_inst_t* func_inst, const wasm_module_inst_t* module_inst);
+void wasm_func_get_param_types(const wasm_function_inst_t* func_inst, const wasm_module_inst_t* module_inst, unsigned char* param_types);
+void wasm_func_get_result_types(const wasm_function_inst_t* func_inst, const wasm_module_inst_t* module_inst, unsigned char* result_types);
+
 // Memory operations
 void* wasm_runtime_addr_app_to_native(const wasm_module_inst_t* module_inst, unsigned int app_offset);
 unsigned int wasm_runtime_addr_native_to_app(const wasm_module_inst_t* module_inst, void* native_ptr);
 unsigned int wasm_runtime_get_app_addr_range(const wasm_module_inst_t* module_inst, unsigned int app_offset, unsigned int* p_app_start_offset, unsigned int* p_app_end_offset);
+
+// Module/instance relationship
+wasm_module_t* wasm_runtime_get_module(wasm_module_inst_t* module_inst);
+unsigned int wasm_runtime_get_export_count(const wasm_module_t* module);
+
+// Global variable operations
+int wasm_runtime_set_global(wasm_module_inst_t* module_inst, const char* name, const void* value);
+int wasm_runtime_get_global(const wasm_module_inst_t* module_inst, const char* name, void* value);
+
+// Host function registration
+int wasm_runtime_register_natives(const char* module_name, const void* native_symbols, unsigned int n_native_symbols);
+void wasm_runtime_unregister_natives(const char* module_name);
 
 #ifdef __cplusplus
 }
@@ -497,12 +515,12 @@ void* wasm_runtime_lookup_function(const void* module_inst, const char* name) {
 }
 
 // Placeholder function call
+// Real WAMR returns bool: true (nonzero) = success, false (0) = failure
 int wasm_runtime_call_wasm(void* function, unsigned int argc, unsigned int* argv) {
     if (!function) {
-        return -1;
+        return 0;  // false = failure
     }
-    // Return success for placeholder
-    return 0;
+    return 1;  // true = success
 }
 
 // Placeholder memory access
@@ -532,6 +550,58 @@ unsigned int wasm_runtime_get_app_addr_range(const void* module_inst,
     if (p_app_start_offset) *p_app_start_offset = 0;
     if (p_app_end_offset) *p_app_end_offset = 65536; // 1 page
     return 65536;
+}
+
+// Function signature introspection stubs
+unsigned int wasm_func_get_param_count(const void* func_inst, const void* module_inst) {
+    return 0;
+}
+
+unsigned int wasm_func_get_result_count(const void* func_inst, const void* module_inst) {
+    return 0;
+}
+
+void wasm_func_get_param_types(const void* func_inst, const void* module_inst, unsigned char* param_types) {
+    // no-op
+}
+
+void wasm_func_get_result_types(const void* func_inst, const void* module_inst, unsigned char* result_types) {
+    // no-op
+}
+
+// Module/instance relationship stubs
+void* wasm_runtime_get_module(void* module_inst) {
+    return module_inst; // return the instance handle itself as placeholder
+}
+
+unsigned int wasm_runtime_get_export_count(const void* module) {
+    return 0;
+}
+
+int wasm_runtime_get_export_type(const void* module, int export_index, void* export_type) {
+    return 0; // false
+}
+
+int wasm_runtime_get_export_global_inst(const void* module_inst, const char* name, void* global_inst) {
+    return 0; // false
+}
+
+// Global variable stubs
+int wasm_runtime_set_global(void* module_inst, const char* name, const void* value) {
+    return 0; // false
+}
+
+int wasm_runtime_get_global(const void* module_inst, const char* name, void* value) {
+    return 0; // false
+}
+
+// Host function registration stubs
+int wasm_runtime_register_natives(const char* module_name, const void* native_symbols, unsigned int n_native_symbols) {
+    return 0; // false
+}
+
+void wasm_runtime_unregister_natives(const char* module_name) {
+    // no-op
 }
 
 // Additional API functions for extended functionality

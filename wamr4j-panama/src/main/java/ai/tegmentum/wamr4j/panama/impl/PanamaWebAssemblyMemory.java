@@ -40,7 +40,10 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     
     // Native memory handle as MemorySegment
     private volatile MemorySegment nativeHandle;
-    
+
+    // Parent instance for lifecycle tracking
+    private final PanamaWebAssemblyInstance parentInstance;
+
     // State tracking
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
@@ -72,14 +75,20 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
 
     /**
      * Creates a new Panama WebAssembly memory wrapper.
-     * 
+     *
      * @param nativeHandle the native memory handle, must not be NULL
+     * @param parentInstance the parent instance that owns this memory
      */
-    public PanamaWebAssemblyMemory(final MemorySegment nativeHandle) {
+    public PanamaWebAssemblyMemory(final MemorySegment nativeHandle,
+            final PanamaWebAssemblyInstance parentInstance) {
         if (nativeHandle == null || nativeHandle.equals(MemorySegment.NULL)) {
             throw new IllegalArgumentException("Native memory handle cannot be null or NULL");
         }
+        if (parentInstance == null) {
+            throw new IllegalArgumentException("Parent instance cannot be null");
+        }
         this.nativeHandle = nativeHandle;
+        this.parentInstance = parentInstance;
         LOGGER.fine("Created Panama WebAssembly memory with handle: " + nativeHandle);
     }
 
@@ -252,7 +261,7 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     }
 
     private void ensureNotClosed() {
-        if (closed.get()) {
+        if (closed.get() || parentInstance.isClosed()) {
             throw new IllegalStateException("WebAssembly memory has been closed");
         }
     }
@@ -324,6 +333,7 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
 
     @Override
     public boolean isValid() {
-        return !closed.get() && nativeHandle != null && !nativeHandle.equals(MemorySegment.NULL);
+        return !parentInstance.isClosed() && !closed.get()
+            && nativeHandle != null && !nativeHandle.equals(MemorySegment.NULL);
     }
 }

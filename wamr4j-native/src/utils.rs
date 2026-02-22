@@ -90,10 +90,13 @@ pub fn write_error_to_buffer(error: &str, buffer: *mut c_char, buffer_size: c_in
 // FFI Value Types and Constants
 // =============================================================================
 
-/// FFI-compatible WebAssembly value representation
+/// FFI-compatible WebAssembly value representation.
+/// Layout: value_type (i32) at offset 0, padding at offset 4, data at offset 8.
+/// Total size: 16 bytes, matching the Java Panama struct layout.
 #[repr(C)]
 pub struct WasmValueFFI {
     pub value_type: c_int, // 0=i32, 1=i64, 2=f32, 3=f64
+    _padding: c_int,       // explicit padding for 8-byte aligned data
     pub data: [u8; 8],     // Union-like storage for all value types
 }
 
@@ -113,6 +116,7 @@ pub fn wasm_value_to_ffi(value: &WasmValue) -> WasmValueFFI {
     match value {
         WasmValue::I32(v) => WasmValueFFI {
             value_type: WASM_TYPE_I32,
+            _padding: 0,
             data: {
                 let mut data = [0u8; 8];
                 data[0..4].copy_from_slice(&v.to_le_bytes());
@@ -121,10 +125,12 @@ pub fn wasm_value_to_ffi(value: &WasmValue) -> WasmValueFFI {
         },
         WasmValue::I64(v) => WasmValueFFI {
             value_type: WASM_TYPE_I64,
+            _padding: 0,
             data: v.to_le_bytes(),
         },
         WasmValue::F32(v) => WasmValueFFI {
             value_type: WASM_TYPE_F32,
+            _padding: 0,
             data: {
                 let mut data = [0u8; 8];
                 data[0..4].copy_from_slice(&v.to_le_bytes());
@@ -133,6 +139,7 @@ pub fn wasm_value_to_ffi(value: &WasmValue) -> WasmValueFFI {
         },
         WasmValue::F64(v) => WasmValueFFI {
             value_type: WASM_TYPE_F64,
+            _padding: 0,
             data: v.to_le_bytes(),
         },
     }

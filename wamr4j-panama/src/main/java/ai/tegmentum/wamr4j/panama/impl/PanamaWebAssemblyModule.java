@@ -17,6 +17,7 @@
 package ai.tegmentum.wamr4j.panama.impl;
 
 import ai.tegmentum.wamr4j.FunctionSignature;
+import ai.tegmentum.wamr4j.ValueType;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
@@ -89,10 +90,7 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
 
     @Override
     public WebAssemblyInstance instantiate(final Map<String, Map<String, Object>> imports) throws WasmRuntimeException {
-        if (imports == null) {
-            throw new IllegalArgumentException("Imports map cannot be null");
-        }
-        if (!imports.isEmpty()) {
+        if (imports != null && !imports.isEmpty()) {
             throw new UnsupportedOperationException("Import handling is not yet supported");
         }
 
@@ -139,7 +137,7 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
         }
         ensureNotClosed();
         // Function signatures are only available on instantiated function handles
-        return null;
+        return new FunctionSignature(new ValueType[0], new ValueType[0]);
     }
 
     @Override

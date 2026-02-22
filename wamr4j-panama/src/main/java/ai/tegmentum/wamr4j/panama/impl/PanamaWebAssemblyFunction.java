@@ -55,6 +55,9 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
     // Function metadata
     private final String name;
 
+    // Parent instance for lifecycle tracking
+    private final PanamaWebAssemblyInstance parentInstance;
+
     // State tracking
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
@@ -87,17 +90,23 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
      *
      * @param nativeHandle the native function handle, must not be NULL
      * @param name the function name for debugging purposes
+     * @param parentInstance the parent instance that owns this function
      */
-    public PanamaWebAssemblyFunction(final MemorySegment nativeHandle, final String name) {
+    public PanamaWebAssemblyFunction(final MemorySegment nativeHandle, final String name,
+            final PanamaWebAssemblyInstance parentInstance) {
         if (nativeHandle == null || nativeHandle.equals(MemorySegment.NULL)) {
             throw new IllegalArgumentException("Native function handle cannot be null or NULL");
         }
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Function name cannot be null or empty");
         }
+        if (parentInstance == null) {
+            throw new IllegalArgumentException("Parent instance cannot be null");
+        }
 
         this.nativeHandle = nativeHandle;
         this.name = name;
+        this.parentInstance = parentInstance;
         LOGGER.fine("Created Panama WebAssembly function '" + name + "' with handle: " + nativeHandle);
     }
 
@@ -196,7 +205,7 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
     }
 
     private void ensureNotClosed() {
-        if (closed.get()) {
+        if (closed.get() || parentInstance.isClosed()) {
             throw new IllegalStateException("WebAssembly function has been closed");
         }
     }
@@ -277,6 +286,7 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
 
     @Override
     public boolean isValid() {
-        return !closed.get() && nativeHandle != null && !nativeHandle.equals(MemorySegment.NULL);
+        return !parentInstance.isClosed() && !closed.get()
+            && nativeHandle != null && !nativeHandle.equals(MemorySegment.NULL);
     }
 }
