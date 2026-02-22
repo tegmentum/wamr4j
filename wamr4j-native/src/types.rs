@@ -127,6 +127,8 @@ unsafe impl Send for WamrInstance {}
 pub struct WamrFunction {
     /// Handle to actual WAMR function instance
     pub handle: *mut WasmFunctionInstT,
+    /// Handle to the module instance (needed for signature introspection APIs)
+    pub instance_handle: *mut WasmModuleInstT,
     pub name: String,
     pub param_types: Vec<WasmType>,
     pub result_types: Vec<WasmType>,

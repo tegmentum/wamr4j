@@ -343,9 +343,9 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
     public boolean hasMemory() {
         ensureNotClosed();
         try {
-            getMemory();
-            return true;
-        } catch (WasmRuntimeException e) {
+            final MemorySegment memoryHandle = (MemorySegment) Handles.GET_MEMORY.invoke(nativeHandle);
+            return !memoryHandle.equals(MemorySegment.NULL);
+        } catch (final Throwable e) {
             return false;
         }
     }

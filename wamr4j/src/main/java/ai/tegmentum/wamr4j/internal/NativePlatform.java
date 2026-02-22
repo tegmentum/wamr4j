@@ -100,6 +100,38 @@ public final class NativePlatform {
     }
 
     /**
+     * Returns the current Java major version.
+     *
+     * <p>Handles both the legacy {@code 1.x} format (Java 8 and below) and the modern
+     * {@code x.y.z} format (Java 9+).
+     *
+     * @return the major version number (e.g. 8, 11, 17, 23)
+     */
+    public static int getJavaMajorVersion() {
+        try {
+            final String version = System.getProperty("java.version");
+            if (version.startsWith("1.")) {
+                // Java 8 and below use 1.x format
+                return Integer.parseInt(version.substring(2, 3));
+            } else {
+                // Java 9+ use x.y.z, x-ea, or x+build format
+                int endIndex = version.length();
+                for (int i = 0; i < version.length(); i++) {
+                    final char ch = version.charAt(i);
+                    if (ch == '.' || ch == '-' || ch == '+') {
+                        endIndex = i;
+                        break;
+                    }
+                }
+                return Integer.parseInt(version.substring(0, endIndex));
+            }
+        } catch (final Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to determine Java version, assuming Java 8", e);
+            return 8;
+        }
+    }
+
+    /**
      * Returns the platform-specific native library file name for the given library base name.
      *
      * <p>Applies platform conventions: {@code lib} prefix and {@code .so} / {@code .dylib} /

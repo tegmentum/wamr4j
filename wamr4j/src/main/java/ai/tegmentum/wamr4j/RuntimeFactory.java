@@ -24,6 +24,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
+import ai.tegmentum.wamr4j.internal.NativePlatform;
 import ai.tegmentum.wamr4j.spi.RuntimeProvider;
 
 /**
@@ -74,7 +75,7 @@ public final class RuntimeFactory {
     private static volatile List<RuntimeProvider> cachedProviders;
 
     // Current Java major version
-    private static final int JAVA_VERSION = getJavaMajorVersion();
+    private static final int JAVA_VERSION = NativePlatform.getJavaMajorVersion();
 
     // Private constructor to prevent instantiation
     private RuntimeFactory() {
@@ -248,30 +249,6 @@ public final class RuntimeFactory {
                         + "' is not available. "
                         + "Available providers: "
                         + getAvailableRuntimeNames());
-    }
-
-    private static int getJavaMajorVersion() {
-        try {
-            final String version = System.getProperty("java.version");
-            if (version.startsWith("1.")) {
-                // Java 8 and below use 1.x format
-                return Integer.parseInt(version.substring(2, 3));
-            } else {
-                // Java 9+ use x.y.z, x-ea, or x+build format
-                int endIndex = version.length();
-                for (int i = 0; i < version.length(); i++) {
-                    final char ch = version.charAt(i);
-                    if (ch == '.' || ch == '-' || ch == '+') {
-                        endIndex = i;
-                        break;
-                    }
-                }
-                return Integer.parseInt(version.substring(0, endIndex));
-            }
-        } catch (final Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to determine Java version, assuming Java 8", e);
-            return 8;
-        }
     }
 
     private static void logInfo(final String message, final Object... args) {
