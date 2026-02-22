@@ -77,14 +77,6 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
             throw new IllegalStateException("Function is no longer valid - parent instance has been closed");
         }
         
-        // Validate arguments against function signature
-        final FunctionSignature signature = getSignature();
-        if (!signature.isCompatible(args)) {
-            throw new IllegalArgumentException(
-                "Arguments do not match function signature. Expected: " + signature + 
-                ", got " + (args != null ? args.length : 0) + " arguments");
-        }
-        
         try {
             return nativeInvokeFunction(nativeHandle, args);
         } catch (final WasmRuntimeException e) {

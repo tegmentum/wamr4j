@@ -51,7 +51,7 @@ public final class JniRuntimeProvider implements RuntimeProvider {
     @Override
     public int getPriority() {
         // Use lower priority on Java 23+ to prefer Panama when available
-        final int javaVersion = getJavaMajorVersion();
+        final int javaVersion = NativePlatform.getJavaMajorVersion();
         return javaVersion >= 23 ? JAVA_23_PRIORITY : DEFAULT_PRIORITY;
     }
 
@@ -97,26 +97,4 @@ public final class JniRuntimeProvider implements RuntimeProvider {
         return getClass().getResource(resourcePath) != null;
     }
 
-    private static int getJavaMajorVersion() {
-        try {
-            final String version = System.getProperty("java.version");
-            if (version.startsWith("1.")) {
-                // Java 8 and below use 1.x format
-                return Integer.parseInt(version.substring(2, 3));
-            } else {
-                // Java 9+ use x.y.z, x-ea, or x+build format
-                int endIndex = version.length();
-                for (int i = 0; i < version.length(); i++) {
-                    final char ch = version.charAt(i);
-                    if (ch == '.' || ch == '-' || ch == '+') {
-                        endIndex = i;
-                        break;
-                    }
-                }
-                return Integer.parseInt(version.substring(0, endIndex));
-            }
-        } catch (final Exception e) {
-            return 8; // Default to Java 8
-        }
-    }
 }

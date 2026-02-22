@@ -127,6 +127,33 @@ extern "C" {
         argv: *mut c_uint,
     ) -> c_int;
 
+    // Function Signature Introspection
+    /// Get the number of parameters for a function
+    pub fn wasm_func_get_param_count(
+        func_inst: *const WasmFunctionInstT,
+        module_inst: *const WasmModuleInstT,
+    ) -> u32;
+
+    /// Get the number of results for a function
+    pub fn wasm_func_get_result_count(
+        func_inst: *const WasmFunctionInstT,
+        module_inst: *const WasmModuleInstT,
+    ) -> u32;
+
+    /// Get the parameter types for a function
+    pub fn wasm_func_get_param_types(
+        func_inst: *const WasmFunctionInstT,
+        module_inst: *const WasmModuleInstT,
+        param_types: *mut c_uchar,
+    );
+
+    /// Get the result types for a function
+    pub fn wasm_func_get_result_types(
+        func_inst: *const WasmFunctionInstT,
+        module_inst: *const WasmModuleInstT,
+        result_types: *mut c_uchar,
+    );
+
     // Memory Operations
     /// Convert WebAssembly application address to native pointer
     /// 

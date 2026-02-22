@@ -285,8 +285,7 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
         final byte[] result = new byte[length];
         try {
             final ByteBuffer buffer = asByteBuffer();
-            buffer.position(offset);
-            buffer.get(result);
+            buffer.get(offset, result, 0, length);
             return result;
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to read " + length + " bytes at offset " + offset, e);
@@ -307,8 +306,7 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
 
         try {
             final ByteBuffer buffer = asByteBuffer();
-            buffer.position(offset);
-            buffer.put(data);
+            buffer.put(offset, data, 0, data.length);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to write " + data.length + " bytes at offset " + offset, e);
         }

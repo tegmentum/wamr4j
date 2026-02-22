@@ -233,16 +233,39 @@ pub fn function_lookup(instance: &WamrInstance, name: &str) -> Result<WamrFuncti
         return Err(WamrError::FunctionNotFound);
     }
     
-    // TODO: Get actual function signature from WAMR using:
-    // - wasm_func_get_param_count(function_handle, module_inst)
-    // - wasm_func_get_result_count(function_handle, module_inst)
-    // For now, return empty vectors as signature info is not critical for
-    // import callback tests (the actual signature is known from import declarations)
-    let param_types = vec![];
-    let result_types = vec![];
-    
+    // Get parameter types
+    let param_count = unsafe {
+        bindings::wasm_func_get_param_count(function_handle, instance.handle)
+    };
+    let mut raw_param_types = vec![0u8; param_count as usize];
+    if param_count > 0 {
+        unsafe {
+            bindings::wasm_func_get_param_types(
+                function_handle, instance.handle, raw_param_types.as_mut_ptr());
+        }
+    }
+    let param_types: Vec<WasmType> = raw_param_types.iter()
+        .map(|&t| wasm_valkind_to_type(t))
+        .collect();
+
+    // Get result types
+    let result_count = unsafe {
+        bindings::wasm_func_get_result_count(function_handle, instance.handle)
+    };
+    let mut raw_result_types = vec![0u8; result_count as usize];
+    if result_count > 0 {
+        unsafe {
+            bindings::wasm_func_get_result_types(
+                function_handle, instance.handle, raw_result_types.as_mut_ptr());
+        }
+    }
+    let result_types: Vec<WasmType> = raw_result_types.iter()
+        .map(|&t| wasm_valkind_to_type(t))
+        .collect();
+
     Ok(WamrFunction {
         handle: function_handle,
+        instance_handle: instance.handle,
         name: name.to_string(),
         param_types,
         result_types,
@@ -390,11 +413,21 @@ pub fn memory_get(instance: &WamrInstance) -> Result<WamrMemory, WamrError> {
         return Err(WamrError::InstantiationFailed);
     }
 
-    // TODO: Get memory size from WAMR using:
-    // - wasm_runtime_get_memory(module_inst, 0)
-    // - wasm_memory_get_cur_page_count(memory_inst) * 65536
-    // For now, return a reasonable default size
-    let memory_size = 65536u32; // 1 WASM page = 64KB
+    // Get actual memory size from WAMR
+    let mut start_offset: u32 = 0;
+    let mut end_offset: u32 = 0;
+    let range_valid = unsafe {
+        bindings::wasm_runtime_get_app_addr_range(
+            instance.handle,
+            0,
+            &mut start_offset,
+            &mut end_offset,
+        )
+    };
+    if range_valid == 0 {
+        return Err(WamrError::MemoryAccessViolation);
+    }
+    let memory_size = end_offset;
     
     // Get memory data pointer for offset 0
     let data_ptr = unsafe {
@@ -495,6 +528,17 @@ pub fn memory_write(memory: &mut WamrMemory, offset: usize, data: &[u8]) -> Resu
 // =============================================================================
 // Helper Functions
 // =============================================================================
+
+/// Convert WAMR value kind byte to WasmType
+fn wasm_valkind_to_type(kind: u8) -> WasmType {
+    match kind {
+        0 => WasmType::I32,
+        1 => WasmType::I64,
+        2 => WasmType::F32,
+        3 => WasmType::F64,
+        _ => WasmType::I32, // fallback for unknown types
+    }
+}
 
 /// Check if WebAssembly header is valid
 fn is_valid_wasm_header(bytes: &[u8]) -> bool {
