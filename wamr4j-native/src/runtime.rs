@@ -321,7 +321,7 @@ pub fn function_call(
         )
     };
     
-    if call_result != 0 {
+    if call_result == 0 {
         // TODO: Use wasm_runtime_get_exception(module_inst) for error details
         let error_msg = "Function execution failed".to_string();
         set_last_error(error_msg.clone());

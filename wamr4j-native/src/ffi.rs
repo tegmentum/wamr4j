@@ -25,20 +25,20 @@ use std::os::raw::{c_char, c_int, c_long, c_uchar, c_void};
 use std::ptr;
 
 use crate::runtime::{
-    runtime_init, runtime_init_with_config, runtime_is_valid,
-    module_compile, module_validate, module_get_size,
-    instance_create, instance_is_valid,
+    runtime_init,
+    module_compile,
+    instance_create,
     function_lookup, function_call, function_get_signature,
-    memory_get, memory_size, memory_data, memory_grow, memory_read, memory_write,
+    memory_get, memory_size, memory_data, memory_grow,
 };
 use crate::utils::{
-    write_error_to_buffer, get_last_error, clear_last_error, set_last_error,
+    write_error_to_buffer, get_last_error, set_last_error,
     wasm_value_from_ffi, wasm_value_to_ffi, wasm_type_to_ffi,
     WasmValueFFI,
 };
 use crate::types::{
     WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory,
-    WasmValue, RuntimeConfig,
+    WasmValue,
 };
 use crate::bindings::{
     WasmModuleInstT,
@@ -66,29 +66,6 @@ pub extern "C" fn wamr_runtime_init() -> *mut c_void {
     }
 }
 
-/// Initialize the WAMR runtime with custom configuration
-#[no_mangle]
-pub extern "C" fn wamr_runtime_init_with_config(
-    stack_size: c_long,
-    heap_size: c_long,
-    max_thread_num: c_int,
-) -> *mut c_void {
-    if stack_size < 0 || heap_size < 0 || max_thread_num < 0 {
-        return ptr::null_mut();
-    }
-
-    let config = RuntimeConfig {
-        stack_size: stack_size as usize,
-        heap_size: heap_size as usize,
-        max_thread_num: max_thread_num as u32,
-    };
-
-    match runtime_init_with_config(&config) {
-        Ok(runtime) => Box::into_raw(Box::new(runtime)) as *mut c_void,
-        Err(_) => ptr::null_mut(),
-    }
-}
-
 /// Destroy the WAMR runtime and clean up all resources
 #[no_mangle]
 pub extern "C" fn wamr_runtime_destroy(runtime: *mut c_void) {
@@ -97,19 +74,6 @@ pub extern "C" fn wamr_runtime_destroy(runtime: *mut c_void) {
             let _runtime = Box::from_raw(runtime as *mut WamrRuntime);
             // Box drop will clean up the runtime
         }
-    }
-}
-
-/// Check if runtime is valid
-#[no_mangle]
-pub extern "C" fn wamr_runtime_is_valid(runtime: *mut c_void) -> c_int {
-    if runtime.is_null() {
-        return 0;
-    }
-
-    unsafe {
-        let runtime_ref = &*(runtime as *const WamrRuntime);
-        if runtime_is_valid(runtime_ref) { 1 } else { 0 }
     }
 }
 
@@ -146,35 +110,6 @@ pub extern "C" fn wamr_module_compile(
     }
 }
 
-/// Validate WebAssembly bytecode without compilation
-#[no_mangle]
-pub extern "C" fn wamr_module_validate(
-    runtime: *mut c_void,
-    wasm_bytes: *const c_uchar,
-    length: c_long,
-    error_buf: *mut c_char,
-    error_buf_size: c_int,
-) -> c_int {
-    if runtime.is_null() || wasm_bytes.is_null() || length <= 0 {
-        write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
-        return 0;
-    }
-
-    unsafe {
-        let runtime_ref = &*(runtime as *const WamrRuntime);
-        let bytes = std::slice::from_raw_parts(wasm_bytes, length as usize);
-        
-        match module_validate(runtime_ref, bytes) {
-            Ok(_) => 1,
-            Err(e) => {
-                let error_msg = format!("Module validation failed: {:?}", e);
-                write_error_to_buffer(&error_msg, error_buf, error_buf_size);
-                0
-            }
-        }
-    }
-}
-
 /// Destroy a WebAssembly module
 #[no_mangle]
 pub extern "C" fn wamr_module_destroy(module: *mut c_void) {
@@ -183,19 +118,6 @@ pub extern "C" fn wamr_module_destroy(module: *mut c_void) {
             let _module = Box::from_raw(module as *mut WamrModule);
             // Box drop will clean up the module
         }
-    }
-}
-
-/// Get module size in bytes
-#[no_mangle]
-pub extern "C" fn wamr_module_get_size(module: *mut c_void) -> c_long {
-    if module.is_null() {
-        return -1;
-    }
-
-    unsafe {
-        let module_ref = &*(module as *const WamrModule);
-        module_get_size(module_ref) as c_long
     }
 }
 
@@ -238,19 +160,6 @@ pub extern "C" fn wamr_instance_destroy(instance: *mut c_void) {
             let _instance = Box::from_raw(instance as *mut WamrInstance);
             // Box drop will clean up the instance
         }
-    }
-}
-
-/// Check if instance is valid
-#[no_mangle]
-pub extern "C" fn wamr_instance_is_valid(instance: *mut c_void) -> c_int {
-    if instance.is_null() {
-        return 0;
-    }
-
-    unsafe {
-        let instance_ref = &*(instance as *const WamrInstance);
-        if instance_is_valid(instance_ref) { 1 } else { 0 }
     }
 }
 
@@ -449,53 +358,6 @@ pub extern "C" fn wamr_memory_grow(memory: *mut c_void, pages: c_long) -> c_int 
     }
 }
 
-/// Read data from memory at offset
-#[no_mangle]
-#[inline(never)] // Keep as separate function for debugging, but optimize internally
-pub extern "C" fn wamr_memory_read(
-    memory: *mut c_void,
-    offset: c_long,
-    buffer: *mut c_void,
-    size: c_long,
-) -> c_int {
-    if memory.is_null() || buffer.is_null() || offset < 0 || size <= 0 {
-        return -1;
-    }
-
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        let buffer_slice = std::slice::from_raw_parts_mut(buffer as *mut u8, size as usize);
-        
-        match memory_read(memory_ref, offset as usize, buffer_slice) {
-            Ok(bytes_read) => bytes_read as c_int,
-            Err(_) => -1,
-        }
-    }
-}
-
-/// Write data to memory at offset
-#[no_mangle]
-pub extern "C" fn wamr_memory_write(
-    memory: *mut c_void,
-    offset: c_long,
-    buffer: *const c_void,
-    size: c_long,
-) -> c_int {
-    if memory.is_null() || buffer.is_null() || offset < 0 || size <= 0 {
-        return -1;
-    }
-
-    unsafe {
-        let memory_ref = &mut *(memory as *mut WamrMemory);
-        let buffer_slice = std::slice::from_raw_parts(buffer as *const u8, size as usize);
-        
-        match memory_write(memory_ref, offset as usize, buffer_slice) {
-            Ok(bytes_written) => bytes_written as c_int,
-            Err(_) => -1,
-        }
-    }
-}
-
 // =============================================================================
 // Utility Functions
 // =============================================================================
@@ -536,12 +398,6 @@ pub extern "C" fn wamr_get_last_error(buffer: *mut c_char, buffer_size: c_int) -
         }
         None => 0,
     }
-}
-
-/// Clear last error
-#[no_mangle]
-pub extern "C" fn wamr_clear_last_error() {
-    clear_last_error();
 }
 
 // =============================================================================

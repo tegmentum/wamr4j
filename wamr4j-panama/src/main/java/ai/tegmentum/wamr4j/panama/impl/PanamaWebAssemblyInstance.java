@@ -130,7 +130,7 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
                     errorMsg.isEmpty() ? "Function not found: " + name : errorMsg);
             }
             
-            return new PanamaWebAssemblyFunction(functionHandle, name);
+            return new PanamaWebAssemblyFunction(functionHandle, name, this);
         } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Throwable e) {
@@ -148,7 +148,7 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
                 throw new WasmRuntimeException("No memory exported by WebAssembly module");
             }
             
-            return new PanamaWebAssemblyMemory(memoryHandle);
+            return new PanamaWebAssemblyMemory(memoryHandle, this);
         } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Throwable e) {

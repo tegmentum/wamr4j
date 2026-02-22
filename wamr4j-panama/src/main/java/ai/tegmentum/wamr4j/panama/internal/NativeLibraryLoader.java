@@ -43,7 +43,7 @@ public final class NativeLibraryLoader {
 
     private static final String LIBRARY_NAME = "wamr4j_native";
     private static final String LIBRARY_PATH_PREFIX = "/META-INF/native/";
-    private static final AtomicBoolean loaded = new AtomicBoolean(false);
+    private static final AtomicBoolean attempted = new AtomicBoolean(false);
     private static volatile SymbolLookup symbolLookup;
     private static volatile String loadError;
 
@@ -57,9 +57,9 @@ public final class NativeLibraryLoader {
      * @throws RuntimeException if the library cannot be loaded
      */
     public static void ensureLoaded() throws RuntimeException {
-        if (!loaded.get()) {
+        if (!attempted.get()) {
             synchronized (NativeLibraryLoader.class) {
-                if (!loaded.get()) {
+                if (!attempted.get()) {
                     loadNativeLibrary();
                 }
             }
@@ -87,7 +87,7 @@ public final class NativeLibraryLoader {
      * @return true if the library is loaded successfully
      */
     public static boolean isLoaded() {
-        return loaded.get() && loadError == null;
+        return attempted.get() && loadError == null;
     }
 
     private static void loadNativeLibrary() {
@@ -118,7 +118,7 @@ public final class NativeLibraryLoader {
             LOGGER.severe("Failed to load native library: " + e.getMessage());
             throw new RuntimeException("Native library loading failed", e);
         } finally {
-            loaded.set(true);
+            attempted.set(true);
         }
     }
 
