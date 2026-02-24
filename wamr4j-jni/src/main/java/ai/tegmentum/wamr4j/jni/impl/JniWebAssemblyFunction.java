@@ -33,14 +33,14 @@ import java.util.logging.Logger;
 public final class JniWebAssemblyFunction implements WebAssemblyFunction {
 
     private static final Logger LOGGER = Logger.getLogger(JniWebAssemblyFunction.class.getName());
-    
+
     // Native function handle
-    private final long nativeHandle;
-    
+    private volatile long nativeHandle;
+
     // Function metadata
     private final String functionName;
     private final JniWebAssemblyInstance parentInstance;
-    
+
     // Cached signature (loaded lazily)
     private volatile FunctionSignature cachedSignature;
 
@@ -119,14 +119,37 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
 
     @Override
     public boolean isValid() {
-        return parentInstance.isValid();
+        return nativeHandle != 0L && parentInstance.isValid();
+    }
+
+    /**
+     * Destroys the native function handle, freeing the Rust Box wrapper.
+     * Called by the parent instance during cleanup.
+     */
+    void close() {
+        final long handle = nativeHandle;
+        nativeHandle = 0L;
+        if (handle != 0L) {
+            try {
+                nativeDestroyFunction(handle);
+            } catch (final Exception e) {
+                LOGGER.warning("Error destroying native function '" + functionName + "': " + e.getMessage());
+            }
+        }
     }
 
     // Native method declarations
-    
+
+    /**
+     * Destroys a native WebAssembly function handle.
+     *
+     * @param functionHandle the native function handle
+     */
+    private static native void nativeDestroyFunction(long functionHandle);
+
     /**
      * Invokes a WebAssembly function with the given arguments.
-     * 
+     *
      * @param functionHandle the native function handle
      * @param args the function arguments
      * @return the function result, or null for void functions
@@ -136,7 +159,7 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
 
     /**
      * Gets the signature of a WebAssembly function.
-     * 
+     *
      * @param functionHandle the native function handle
      * @return the function signature
      */

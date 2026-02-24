@@ -44,10 +44,6 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
     /** Size of WasmValueFFI struct: i32 type + padding + f64 value = 16 bytes. */
     private static final long WASM_VALUE_FFI_SIZE = 16;
 
-    private static final int WASM_TYPE_I32 = 0;
-    private static final int WASM_TYPE_I64 = 1;
-    private static final int WASM_TYPE_F32 = 2;
-    private static final int WASM_TYPE_F64 = 3;
 
     // Native function handle as MemorySegment
     private volatile MemorySegment nativeHandle;
@@ -65,6 +61,7 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
     private static final class Handles {
         static final MethodHandle CALL_FUNCTION;
         static final MethodHandle GET_SIGNATURE;
+        static final MethodHandle DESTROY_FUNCTION;
 
         static {
             final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
@@ -81,6 +78,11 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
                     FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS))
+                : null;
+            final var destroySymbol = lookup.find("wamr_function_destroy");
+            DESTROY_FUNCTION = destroySymbol.isPresent()
+                ? linker.downcallHandle(destroySymbol.get(),
+                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS))
                 : null;
         }
     }
@@ -170,13 +172,12 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
             final MemorySegment argsBuffer = convertArgumentsToNative(args, arena);
             final int maxResults = 8;
             final MemorySegment resultsBuffer = arena.allocate(WASM_VALUE_FFI_SIZE * maxResults);
-            final int errorBufSize = 1024;
-            final MemorySegment errorBuf = arena.allocate(errorBufSize);
+            final MemorySegment errorBuf = arena.allocate(WasmTypes.ERROR_BUF_SIZE);
 
             final int resultCount = (int) Handles.CALL_FUNCTION.invoke(
                 nativeHandle, argsBuffer, args.length,
                 resultsBuffer, maxResults,
-                errorBuf, errorBufSize);
+                errorBuf, WasmTypes.ERROR_BUF_SIZE);
 
             if (resultCount < 0) {
                 final String errorMsg = errorBuf.getString(0);
@@ -198,10 +199,19 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
         }
     }
 
-    // Functions are owned by instances and have no separate native destroy
     void close() {
-        closed.set(true);
-        nativeHandle = MemorySegment.NULL;
+        if (closed.compareAndSet(false, true)) {
+            final MemorySegment handle = nativeHandle;
+            nativeHandle = MemorySegment.NULL;
+
+            if (handle != null && !handle.equals(MemorySegment.NULL) && Handles.DESTROY_FUNCTION != null) {
+                try {
+                    Handles.DESTROY_FUNCTION.invoke(handle);
+                } catch (final Throwable e) {
+                    LOGGER.warning("Error destroying native function '" + name + "': " + e.getMessage());
+                }
+            }
+        }
     }
 
     private void ensureNotClosed() {
@@ -218,17 +228,17 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
             final Object arg = args[i];
 
             if (arg instanceof Integer) {
-                buffer.set(ValueLayout.JAVA_INT, offset, WASM_TYPE_I32);
+                buffer.set(ValueLayout.JAVA_INT, offset, WasmTypes.I32);
                 // Value at offset + 8 (aligned to 8 bytes for the union)
                 buffer.set(ValueLayout.JAVA_INT, offset + 8, (Integer) arg);
             } else if (arg instanceof Long) {
-                buffer.set(ValueLayout.JAVA_INT, offset, WASM_TYPE_I64);
+                buffer.set(ValueLayout.JAVA_INT, offset, WasmTypes.I64);
                 buffer.set(ValueLayout.JAVA_LONG, offset + 8, (Long) arg);
             } else if (arg instanceof Float) {
-                buffer.set(ValueLayout.JAVA_INT, offset, WASM_TYPE_F32);
+                buffer.set(ValueLayout.JAVA_INT, offset, WasmTypes.F32);
                 buffer.set(ValueLayout.JAVA_FLOAT, offset + 8, (Float) arg);
             } else if (arg instanceof Double) {
-                buffer.set(ValueLayout.JAVA_INT, offset, WASM_TYPE_F64);
+                buffer.set(ValueLayout.JAVA_INT, offset, WasmTypes.F64);
                 buffer.set(ValueLayout.JAVA_DOUBLE, offset + 8, (Double) arg);
             } else {
                 throw new IllegalArgumentException(
@@ -247,16 +257,16 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
             final int type = resultsBuffer.get(ValueLayout.JAVA_INT, offset);
 
             switch (type) {
-                case WASM_TYPE_I32:
+                case WasmTypes.I32:
                     results.add(resultsBuffer.get(ValueLayout.JAVA_INT, offset + 8));
                     break;
-                case WASM_TYPE_I64:
+                case WasmTypes.I64:
                     results.add(resultsBuffer.get(ValueLayout.JAVA_LONG, offset + 8));
                     break;
-                case WASM_TYPE_F32:
+                case WasmTypes.F32:
                     results.add(resultsBuffer.get(ValueLayout.JAVA_FLOAT, offset + 8));
                     break;
-                case WASM_TYPE_F64:
+                case WasmTypes.F64:
                     results.add(resultsBuffer.get(ValueLayout.JAVA_DOUBLE, offset + 8));
                     break;
                 default:
@@ -271,13 +281,13 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
 
     private static ValueType wasmTypeToValueType(final int type) {
         switch (type) {
-            case WASM_TYPE_I32:
+            case WasmTypes.I32:
                 return ValueType.I32;
-            case WASM_TYPE_I64:
+            case WasmTypes.I64:
                 return ValueType.I64;
-            case WASM_TYPE_F32:
+            case WasmTypes.F32:
                 return ValueType.F32;
-            case WASM_TYPE_F64:
+            case WasmTypes.F64:
                 return ValueType.F64;
             default:
                 return ValueType.I32;

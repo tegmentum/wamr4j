@@ -16,6 +16,8 @@
 
 package ai.tegmentum.wamr4j.panama.impl;
 
+import ai.tegmentum.wamr4j.PackageType;
+import ai.tegmentum.wamr4j.RunningMode;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
 import ai.tegmentum.wamr4j.exception.CompilationException;
@@ -58,6 +60,16 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
         static final MethodHandle DESTROY_RUNTIME;
         static final MethodHandle COMPILE_MODULE;
         static final MethodHandle GET_VERSION;
+        static final MethodHandle GET_VERSION_PARTS;
+        static final MethodHandle IS_RUNNING_MODE_SUPPORTED;
+        static final MethodHandle SET_DEFAULT_RUNNING_MODE;
+        static final MethodHandle SET_LOG_LEVEL;
+        static final MethodHandle INIT_THREAD_ENV;
+        static final MethodHandle DESTROY_THREAD_ENV;
+        static final MethodHandle IS_THREAD_ENV_INITED;
+        static final MethodHandle SET_MAX_THREAD_NUM;
+        static final MethodHandle GET_FILE_PACKAGE_TYPE;
+        static final MethodHandle GET_CURRENT_PACKAGE_VERSION;
 
         static {
             final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
@@ -75,6 +87,43 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
             GET_VERSION = linker.downcallHandle(
                 lookup.find("wamr_get_version").orElseThrow(),
                 FunctionDescriptor.of(ValueLayout.ADDRESS));
+            GET_VERSION_PARTS = linker.downcallHandle(
+                lookup.find("wamr_get_version_parts").orElseThrow(),
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            IS_RUNNING_MODE_SUPPORTED = linker.downcallHandle(
+                lookup.find("wamr_is_running_mode_supported").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+            SET_DEFAULT_RUNNING_MODE = linker.downcallHandle(
+                lookup.find("wamr_set_default_running_mode").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+            SET_LOG_LEVEL = linker.downcallHandle(
+                lookup.find("wamr_set_log_level").orElseThrow(),
+                FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT));
+            INIT_THREAD_ENV = resolveOptional(lookup, linker,
+                "wamr_init_thread_env",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT));
+            DESTROY_THREAD_ENV = resolveOptional(lookup, linker,
+                "wamr_destroy_thread_env",
+                FunctionDescriptor.ofVoid());
+            IS_THREAD_ENV_INITED = resolveOptional(lookup, linker,
+                "wamr_is_thread_env_inited",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT));
+            SET_MAX_THREAD_NUM = resolveOptional(lookup, linker,
+                "wamr_set_max_thread_num",
+                FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT));
+            GET_FILE_PACKAGE_TYPE = resolveOptional(lookup, linker,
+                "wamr_get_file_package_type",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            GET_CURRENT_PACKAGE_VERSION = resolveOptional(lookup, linker,
+                "wamr_get_current_package_version",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+        }
+
+        private static MethodHandle resolveOptional(final SymbolLookup lookup, final Linker linker,
+                final String name, final FunctionDescriptor desc) {
+            final var symbol = lookup.find(name);
+            return symbol.isPresent() ? linker.downcallHandle(symbol.get(), desc) : null;
         }
     }
 
@@ -116,11 +165,10 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
             // Allocate memory for WASM bytes and error buffer
             final MemorySegment wasmBuffer = arena.allocate(wasmBytes.length);
             MemorySegment.copy(wasmBytes, 0, wasmBuffer, ValueLayout.JAVA_BYTE, 0, wasmBytes.length);
-            final int errorBufSize = 1024;
-            final MemorySegment errorBuf = arena.allocate(errorBufSize);
+            final MemorySegment errorBuf = arena.allocate(WasmTypes.ERROR_BUF_SIZE);
 
             final MemorySegment moduleHandle = (MemorySegment) Handles.COMPILE_MODULE.invoke(
-                nativeHandle, wasmBuffer, (long) wasmBytes.length, errorBuf, errorBufSize);
+                nativeHandle, wasmBuffer, (long) wasmBytes.length, errorBuf, WasmTypes.ERROR_BUF_SIZE);
 
             if (moduleHandle.equals(MemorySegment.NULL)) {
                 final String errorMsg = errorBuf.getString(0);
@@ -174,6 +222,199 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
         } catch (final Throwable e) {
             LOGGER.warning("Failed to get WAMR version: " + e.getMessage());
             return "unknown";
+        }
+    }
+
+    @Override
+    public int getMajorVersion() {
+        ensureNotClosed();
+        return getVersionPart(0);
+    }
+
+    @Override
+    public int getMinorVersion() {
+        ensureNotClosed();
+        return getVersionPart(1);
+    }
+
+    @Override
+    public int getPatchVersion() {
+        ensureNotClosed();
+        return getVersionPart(2);
+    }
+
+    @Override
+    public boolean isRunningModeSupported(final RunningMode mode) {
+        if (mode == null) {
+            throw new IllegalArgumentException("Running mode cannot be null");
+        }
+        ensureNotClosed();
+        try {
+            final int result = (int) Handles.IS_RUNNING_MODE_SUPPORTED.invoke(mode.getNativeValue());
+            return result != 0;
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to check running mode support: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean setDefaultRunningMode(final RunningMode mode) {
+        if (mode == null) {
+            throw new IllegalArgumentException("Running mode cannot be null");
+        }
+        ensureNotClosed();
+        try {
+            final int result = (int) Handles.SET_DEFAULT_RUNNING_MODE.invoke(mode.getNativeValue());
+            return result == 0;
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to set default running mode: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void setLogLevel(final int level) {
+        ensureNotClosed();
+        try {
+            Handles.SET_LOG_LEVEL.invoke(level);
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to set log level: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean initThreadEnv() {
+        ensureNotClosed();
+
+        if (Handles.INIT_THREAD_ENV == null) {
+            LOGGER.warning("Native function 'wamr_init_thread_env' not available");
+            return false;
+        }
+
+        try {
+            final int result = (int) Handles.INIT_THREAD_ENV.invoke();
+            return result == 0;
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to init thread env: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void destroyThreadEnv() {
+        ensureNotClosed();
+
+        if (Handles.DESTROY_THREAD_ENV == null) {
+            LOGGER.warning("Native function 'wamr_destroy_thread_env' not available");
+            return;
+        }
+
+        try {
+            Handles.DESTROY_THREAD_ENV.invoke();
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to destroy thread env: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean isThreadEnvInited() {
+        ensureNotClosed();
+
+        if (Handles.IS_THREAD_ENV_INITED == null) {
+            return false;
+        }
+
+        try {
+            final int result = (int) Handles.IS_THREAD_ENV_INITED.invoke();
+            return result != 0;
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to check thread env: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void setMaxThreadNum(final int num) {
+        if (num < 0) {
+            throw new IllegalArgumentException("Max thread number cannot be negative: " + num);
+        }
+
+        ensureNotClosed();
+
+        if (Handles.SET_MAX_THREAD_NUM == null) {
+            LOGGER.warning("Native function 'wamr_set_max_thread_num' not available");
+            return;
+        }
+
+        try {
+            Handles.SET_MAX_THREAD_NUM.invoke(num);
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to set max thread num: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public PackageType getFilePackageType(final byte[] wasmBytes) {
+        if (wasmBytes == null) {
+            throw new IllegalArgumentException("WebAssembly bytes cannot be null");
+        }
+        ensureNotClosed();
+
+        if (Handles.GET_FILE_PACKAGE_TYPE == null) {
+            LOGGER.warning("wamr_get_file_package_type not available");
+            return PackageType.UNKNOWN;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment buf = arena.allocate(wasmBytes.length);
+            MemorySegment.copy(wasmBytes, 0, buf, ValueLayout.JAVA_BYTE, 0, wasmBytes.length);
+            final int typeVal = (int) Handles.GET_FILE_PACKAGE_TYPE.invoke(buf, wasmBytes.length);
+            return PackageType.fromNativeValue(typeVal);
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to get file package type: " + e.getMessage());
+            return PackageType.UNKNOWN;
+        }
+    }
+
+    @Override
+    public int getCurrentPackageVersion(final PackageType packageType) {
+        if (packageType == null) {
+            throw new IllegalArgumentException("Package type cannot be null");
+        }
+        ensureNotClosed();
+
+        if (Handles.GET_CURRENT_PACKAGE_VERSION == null) {
+            LOGGER.warning("wamr_get_current_package_version not available");
+            return 0;
+        }
+
+        try {
+            return (int) Handles.GET_CURRENT_PACKAGE_VERSION.invoke(packageType.getNativeValue());
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to get current package version: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Retrieves a specific version part (0=major, 1=minor, 2=patch).
+     */
+    private int getVersionPart(final int index) {
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment majorPtr = arena.allocate(ValueLayout.JAVA_INT);
+            final MemorySegment minorPtr = arena.allocate(ValueLayout.JAVA_INT);
+            final MemorySegment patchPtr = arena.allocate(ValueLayout.JAVA_INT);
+            Handles.GET_VERSION_PARTS.invoke(majorPtr, minorPtr, patchPtr);
+            return switch (index) {
+                case 0 -> majorPtr.get(ValueLayout.JAVA_INT, 0);
+                case 1 -> minorPtr.get(ValueLayout.JAVA_INT, 0);
+                case 2 -> patchPtr.get(ValueLayout.JAVA_INT, 0);
+                default -> 0;
+            };
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to get version part: " + e.getMessage());
+            return 0;
         }
     }
 

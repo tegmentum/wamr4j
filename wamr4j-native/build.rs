@@ -78,11 +78,19 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
         .define("WAMR_BUILD_BULK_MEMORY", "1")
         .define("WAMR_BUILD_REF_TYPES", "1")
         .define("WAMR_BUILD_SIMD", "1")
-        .define("WAMR_BUILD_JIT", "0") // Disable JIT for now
+        .define("WAMR_BUILD_JIT", "0")
         .define("WAMR_BUILD_DUMP_CALL_STACK", "1")
-        .define("WAMR_BUILD_PERF_PROFILING", "0")
-        .define("WAMR_BUILD_MEMORY_PROFILING", "0")
+        .define("WAMR_BUILD_PERF_PROFILING", "1")
+        .define("WAMR_BUILD_MEMORY_PROFILING", "1")
+        .define("WAMR_BUILD_THREAD_MGR", "1")
+        .define("WAMR_BUILD_LIB_PTHREAD", "1")
         .define("WAMR_BUILD_CUSTOM_NAME_SECTION", "1")
+        .define("WAMR_BUILD_LOAD_CUSTOM_SECTION", "1")
+        .define("WAMR_BUILD_INSTRUCTION_METERING", "1")
+        .define("WAMR_CONFIGURABLE_BOUNDS_CHECKS", "1")
+        // HW memory bounds check stays enabled (required by module loader).
+        // Stack HW bounds check disabled — its sigaltstack setup conflicts with JVM.
+        .define("WAMR_DISABLE_STACK_HW_BOUND_CHECK", "1")
         .define("CMAKE_BUILD_TYPE", "Release");
         
     // Platform-specific configurations
@@ -299,53 +307,27 @@ const PLACEHOLDER_WASM_EXPORT_H: &str = r#"
 #ifndef WASM_EXPORT_H
 #define WASM_EXPORT_H
 
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct wasm_runtime_t wasm_runtime_t;
-typedef struct wasm_module_t wasm_module_t;
-typedef struct wasm_module_inst_t wasm_module_inst_t;
-typedef struct wasm_function_inst_t wasm_function_inst_t;
+// Opaque handle types
+typedef void* wasm_module_t;
+typedef void* wasm_module_inst_t;
+typedef void* wasm_function_inst_t;
+typedef void* wasm_exec_env_t;
+typedef void* wasm_memory_inst_t;
+typedef void* wasm_func_type_t;
+typedef uint8_t wasm_valkind_t;
 
-// Runtime management
-wasm_runtime_t* wasm_runtime_init(void);
-void wasm_runtime_destroy(void);
-
-// Module operations
-wasm_module_t* wasm_runtime_load(const unsigned char* buf, unsigned int size, char* error_buf, unsigned int error_buf_size);
-void wasm_runtime_unload(wasm_module_t* module);
-
-// Instance operations
-wasm_module_inst_t* wasm_runtime_instantiate(const wasm_module_t* module, unsigned int stack_size, unsigned int heap_size, char* error_buf, unsigned int error_buf_size);
-void wasm_runtime_deinstantiate(wasm_module_inst_t* module_inst);
-
-// Function operations
-wasm_function_inst_t* wasm_runtime_lookup_function(const wasm_module_inst_t* module_inst, const char* name);
-int wasm_runtime_call_wasm(wasm_function_inst_t* function, unsigned int argc, unsigned int* argv);
-
-// Function signature introspection
-unsigned int wasm_func_get_param_count(const wasm_function_inst_t* func_inst, const wasm_module_inst_t* module_inst);
-unsigned int wasm_func_get_result_count(const wasm_function_inst_t* func_inst, const wasm_module_inst_t* module_inst);
-void wasm_func_get_param_types(const wasm_function_inst_t* func_inst, const wasm_module_inst_t* module_inst, unsigned char* param_types);
-void wasm_func_get_result_types(const wasm_function_inst_t* func_inst, const wasm_module_inst_t* module_inst, unsigned char* result_types);
-
-// Memory operations
-void* wasm_runtime_addr_app_to_native(const wasm_module_inst_t* module_inst, unsigned int app_offset);
-unsigned int wasm_runtime_addr_native_to_app(const wasm_module_inst_t* module_inst, void* native_ptr);
-unsigned int wasm_runtime_get_app_addr_range(const wasm_module_inst_t* module_inst, unsigned int app_offset, unsigned int* p_app_start_offset, unsigned int* p_app_end_offset);
-
-// Module/instance relationship
-wasm_module_t* wasm_runtime_get_module(wasm_module_inst_t* module_inst);
-unsigned int wasm_runtime_get_export_count(const wasm_module_t* module);
-
-// Global variable operations
-int wasm_runtime_set_global(wasm_module_inst_t* module_inst, const char* name, const void* value);
-int wasm_runtime_get_global(const wasm_module_inst_t* module_inst, const char* name, void* value);
-
-// Host function registration
-int wasm_runtime_register_natives(const char* module_name, const void* native_symbols, unsigned int n_native_symbols);
-void wasm_runtime_unregister_natives(const char* module_name);
+// Structs used by import/export introspection and global access
+typedef struct wasm_export_t { const char *name; uint32_t kind; union { void *func_type; void *table_type; void *global_type; void *memory_type; } u; } wasm_export_t;
+typedef struct wasm_import_t { const char *module_name; const char *name; uint32_t kind; bool linked; union { void *func_type; void *table_type; void *global_type; void *memory_type; } u; } wasm_import_t;
+typedef struct wasm_global_inst_t { wasm_valkind_t kind; bool is_mutable; void *global_data; } wasm_global_inst_t;
 
 #ifdef __cplusplus
 }
@@ -402,6 +384,7 @@ pub type WasmRuntimeT = c_void;
 pub type WasmModuleT = c_void;
 pub type WasmModuleInstT = c_void;
 pub type WasmFunctionInstT = c_void;
+pub type WasmExecEnvT = c_void;
 
 // Function declarations (placeholders)
 extern "C" {
@@ -426,230 +409,250 @@ extern "C" {
         module_inst: *const WasmModuleInstT,
         name: *const c_char,
     ) -> *mut WasmFunctionInstT;
+    pub fn wasm_runtime_create_exec_env(
+        module_inst: *mut WasmModuleInstT,
+        stack_size: c_uint,
+    ) -> *mut WasmExecEnvT;
+    pub fn wasm_runtime_destroy_exec_env(exec_env: *mut WasmExecEnvT);
     pub fn wasm_runtime_call_wasm(
+        exec_env: *mut WasmExecEnvT,
         function: *mut WasmFunctionInstT,
         argc: c_uint,
         argv: *mut c_uint,
     ) -> c_int;
+    pub fn wasm_runtime_get_exception(
+        module_inst: *mut WasmModuleInstT,
+    ) -> *const c_char;
+    pub fn wasm_runtime_clear_exception(
+        module_inst: *mut WasmModuleInstT,
+    );
     pub fn wasm_runtime_addr_app_to_native(
         module_inst: *const WasmModuleInstT,
-        app_offset: c_uint,
+        app_offset: u64,
     ) -> *mut c_void;
-    pub fn wasm_runtime_addr_native_to_app(
-        module_inst: *const WasmModuleInstT,
-        native_ptr: *mut c_void,
-    ) -> c_uint;
     pub fn wasm_runtime_get_app_addr_range(
         module_inst: *const WasmModuleInstT,
-        app_offset: c_uint,
-        p_app_start_offset: *mut c_uint,
-        p_app_end_offset: *mut c_uint,
-    ) -> c_uint;
+        app_offset: u64,
+        p_app_start_offset: *mut u64,
+        p_app_end_offset: *mut u64,
+    ) -> bool;
 }
 "#;
 
 const PLACEHOLDER_WAMR_C: &str = r#"
 // Placeholder WAMR implementation for development
+// Only stubs for functions actually declared in bindings.rs
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
 
-// Placeholder runtime state
-static int runtime_initialized = 0;
 static int next_handle = 1;
+static char placeholder_memory[65536];
+static const char* placeholder_exception = NULL;
 
-// Placeholder runtime init
-void* wasm_runtime_init() {
-    runtime_initialized = 1;
+// === Runtime Management ===
+void* wasm_runtime_init() { return (void*)(uintptr_t)next_handle++; }
+void wasm_runtime_destroy() {}
+
+// === Module Loading ===
+void* wasm_runtime_load(const unsigned char* buf, unsigned int size, char* err, unsigned int err_size) {
+    if (!buf || size == 0) { if (err && err_size > 0) { strncpy(err, "Invalid bytecode", err_size-1); err[err_size-1]=0; } return NULL; }
     return (void*)(uintptr_t)next_handle++;
 }
+void wasm_runtime_unload(void* module) {}
 
-// Placeholder runtime destroy
-void wasm_runtime_destroy() {
-    runtime_initialized = 0;
-}
-
-// Placeholder module load
-void* wasm_runtime_load(const unsigned char* buf, unsigned int size, 
-                        char* error_buf, unsigned int error_buf_size) {
-    if (!buf || size == 0) {
-        if (error_buf && error_buf_size > 0) {
-            strncpy(error_buf, "Invalid WebAssembly bytecode", error_buf_size - 1);
-            error_buf[error_buf_size - 1] = '\0';
-        }
-        return NULL;
-    }
+// === Instance Operations ===
+void* wasm_runtime_instantiate(const void* module, unsigned int ss, unsigned int hs, char* err, unsigned int es) {
+    if (!module) { if (err && es > 0) { strncpy(err, "Invalid module", es-1); err[es-1]=0; } return NULL; }
     return (void*)(uintptr_t)next_handle++;
 }
+void wasm_runtime_deinstantiate(void* inst) {}
 
-// Placeholder module unload
-void wasm_runtime_unload(void* module) {
-    // No-op for placeholder
+// === Execution Environment ===
+void* wasm_runtime_create_exec_env(void* inst, unsigned int ss) { return inst ? (void*)(uintptr_t)next_handle++ : NULL; }
+void wasm_runtime_destroy_exec_env(void* ee) {}
+
+// === Function Operations ===
+void* wasm_runtime_lookup_function(const void* inst, const char* name) {
+    return (!inst || !name) ? NULL : (void*)(uintptr_t)next_handle++;
+}
+int wasm_runtime_call_wasm(void* ee, void* func, unsigned int argc, unsigned int* argv) { return (ee && func) ? 1 : 0; }
+bool wasm_runtime_call_wasm_a(void* ee, void* func, unsigned int num_results, void* results, unsigned int num_args, void* args) { return (ee && func) ? true : false; }
+
+// === Exception Handling ===
+const char* wasm_runtime_get_exception(void* inst) { return placeholder_exception; }
+void wasm_runtime_clear_exception(void* inst) { placeholder_exception = NULL; }
+void wasm_runtime_set_exception(void* inst, const char* exception) { (void)inst; (void)exception; }
+
+// === Execution Control ===
+void wasm_runtime_terminate(void* inst) { (void)inst; }
+void wasm_runtime_set_instruction_count_limit(void* ee, int limit) { (void)ee; (void)limit; }
+
+// === WASI Support ===
+void wasm_runtime_set_wasi_args(void* m, const char** dl, unsigned int dc, const char** mdl, unsigned int mdc, const char** e, unsigned int ec, const char** a, int ac) { (void)m; (void)dl; (void)dc; (void)mdl; (void)mdc; (void)e; (void)ec; (void)a; (void)ac; }
+void wasm_runtime_set_wasi_args_ex(void* m, const char** dl, unsigned int dc, const char** mdl, unsigned int mdc, const char** e, unsigned int ec, const char** a, int ac, long long si, long long so, long long se) { (void)m; (void)dl; (void)dc; (void)mdl; (void)mdc; (void)e; (void)ec; (void)a; (void)ac; (void)si; (void)so; (void)se; }
+void wasm_runtime_set_wasi_addr_pool(void* m, const char** ap, unsigned int aps) { (void)m; (void)ap; (void)aps; }
+void wasm_runtime_set_wasi_ns_lookup_pool(void* m, const char** np, unsigned int nps) { (void)m; (void)np; (void)nps; }
+bool wasm_runtime_is_wasi_mode(void* inst) { (void)inst; return false; }
+unsigned int wasm_runtime_get_wasi_exit_code(void* inst) { (void)inst; return 0; }
+void* wasm_runtime_lookup_wasi_start_function(void* inst) { (void)inst; return NULL; }
+bool wasm_application_execute_main(void* inst, int argc, char** argv) { (void)inst; (void)argc; (void)argv; return false; }
+bool wasm_application_execute_func(void* inst, const char* name, int argc, char** argv) { (void)inst; (void)name; (void)argc; (void)argv; return false; }
+
+// === Custom Data & Context ===
+void wasm_runtime_set_custom_data(void* inst, void* data) { (void)inst; (void)data; }
+void* wasm_runtime_get_custom_data(void* inst) { (void)inst; return 0; }
+void wasm_runtime_set_user_data(void* env, void* data) { (void)env; (void)data; }
+void* wasm_runtime_get_user_data(void* env) { (void)env; return 0; }
+void* wasm_runtime_get_exec_env_singleton(void* inst) { (void)inst; return 0; }
+void* wasm_runtime_get_module_inst(void* env) { (void)env; return 0; }
+
+// === Debugging & Profiling ===
+void wasm_runtime_dump_call_stack(void* env) { (void)env; }
+unsigned int wasm_runtime_get_call_stack_buf_size(void* env) { (void)env; return 0; }
+unsigned int wasm_runtime_dump_call_stack_to_buf(void* env, char* buf, unsigned int len) { (void)env; (void)buf; (void)len; return 0; }
+void wasm_runtime_dump_perf_profiling(void* inst) { (void)inst; }
+double wasm_runtime_sum_wasm_exec_time(void* inst) { (void)inst; return 0.0; }
+double wasm_runtime_get_wasm_func_exec_time(void* inst, const char* name) { (void)inst; (void)name; return 0.0; }
+void wasm_runtime_dump_mem_consumption(void* env) { (void)env; }
+
+// === Threading ===
+bool wasm_runtime_init_thread_env(void) { return true; }
+void wasm_runtime_destroy_thread_env(void) {}
+bool wasm_runtime_thread_env_inited(void) { return false; }
+void wasm_runtime_set_max_thread_num(unsigned int num) { (void)num; }
+
+// === Function Signature Introspection ===
+unsigned int wasm_func_get_param_count(const void* f, const void* i) { return 0; }
+unsigned int wasm_func_get_result_count(const void* f, const void* i) { return 0; }
+void wasm_func_get_param_types(const void* f, const void* i, unsigned char* t) {}
+void wasm_func_get_result_types(const void* f, const void* i, unsigned char* t) {}
+
+// === Function Type Introspection ===
+unsigned int wasm_func_type_get_param_count(const void* ft) { return 0; }
+unsigned char wasm_func_type_get_param_valkind(const void* ft, unsigned int idx) { return 0; }
+unsigned int wasm_func_type_get_result_count(const void* ft) { return 0; }
+unsigned char wasm_func_type_get_result_valkind(const void* ft, unsigned int idx) { return 0; }
+
+// === Import/Export Introspection ===
+void* wasm_runtime_get_module(void* inst) { return inst; }
+unsigned int wasm_runtime_get_export_count(const void* m) { return 0; }
+void wasm_runtime_get_export_type(const void* m, int idx, void* et) { if (et) memset(et, 0, 24); }
+int wasm_runtime_get_export_global_inst(const void* inst, const char* name, void* gi) { return 0; }
+unsigned int wasm_runtime_get_import_count(const void* m) { return 0; }
+void wasm_runtime_get_import_type(const void* m, int idx, void* it) { if (it) memset(it, 0, 32); }
+
+// === Memory Operations ===
+void* wasm_runtime_addr_app_to_native(const void* inst, uint64_t off) {
+    return (off < sizeof(placeholder_memory)) ? placeholder_memory + off : NULL;
+}
+int wasm_runtime_get_app_addr_range(const void* inst, uint64_t off, uint64_t* s, uint64_t* e) {
+    if (s) *s = 0; if (e) *e = 65536; return 1;
+}
+int wasm_runtime_enlarge_memory(void* inst, uint64_t pages) { return 0; }
+void* wasm_runtime_get_default_memory(const void* inst) { return (void*)1; }
+uint64_t wasm_memory_get_cur_page_count(const void* mi) { return 1; }
+uint64_t wasm_memory_get_max_page_count(const void* mi) { return 256; }
+int wasm_memory_get_shared(const void* mi) { return 0; }
+
+// === Version ===
+void wasm_runtime_get_version(unsigned int* major, unsigned int* minor, unsigned int* patch) {
+    if (major) *major = 2; if (minor) *minor = 4; if (patch) *patch = 4;
 }
 
-// Placeholder module instantiate
-void* wasm_runtime_instantiate(const void* module, unsigned int stack_size, 
-                               unsigned int heap_size, char* error_buf, 
-                               unsigned int error_buf_size) {
-    if (!module) {
-        if (error_buf && error_buf_size > 0) {
-            strncpy(error_buf, "Invalid module", error_buf_size - 1);
-            error_buf[error_buf_size - 1] = '\0';
-        }
-        return NULL;
-    }
-    return (void*)(uintptr_t)next_handle++;
-}
+// === Runtime Configuration ===
+bool wasm_runtime_is_running_mode_supported(unsigned int mode) { return mode == 0; }
+bool wasm_runtime_set_default_running_mode(unsigned int mode) { return mode == 0; }
+bool wasm_runtime_set_running_mode(void* inst, unsigned int mode) { return inst && mode == 0; }
+unsigned int wasm_runtime_get_running_mode(void* inst) { return 0; }
+void wasm_runtime_set_log_level(int level) {}
+bool wasm_runtime_set_bounds_checks(void* inst, bool enable) { return inst != NULL; }
+bool wasm_runtime_is_bounds_checks_enabled(void* inst) { return inst != NULL; }
 
-// Placeholder instance destroy
-void wasm_runtime_deinstantiate(void* module_inst) {
-    // No-op for placeholder
+// === Module Management ===
+static char module_name_buf[256] = {0};
+bool wasm_runtime_set_module_name(void* module, const char* name, char* err, unsigned int err_size) {
+    if (!module || !name) return false;
+    strncpy(module_name_buf, name, sizeof(module_name_buf)-1);
+    module_name_buf[sizeof(module_name_buf)-1] = 0;
+    return true;
 }
+const char* wasm_runtime_get_module_name(void* module) { return module ? module_name_buf : ""; }
+bool wasm_runtime_register_module(const char* name, void* module, char* err, unsigned int err_size) { return module != NULL; }
+void* wasm_runtime_find_module_registered(const char* name) { return NULL; }
+char* wasm_runtime_get_module_hash(void* module) { return module ? "placeholder_hash" : ""; }
 
-// Placeholder function lookup
-void* wasm_runtime_lookup_function(const void* module_inst, const char* name) {
-    if (!module_inst || !name) {
-        return NULL;
-    }
-    return (void*)(uintptr_t)next_handle++;
+// === Package Type Detection ===
+#define PACKAGE_TYPE_WASM 0
+#define PACKAGE_TYPE_AOT 1
+#define PACKAGE_TYPE_UNKNOWN 0xFFFF
+unsigned int wasm_runtime_get_file_package_type(const unsigned char* buf, unsigned int size) {
+    if (!buf || size < 4) return PACKAGE_TYPE_UNKNOWN;
+    if (buf[0]==0x00 && buf[1]==0x61 && buf[2]==0x73 && buf[3]==0x6D) return PACKAGE_TYPE_WASM;
+    return PACKAGE_TYPE_UNKNOWN;
 }
-
-// Placeholder function call
-// Real WAMR returns bool: true (nonzero) = success, false (0) = failure
-int wasm_runtime_call_wasm(void* function, unsigned int argc, unsigned int* argv) {
-    if (!function) {
-        return 0;  // false = failure
-    }
-    return 1;  // true = success
+unsigned int wasm_runtime_get_module_package_type(const void* module) { return module ? PACKAGE_TYPE_WASM : PACKAGE_TYPE_UNKNOWN; }
+unsigned int wasm_runtime_get_file_package_version(const unsigned char* buf, unsigned int size) { return (size >= 8) ? 1 : 0; }
+unsigned int wasm_runtime_get_module_package_version(const void* module) { return module ? 1 : 0; }
+unsigned int wasm_runtime_get_current_package_version(unsigned int pkg_type) { return 1; }
+bool wasm_runtime_is_xip_file(const unsigned char* buf, unsigned int size) { return false; }
+bool wasm_runtime_is_underlying_binary_freeable(const void* module) { return true; }
+void* wasm_runtime_load_ex(unsigned char* buf, unsigned int size, const void* args, char* err, unsigned int err_size) {
+    return wasm_runtime_load(buf, size, err, err_size);
 }
+bool wasm_runtime_resolve_symbols(void* module) { return module != NULL; }
 
-// Placeholder memory access
-void* wasm_runtime_addr_app_to_native(const void* module_inst, unsigned int app_offset) {
-    static char placeholder_memory[65536]; // 1 page
-    if (app_offset < sizeof(placeholder_memory)) {
-        return placeholder_memory + app_offset;
-    }
-    return NULL;
-}
+// === Table Operations ===
+typedef struct { unsigned char elem_kind; unsigned char _pad[3]; unsigned int cur_size; unsigned int max_size; void* elems; } wasm_table_inst_t;
+bool wasm_runtime_get_export_table_inst(const void* inst, const char* name, wasm_table_inst_t* ti) { return false; }
+void* wasm_table_get_func_inst(const void* inst, const wasm_table_inst_t* ti, unsigned int idx) { return NULL; }
+bool wasm_runtime_call_indirect(void* ee, unsigned int ei, unsigned int argc, unsigned int* argv) { return false; }
+unsigned char wasm_table_type_get_elem_kind(const void* tt) { return 129; }
+bool wasm_table_type_get_shared(const void* tt) { return false; }
+unsigned int wasm_table_type_get_init_size(const void* tt) { return 0; }
+unsigned int wasm_table_type_get_max_size(const void* tt) { return 0; }
 
-// Placeholder native to app address
-unsigned int wasm_runtime_addr_native_to_app(const void* module_inst, void* native_ptr) {
-    static char placeholder_memory[65536]; // 1 page
-    if (native_ptr >= (void*)placeholder_memory && 
-        native_ptr < (void*)(placeholder_memory + sizeof(placeholder_memory))) {
-        return (unsigned int)((char*)native_ptr - placeholder_memory);
-    }
+// === Host Function Registration ===
+typedef struct { const char* symbol; void* func_ptr; const char* signature; void* attachment; } NativeSymbol;
+bool wasm_runtime_register_natives_raw(const char* mn, NativeSymbol* ns, unsigned int n) { return true; }
+bool wasm_runtime_unregister_natives(const char* mn, NativeSymbol* ns) { return true; }
+void* wasm_runtime_get_function_attachment(void* ee) { return NULL; }
+
+// === Advanced Memory Operations ===
+uint64_t wasm_runtime_module_malloc(void* inst, uint64_t size, void** p_native) {
+    if (p_native) *p_native = NULL;
     return 0;
 }
-
-// Placeholder address range
-unsigned int wasm_runtime_get_app_addr_range(const void* module_inst, 
-                                             unsigned int app_offset,
-                                             unsigned int* p_app_start_offset, 
-                                             unsigned int* p_app_end_offset) {
-    if (p_app_start_offset) *p_app_start_offset = 0;
-    if (p_app_end_offset) *p_app_end_offset = 65536; // 1 page
-    return 65536;
+void wasm_runtime_module_free(void* inst, uint64_t ptr) {}
+uint64_t wasm_runtime_module_dup_data(void* inst, const char* src, uint64_t size) { return 0; }
+bool wasm_runtime_validate_app_addr(const void* inst, uint64_t off, uint64_t size) { return off + size <= 65536; }
+bool wasm_runtime_validate_app_str_addr(const void* inst, uint64_t off) { return off < 65536; }
+bool wasm_runtime_validate_native_addr(const void* inst, void* ptr, uint64_t size) { return ptr != NULL; }
+uint64_t wasm_runtime_addr_native_to_app(const void* inst, void* ptr) { return 0; }
+bool wasm_runtime_get_native_addr_range(const void* inst, uint8_t* ptr, uint8_t** start, uint8_t** end) {
+    if (start) *start = NULL;
+    if (end) *end = NULL;
+    return false;
 }
+void* wasm_runtime_get_memory(const void* inst, unsigned int idx) { return idx == 0 ? (void*)1 : NULL; }
+void* wasm_memory_get_base_address(const void* mi) { return (void*)placeholder_memory; }
+uint64_t wasm_memory_get_bytes_per_page(const void* mi) { return 65536; }
+bool wasm_memory_enlarge(void* mi, uint64_t pages) { return false; }
 
-// Function signature introspection stubs
-unsigned int wasm_func_get_param_count(const void* func_inst, const void* module_inst) {
-    return 0;
+// === Advanced Instantiation & Miscellaneous ===
+typedef struct { unsigned int default_stack_size; unsigned int host_managed_heap_size; unsigned int max_memory_pages; } InstantiationArgs;
+void* wasm_runtime_instantiate_ex(const void* module, const InstantiationArgs* args, char* err, unsigned int es) {
+    if (!module || !args) { if (err && es > 0) { strncpy(err, "Invalid args", es-1); err[es-1]=0; } return NULL; }
+    return wasm_runtime_instantiate(module, args->default_stack_size, args->host_managed_heap_size, err, es);
 }
-
-unsigned int wasm_func_get_result_count(const void* func_inst, const void* module_inst) {
-    return 0;
+const unsigned char* wasm_runtime_get_custom_section(const void* module, const char* name, unsigned int* len) {
+    (void)module; (void)name; if (len) *len = 0; return NULL;
 }
+void* wasm_runtime_malloc(unsigned int size) { return malloc(size); }
+void* wasm_runtime_realloc(void* ptr, unsigned int size) { return realloc(ptr, size); }
+void wasm_runtime_free(void* ptr) { free(ptr); }
 
-void wasm_func_get_param_types(const void* func_inst, const void* module_inst, unsigned char* param_types) {
-    // no-op
-}
-
-void wasm_func_get_result_types(const void* func_inst, const void* module_inst, unsigned char* result_types) {
-    // no-op
-}
-
-// Module/instance relationship stubs
-void* wasm_runtime_get_module(void* module_inst) {
-    return module_inst; // return the instance handle itself as placeholder
-}
-
-unsigned int wasm_runtime_get_export_count(const void* module) {
-    return 0;
-}
-
-int wasm_runtime_get_export_type(const void* module, int export_index, void* export_type) {
-    return 0; // false
-}
-
-int wasm_runtime_get_export_global_inst(const void* module_inst, const char* name, void* global_inst) {
-    return 0; // false
-}
-
-// Global variable stubs
-int wasm_runtime_set_global(void* module_inst, const char* name, const void* value) {
-    return 0; // false
-}
-
-int wasm_runtime_get_global(const void* module_inst, const char* name, void* value) {
-    return 0; // false
-}
-
-// Host function registration stubs
-int wasm_runtime_register_natives(const char* module_name, const void* native_symbols, unsigned int n_native_symbols) {
-    return 0; // false
-}
-
-void wasm_runtime_unregister_natives(const char* module_name) {
-    // no-op
-}
-
-// Additional API functions for extended functionality
-unsigned int wasm_runtime_get_app_heap_size(const void* module_inst) {
-    return 65536; // 1 page default
-}
-
-int wasm_runtime_validate_module(const unsigned char* buf, unsigned int size, 
-                                 char* error_buf, unsigned int error_buf_size) {
-    if (!buf || size < 8) {
-        if (error_buf && error_buf_size > 0) {
-            strncpy(error_buf, "Invalid WebAssembly bytecode", error_buf_size - 1);
-            error_buf[error_buf_size - 1] = '\0';
-        }
-        return 0; // Validation failed
-    }
-    // Check WASM magic number
-    if (buf[0] != 0x00 || buf[1] != 0x61 || buf[2] != 0x73 || buf[3] != 0x6D) {
-        if (error_buf && error_buf_size > 0) {
-            strncpy(error_buf, "Invalid WASM magic number", error_buf_size - 1);
-            error_buf[error_buf_size - 1] = '\0';
-        }
-        return 0; // Validation failed
-    }
-    return 1; // Validation succeeded
-}
-
-int wasm_runtime_get_function_signature(const void* function, 
-                                        unsigned int* param_count, 
-                                        unsigned int* result_count) {
-    if (!function) return -1;
-    
-    // Return placeholder signature information
-    if (param_count) *param_count = 1;  // 1 parameter
-    if (result_count) *result_count = 1; // 1 result
-    return 0; // Success
-}
-
-static char last_error_buf[1024] = {0};
-
-const char* wasm_runtime_get_last_error() {
-    if (last_error_buf[0] == 0) {
-        return NULL;
-    }
-    return last_error_buf;
-}
-
-void wasm_runtime_clear_last_error() {
-    last_error_buf[0] = 0;
-}
+// === Has Memory Check (no Box allocation) ===
+// wamr_instance_has_memory is implemented in Rust FFI, not here
 "#;

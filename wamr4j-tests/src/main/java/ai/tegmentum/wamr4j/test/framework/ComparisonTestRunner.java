@@ -114,16 +114,17 @@ public final class ComparisonTestRunner {
                 final String actualImplementation = runtime.getImplementation();
                 LOGGER.info("Using runtime implementation: " + actualImplementation);
 
-                // Compile module once
-                final WebAssemblyModule module = runtime.compile(moduleBytes);
+                // Compile module once and close when done
+                try (final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+                    // Execute each assertion
+                    for (final TestAssertion assertion : assertions) {
+                        final TestResult result =
+                            executeAssertion(runtime, module, assertion, actualImplementation);
+                        testResults.add(result);
 
-                // Execute each assertion
-                for (final TestAssertion assertion : assertions) {
-                    final TestResult result = executeAssertion(runtime, module, assertion, actualImplementation);
-                    testResults.add(result);
-
-                    final String key = runtimeType + ":" + assertions.indexOf(assertion);
-                    results.put(key, result);
+                        final String key = runtimeType + ":" + assertions.indexOf(assertion);
+                        results.put(key, result);
+                    }
                 }
             }
         } catch (final Exception e) {
@@ -223,19 +224,21 @@ public final class ComparisonTestRunner {
                                           final TestAssertion assertion,
                                           final String runtimeImplementation,
                                           final long startTime) throws Exception {
-        final WebAssemblyInstance instance = imports != null ? module.instantiate(imports) : module.instantiate();
-        final WebAssemblyFunction function = instance.getFunction(assertion.getFunctionName());
+        try (final WebAssemblyInstance instance =
+                imports != null ? module.instantiate(imports) : module.instantiate()) {
+            final WebAssemblyFunction function = instance.getFunction(assertion.getFunctionName());
 
-        if (function == null) {
-            throw new IllegalArgumentException("Function not found: " + assertion.getFunctionName());
+            if (function == null) {
+                throw new IllegalArgumentException("Function not found: " + assertion.getFunctionName());
+            }
+
+            final Object result = function.invoke(assertion.getArguments());
+            final Object[] results = (result == null) ? new Object[0] :
+                (result.getClass().isArray() ? (Object[]) result : new Object[]{result});
+            final long duration = System.nanoTime() - startTime;
+
+            return TestResult.success(results, duration, runtimeImplementation);
         }
-
-        final Object result = function.invoke(assertion.getArguments());
-        final Object[] results = (result == null) ? new Object[0] :
-            (result.getClass().isArray() ? (Object[]) result : new Object[]{result});
-        final long duration = System.nanoTime() - startTime;
-
-        return TestResult.success(results, duration, runtimeImplementation);
     }
 
     private TestResult executeAssertTrap(final WebAssemblyRuntime runtime,
@@ -243,8 +246,8 @@ public final class ComparisonTestRunner {
                                         final TestAssertion assertion,
                                         final String runtimeImplementation,
                                         final long startTime) throws Exception {
-        try {
-            final WebAssemblyInstance instance = imports != null ? module.instantiate(imports) : module.instantiate();
+        try (final WebAssemblyInstance instance =
+                imports != null ? module.instantiate(imports) : module.instantiate()) {
             final WebAssemblyFunction function = instance.getFunction(assertion.getFunctionName());
 
             if (function == null) {
@@ -262,9 +265,11 @@ public final class ComparisonTestRunner {
                 runtimeImplementation
             );
         } catch (final Exception e) {
-            // Expected trap occurred
+            // Expected trap occurred — this is a success
             final long duration = System.nanoTime() - startTime;
-            return TestResult.failure(e, duration, runtimeImplementation);
+            return TestResult.success(
+                new Object[]{e.getClass().getSimpleName() + ": " + e.getMessage()},
+                duration, runtimeImplementation);
         }
     }
 
@@ -284,9 +289,11 @@ public final class ComparisonTestRunner {
                 runtimeImplementation
             );
         } catch (final Exception e) {
-            // Expected validation failure
+            // Expected validation failure — this is a success
             final long duration = System.nanoTime() - startTime;
-            return TestResult.failure(e, duration, runtimeImplementation);
+            return TestResult.success(
+                new Object[]{e.getClass().getSimpleName() + ": " + e.getMessage()},
+                duration, runtimeImplementation);
         }
     }
 
@@ -295,8 +302,8 @@ public final class ComparisonTestRunner {
                                               final TestAssertion assertion,
                                               final String runtimeImplementation,
                                               final long startTime) throws Exception {
-        try {
-            final WebAssemblyInstance instance = imports != null ? module.instantiate(imports) : module.instantiate();
+        try (final WebAssemblyInstance instance =
+                imports != null ? module.instantiate(imports) : module.instantiate()) {
             final WebAssemblyFunction function = instance.getFunction(assertion.getFunctionName());
 
             if (function == null) {
@@ -314,36 +321,38 @@ public final class ComparisonTestRunner {
                 runtimeImplementation
             );
         } catch (final Exception e) {
-            // Expected exhaustion occurred
+            // Expected exhaustion occurred — this is a success
             final long duration = System.nanoTime() - startTime;
-            return TestResult.failure(e, duration, runtimeImplementation);
+            return TestResult.success(
+                new Object[]{e.getClass().getSimpleName() + ": " + e.getMessage()},
+                duration, runtimeImplementation);
         }
     }
 
+    @SuppressWarnings("try")
     private TestResult executeAssertUnlinkable(final WebAssemblyRuntime runtime,
                                               final WebAssemblyModule module,
                                               final TestAssertion assertion,
                                               final String runtimeImplementation,
                                               final long startTime) {
         try {
-            // This should fail to instantiate (link)
-            if (imports != null) {
-                module.instantiate(imports);
-            } else {
-                module.instantiate();
+            // This should fail to instantiate (link) — instance only used for auto-close
+            try (final WebAssemblyInstance instance =
+                    imports != null ? module.instantiate(imports) : module.instantiate()) {
+                // If we get here, linking didn't fail as expected
+                final long duration = System.nanoTime() - startTime;
+                return TestResult.failure(
+                    new AssertionError("Expected unlinkable module but instantiation succeeded"),
+                    duration,
+                    runtimeImplementation
+                );
             }
-
-            // If we get here, linking didn't fail as expected
-            final long duration = System.nanoTime() - startTime;
-            return TestResult.failure(
-                new AssertionError("Expected unlinkable module but instantiation succeeded"),
-                duration,
-                runtimeImplementation
-            );
         } catch (final Exception e) {
-            // Expected linking failure
+            // Expected linking failure — this is a success
             final long duration = System.nanoTime() - startTime;
-            return TestResult.failure(e, duration, runtimeImplementation);
+            return TestResult.success(
+                new Object[]{e.getClass().getSimpleName() + ": " + e.getMessage()},
+                duration, runtimeImplementation);
         }
     }
 }

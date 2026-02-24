@@ -19,1677 +19,38 @@
 //! This module provides JNI function exports that correspond to the native
 //! methods declared in the Java JNI implementation classes.
 
-use jni::objects::{JClass, JObject, JString, JByteArray, GlobalRef};
-use jni::sys::{jlong, jbyteArray, jstring, jint, JNI_VERSION_1_8};
+use jni::objects::{JClass, JObject, JByteArray, JString, JObjectArray, JValue};
+use jni::sys::{jlong, jstring, jint, jfloat, jdouble, jboolean, jobject, jobjectArray, jbyteArray, JNI_VERSION_1_8};
 use jni::{JNIEnv, JavaVM};
 use once_cell::sync::OnceCell;
-use std::collections::HashMap;
-use std::ffi::CString;
+use std::ffi::CStr;
 use std::os::raw::c_void;
 use std::ptr;
-use std::sync::Mutex;
 
-use crate::bindings::NativeSymbol;
-use crate::wamr_wrapper::*;
+use crate::bindings;
+use crate::runtime;
+use crate::types::{WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory, WamrTable, WasmValue, WasmType, NativeRegistration};
 
 // =============================================================================
-// Global State for Import Callbacks
+// Global State
 // =============================================================================
 
 /// Global JavaVM reference - set during JNI_OnLoad
 static JAVA_VM: OnceCell<JavaVM> = OnceCell::new();
 
-/// Callback registry - maps unique IDs to Java callback GlobalRefs
-/// Thread-safe storage for host function callbacks
-static CALLBACK_REGISTRY: OnceCell<Mutex<HashMap<usize, GlobalRef>>> = OnceCell::new();
-
-/// Counter for generating unique callback IDs
-static NEXT_CALLBACK_ID: Mutex<usize> = Mutex::new(0);
-
-/// Initialize the callback registry
-fn init_callback_registry() {
-    CALLBACK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()));
-}
-
-/// Register a callback and return its unique ID
-fn register_callback(callback: GlobalRef) -> usize {
-    init_callback_registry();
-
-    let mut id_counter = NEXT_CALLBACK_ID.lock().unwrap();
-    let callback_id = *id_counter;
-    *id_counter += 1;
-    drop(id_counter);
-
-    let mut registry = CALLBACK_REGISTRY.get().unwrap().lock().unwrap();
-    registry.insert(callback_id, callback);
-
-    callback_id
-}
-
-/// Retrieve a callback by its ID
-fn get_callback(callback_id: usize) -> Option<GlobalRef> {
-    let registry = CALLBACK_REGISTRY.get()?.lock().unwrap();
-    registry.get(&callback_id).cloned()
-}
-
 /// JNI_OnLoad - Called when the native library is loaded
-/// This is our opportunity to store the JavaVM reference for later use
 #[no_mangle]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _reserved: *mut c_void) -> jint {
-    // Store JavaVM for use in callbacks
     if JAVA_VM.set(vm).is_err() {
         eprintln!("ERROR: Failed to set JavaVM - already initialized");
         return 0;
     }
-
-    // Initialize callback registry
-    init_callback_registry();
-
     JNI_VERSION_1_8
 }
 
 // =============================================================================
-// Import Data Structures
+// JniWebAssemblyRuntime
 // =============================================================================
-
-/// Represents a WebAssembly import item
-#[derive(Debug, Clone)]
-enum ImportItem {
-    /// Function import with callback and signature
-    Function {
-        callback: GlobalRef,
-        param_types: Vec<WasmType>,
-        result_types: Vec<WasmType>,
-    },
-    /// Global variable import
-    Global {
-        value: WasmValue,
-        mutable: bool,
-    },
-    /// Memory import (rarely used from Java)
-    Memory {
-        initial: u32,
-        maximum: Option<u32>,
-    },
-    /// Table import (rarely used from Java)
-    Table {
-        initial: u32,
-        maximum: Option<u32>,
-    },
-}
-
-// =============================================================================
-// JNI Helper Functions for Map Parsing
-// =============================================================================
-
-/// Check if a Java Iterator has more elements
-fn has_next<'local>(env: &mut JNIEnv<'local>, iterator: &JObject<'local>) -> Result<bool, String> {
-    let result = env
-        .call_method(iterator, "hasNext", "()Z", &[])
-        .map_err(|e| format!("Failed to call hasNext: {}", e))?;
-
-    result
-        .z()
-        .map_err(|e| format!("Failed to get boolean from hasNext: {}", e))
-}
-
-/// Get next element from a Java Iterator
-fn next<'local>(env: &mut JNIEnv<'local>, iterator: &JObject<'local>) -> Result<JObject<'local>, String> {
-    let result = env
-        .call_method(iterator, "next", "()Ljava/lang/Object;", &[])
-        .map_err(|e| format!("Failed to call next: {}", e))?;
-
-    result
-        .l()
-        .map_err(|e| format!("Failed to get object from next: {}", e))
-}
-
-/// Parse the outer imports map: Map<String moduleName, Map<String itemName, Object item>>
-fn parse_imports<'local>(
-    env: &mut JNIEnv<'local>,
-    imports: &JObject<'local>,
-) -> Result<HashMap<String, HashMap<String, ImportItem>>, String> {
-    if imports.is_null() {
-        return Ok(HashMap::new());
-    }
-
-    let mut parsed_imports = HashMap::new();
-
-    // Get Map.entrySet() method
-    let entry_set = env
-        .call_method(imports, "entrySet", "()Ljava/util/Set;", &[])
-        .map_err(|e| format!("Failed to get entrySet: {}", e))?;
-
-    // Get Set.iterator() method
-    let entry_set_obj = entry_set.l().map_err(|e| format!("Failed to get entry set object: {}", e))?;
-    let iterator = env
-        .call_method(&entry_set_obj, "iterator", "()Ljava/util/Iterator;", &[])
-        .map_err(|e| format!("Failed to get iterator: {}", e))?;
-
-    // Iterate over outer map (module names)
-    let iterator_obj = iterator.l().map_err(|e| format!("Failed to get iterator object: {}", e))?;
-    while has_next(env, &iterator_obj)? {
-        let entry = next(env, &iterator_obj)?;
-
-        // Get module name (key)
-        let key_obj = env
-            .call_method(&entry, "getKey", "()Ljava/lang/Object;", &[])
-            .map_err(|e| format!("Failed to get key: {}", e))?;
-
-        let key_obj_ref = key_obj.l().map_err(|e| format!("Failed to convert key: {}", e))?;
-        let module_name_jstring: JString = key_obj_ref.into();
-
-        let module_name = env
-            .get_string(&module_name_jstring)
-            .map_err(|e| format!("Failed to get module name string: {}", e))?
-            .to_str()
-            .map_err(|e| format!("Invalid module name UTF-8: {}", e))?
-            .to_string();
-
-        // Get inner map (value)
-        let value_obj = env
-            .call_method(&entry, "getValue", "()Ljava/lang/Object;", &[])
-            .map_err(|e| format!("Failed to get value: {}", e))?;
-
-        let value_obj_ref = value_obj.l().map_err(|e| format!("Failed to get value object: {}", e))?;
-        // Parse inner map (item imports)
-        let item_imports = parse_item_imports(env, &value_obj_ref)?;
-
-        parsed_imports.insert(module_name, item_imports);
-    }
-
-    Ok(parsed_imports)
-}
-
-/// Parse the inner imports map: Map<String itemName, Object item>
-fn parse_item_imports<'local>(
-    env: &mut JNIEnv<'local>,
-    inner_map: &JObject<'local>,
-) -> Result<HashMap<String, ImportItem>, String> {
-    let mut items = HashMap::new();
-
-    // Get Map.entrySet() method
-    let entry_set = env
-        .call_method(inner_map, "entrySet", "()Ljava/util/Set;", &[])
-        .map_err(|e| format!("Failed to get inner entrySet: {}", e))?;
-
-    // Get Set.iterator() method
-    let entry_set_obj = entry_set.l().map_err(|e| format!("Failed to get inner entry set object: {}", e))?;
-    let iterator = env
-        .call_method(&entry_set_obj, "iterator", "()Ljava/util/Iterator;", &[])
-        .map_err(|e| format!("Failed to get inner iterator: {}", e))?;
-
-    // Iterate over inner map (item names)
-    let iterator_obj = iterator.l().map_err(|e| format!("Failed to get inner iterator object: {}", e))?;
-    while has_next(env, &iterator_obj)? {
-        let entry = next(env, &iterator_obj)?;
-
-        // Get item name (key)
-        let key_obj = env
-            .call_method(&entry, "getKey", "()Ljava/lang/Object;", &[])
-            .map_err(|e| format!("Failed to get item key: {}", e))?;
-
-        let key_obj_ref = key_obj.l().map_err(|e| format!("Failed to convert item key: {}", e))?;
-        let item_name_jstring: JString = key_obj_ref.into();
-
-        let item_name = env
-            .get_string(&item_name_jstring)
-            .map_err(|e| format!("Failed to get item name string: {}", e))?
-            .to_str()
-            .map_err(|e| format!("Invalid item name UTF-8: {}", e))?
-            .to_string();
-
-        // Get import item (value)
-        let value_obj = env
-            .call_method(&entry, "getValue", "()Ljava/lang/Object;", &[])
-            .map_err(|e| format!("Failed to get item value: {}", e))?;
-
-        let value_obj_ref = value_obj.l().map_err(|e| format!("Failed to get item value object: {}", e))?;
-        // Determine import type and parse accordingly
-        let import_item = parse_import_item(env, &value_obj_ref)?;
-
-        items.insert(item_name, import_item);
-    }
-
-    Ok(items)
-}
-
-/// Parse a single import item based on its Java type
-fn parse_import_item<'local>(env: &mut JNIEnv<'local>, value_obj: &JObject<'local>) -> Result<ImportItem, String> {
-    // Check if it's a primitive wrapper (Integer, Long, Float, Double) for global
-    if is_instance_of(env, value_obj, "java/lang/Integer")? {
-        let int_value = env
-            .call_method(value_obj, "intValue", "()I", &[])
-            .map_err(|e| format!("Failed to get int value: {}", e))?
-            .i()
-            .map_err(|e| format!("Failed to convert to i32: {}", e))?;
-
-        return Ok(ImportItem::Global {
-            value: WasmValue::I32(int_value),
-            mutable: false,
-        });
-    }
-
-    if is_instance_of(env, value_obj, "java/lang/Long")? {
-        let long_value = env
-            .call_method(value_obj, "longValue", "()J", &[])
-            .map_err(|e| format!("Failed to get long value: {}", e))?
-            .j()
-            .map_err(|e| format!("Failed to convert to i64: {}", e))?;
-
-        return Ok(ImportItem::Global {
-            value: WasmValue::I64(long_value),
-            mutable: false,
-        });
-    }
-
-    if is_instance_of(env, value_obj, "java/lang/Float")? {
-        let float_value = env
-            .call_method(value_obj, "floatValue", "()F", &[])
-            .map_err(|e| format!("Failed to get float value: {}", e))?
-            .f()
-            .map_err(|e| format!("Failed to convert to f32: {}", e))?;
-
-        return Ok(ImportItem::Global {
-            value: WasmValue::F32(float_value),
-            mutable: false,
-        });
-    }
-
-    if is_instance_of(env, value_obj, "java/lang/Double")? {
-        let double_value = env
-            .call_method(value_obj, "doubleValue", "()D", &[])
-            .map_err(|e| format!("Failed to get double value: {}", e))?
-            .d()
-            .map_err(|e| format!("Failed to convert to f64: {}", e))?;
-
-        return Ok(ImportItem::Global {
-            value: WasmValue::F64(double_value),
-            mutable: false,
-        });
-    }
-
-    // If it's a functional interface (lambda), treat as function import
-    // For now, we create a global reference to keep the callback alive
-    let global_ref = env
-        .new_global_ref(value_obj)
-        .map_err(|e| format!("Failed to create global ref: {}", e))?;
-
-    // TODO: Extract parameter and result types from functional interface
-    // For now, use placeholder signature - this needs to be enhanced
-    Ok(ImportItem::Function {
-        callback: global_ref,
-        param_types: vec![],
-        result_types: vec![],
-    })
-}
-
-/// Check if an object is an instance of a specific class
-fn is_instance_of<'local>(env: &mut JNIEnv<'local>, obj: &JObject<'local>, class_name: &str) -> Result<bool, String> {
-    let class = env
-        .find_class(class_name)
-        .map_err(|e| format!("Failed to find class {}: {}", class_name, e))?;
-
-    env.is_instance_of(obj, &class)
-        .map_err(|e| format!("Failed to check instance: {}", e))
-}
-
-// =============================================================================
-// WASM Callback Wrapper Functions
-// =============================================================================
-// NOTE: Callback wrappers are temporarily disabled due to missing WAMR API functions
-// (wasm_runtime_get_function_argv not available in current WAMR build)
-// These will be re-enabled once WAMR is built with the required features.
-
-/*
-/// Generic callback wrapper: () -> i32
-/// WAMR signature: "()i"
-/// Expects Java Supplier<Integer>
-unsafe extern "C" fn callback_wrapper_void_to_i32(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> i32 {
-    // Get attachment (callback ID) from execution environment
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_void_to_i32");
-        return 0;
-    }
-
-    // Convert attachment back to callback ID
-    let callback_id = *(attachment as *const usize);
-
-    // Get JavaVM and attach thread
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0;
-        }
-    };
-
-    // Retrieve callback from registry
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0;
-        }
-    };
-
-    // Call Java method (assuming Supplier<Integer> with get() method)
-    let result = match env.call_method(
-        callback.as_obj(),
-        "get",
-        "()Ljava/lang/Object;",
-        &[],
-    ) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0;
-        }
-    };
-
-    // Convert result to i32
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0;
-        }
-    };
-
-    // Call intValue() on Integer result
-    let int_val = match env.call_method(result_obj, "intValue", "()I", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get int value: {}", e);
-            return 0;
-        }
-    };
-
-    match int_val.i() {
-        Ok(i) => i,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to i32: {}", e);
-            0
-        }
-    }
-}
-
-/// Generic callback wrapper: (i32) -> i32
-/// WAMR signature: "(i)i"
-/// Expects Java Function<Integer, Integer>
-unsafe extern "C" fn callback_wrapper_i32_to_i32(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> i32 {
-    // Get function arguments
-    let argv = crate::bindings::wasm_runtime_get_function_argv(exec_env);
-    if argv.is_null() {
-        eprintln!("ERROR: Failed to get function arguments");
-        return 0;
-    }
-
-    let arg0 = *argv as i32;
-
-    // Get attachment (callback ID)
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_i32_to_i32");
-        return 0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    // Get JavaVM and attach thread
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0;
-        }
-    };
-
-    // Retrieve callback from registry
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0;
-        }
-    };
-
-    // Create Integer object for argument
-    let arg_obj = match env.new_object("java/lang/Integer", "(I)V", &[jni::objects::JValue::Int(arg0)]) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Integer object: {}", e);
-            return 0;
-        }
-    };
-
-    // Call Java method (assuming Function<Integer, Integer> with apply() method)
-    let result = match env.call_method(
-        callback.as_obj(),
-        "apply",
-        "(Ljava/lang/Object;)Ljava/lang/Object;",
-        &[jni::objects::JValue::Object(&arg_obj)],
-    ) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0;
-        }
-    };
-
-    // Convert result to i32
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0;
-        }
-    };
-
-    // Call intValue() on Integer result
-    let int_val = match env.call_method(result_obj, "intValue", "()I", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get int value: {}", e);
-            return 0;
-        }
-    };
-
-    match int_val.i() {
-        Ok(i) => i,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to i32: {}", e);
-            0
-        }
-    }
-}
-
-/// Generic callback wrapper: (i32, i32) -> i32
-/// WAMR signature: "(ii)i"
-/// Expects Java BiFunction<Integer, Integer, Integer>
-unsafe extern "C" fn callback_wrapper_i32_i32_to_i32(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> i32 {
-    // Get function arguments
-    let argv = crate::bindings::wasm_runtime_get_function_argv(exec_env);
-    if argv.is_null() {
-        eprintln!("ERROR: Failed to get function arguments");
-        return 0;
-    }
-
-    let arg0 = *argv as i32;
-    let arg1 = *argv.offset(1) as i32;
-
-    // Get attachment (callback ID)
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_i32_i32_to_i32");
-        return 0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    // Get JavaVM and attach thread
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0;
-        }
-    };
-
-    // Retrieve callback from registry
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0;
-        }
-    };
-
-    // Create Integer objects for arguments
-    let arg0_obj = match env.new_object("java/lang/Integer", "(I)V", &[jni::objects::JValue::Int(arg0)]) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Integer object for arg0: {}", e);
-            return 0;
-        }
-    };
-
-    let arg1_obj = match env.new_object("java/lang/Integer", "(I)V", &[jni::objects::JValue::Int(arg1)]) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Integer object for arg1: {}", e);
-            return 0;
-        }
-    };
-
-    // Call Java method (assuming BiFunction<Integer, Integer, Integer> with apply() method)
-    let result = match env.call_method(
-        callback.as_obj(),
-        "apply",
-        "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
-        &[
-            jni::objects::JValue::Object(&arg0_obj),
-            jni::objects::JValue::Object(&arg1_obj),
-        ],
-    ) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0;
-        }
-    };
-
-    // Convert result to i32
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0;
-        }
-    };
-
-    // Call intValue() on Integer result
-    let int_val = match env.call_method(result_obj, "intValue", "()I", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get int value: {}", e);
-            return 0;
-        }
-    };
-
-    match int_val.i() {
-        Ok(i) => i,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to i32: {}", e);
-            0
-        }
-    }
-}
-
-// =============================================================================
-// i64/Long Callback Wrappers
-// =============================================================================
-
-/// Callback wrapper: () -> i64
-/// WAMR signature: "()I"
-/// Expects Java Supplier<Long>
-unsafe extern "C" fn callback_wrapper_void_to_i64(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> i64 {
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_void_to_i64");
-        return 0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0;
-        }
-    };
-
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0;
-        }
-    };
-
-    let result = match env.call_method(callback.as_obj(), "get", "()Ljava/lang/Object;", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0;
-        }
-    };
-
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0;
-        }
-    };
-
-    let long_val = match env.call_method(result_obj, "longValue", "()J", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get long value: {}", e);
-            return 0;
-        }
-    };
-
-    match long_val.j() {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to i64: {}", e);
-            0
-        }
-    }
-}
-
-/// Callback wrapper: (i64) -> i64
-/// WAMR signature: "(I)I"
-/// Expects Java Function<Long, Long>
-unsafe extern "C" fn callback_wrapper_i64_to_i64(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> i64 {
-    let argv = crate::bindings::wasm_runtime_get_function_argv(exec_env);
-    if argv.is_null() {
-        eprintln!("ERROR: Failed to get function arguments");
-        return 0;
-    }
-
-    // i64 arguments are 64-bit aligned
-    let arg0 = *(argv as *const i64);
-
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_i64_to_i64");
-        return 0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0;
-        }
-    };
-
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0;
-        }
-    };
-
-    let arg_obj = match env.new_object(
-        "java/lang/Long",
-        "(J)V",
-        &[jni::objects::JValue::Long(arg0)],
-    ) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Long object: {}", e);
-            return 0;
-        }
-    };
-
-    let result = match env.call_method(
-        callback.as_obj(),
-        "apply",
-        "(Ljava/lang/Object;)Ljava/lang/Object;",
-        &[jni::objects::JValue::Object(&arg_obj)],
-    ) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0;
-        }
-    };
-
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0;
-        }
-    };
-
-    let long_val = match env.call_method(result_obj, "longValue", "()J", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get long value: {}", e);
-            return 0;
-        }
-    };
-
-    match long_val.j() {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to i64: {}", e);
-            0
-        }
-    }
-}
-
-/// Callback wrapper: (i64, i64) -> i64
-/// WAMR signature: "(II)I"
-/// Expects Java BiFunction<Long, Long, Long>
-unsafe extern "C" fn callback_wrapper_i64_i64_to_i64(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> i64 {
-    let argv = crate::bindings::wasm_runtime_get_function_argv(exec_env);
-    if argv.is_null() {
-        eprintln!("ERROR: Failed to get function arguments");
-        return 0;
-    }
-
-    let arg0 = *(argv as *const i64);
-    let arg1 = *(argv as *const i64).offset(1);
-
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_i64_i64_to_i64");
-        return 0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0;
-        }
-    };
-
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0;
-        }
-    };
-
-    let arg0_obj = match env.new_object(
-        "java/lang/Long",
-        "(J)V",
-        &[jni::objects::JValue::Long(arg0)],
-    ) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Long object for arg0: {}", e);
-            return 0;
-        }
-    };
-
-    let arg1_obj = match env.new_object(
-        "java/lang/Long",
-        "(J)V",
-        &[jni::objects::JValue::Long(arg1)],
-    ) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Long object for arg1: {}", e);
-            return 0;
-        }
-    };
-
-    let result = match env.call_method(
-        callback.as_obj(),
-        "apply",
-        "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
-        &[
-            jni::objects::JValue::Object(&arg0_obj),
-            jni::objects::JValue::Object(&arg1_obj),
-        ],
-    ) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0;
-        }
-    };
-
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0;
-        }
-    };
-
-    let long_val = match env.call_method(result_obj, "longValue", "()J", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get long value: {}", e);
-            return 0;
-        }
-    };
-
-    match long_val.j() {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to i64: {}", e);
-            0
-        }
-    }
-}
-
-// =============================================================================
-// f32/Float Callback Wrappers
-// =============================================================================
-
-/// Callback wrapper: () -> f32
-/// WAMR signature: "()f"
-/// Expects Java Supplier<Float>
-unsafe extern "C" fn callback_wrapper_void_to_f32(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> f32 {
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_void_to_f32");
-        return 0.0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0.0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0.0;
-        }
-    };
-
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0.0;
-        }
-    };
-
-    let result = match env.call_method(callback.as_obj(), "get", "()Ljava/lang/Object;", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0.0;
-        }
-    };
-
-    let float_val = match env.call_method(result_obj, "floatValue", "()F", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get float value: {}", e);
-            return 0.0;
-        }
-    };
-
-    match float_val.f() {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to f32: {}", e);
-            0.0
-        }
-    }
-}
-
-/// Callback wrapper: (f32) -> f32
-/// WAMR signature: "(f)f"
-/// Expects Java Function<Float, Float>
-unsafe extern "C" fn callback_wrapper_f32_to_f32(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> f32 {
-    let argv = crate::bindings::wasm_runtime_get_function_argv(exec_env);
-    if argv.is_null() {
-        eprintln!("ERROR: Failed to get function arguments");
-        return 0.0;
-    }
-
-    let arg0 = f32::from_bits(*argv);
-
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_f32_to_f32");
-        return 0.0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0.0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0.0;
-        }
-    };
-
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0.0;
-        }
-    };
-
-    let arg_obj = match env.new_object(
-        "java/lang/Float",
-        "(F)V",
-        &[jni::objects::JValue::Float(arg0)],
-    ) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Float object: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result = match env.call_method(
-        callback.as_obj(),
-        "apply",
-        "(Ljava/lang/Object;)Ljava/lang/Object;",
-        &[jni::objects::JValue::Object(&arg_obj)],
-    ) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0.0;
-        }
-    };
-
-    let float_val = match env.call_method(result_obj, "floatValue", "()F", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get float value: {}", e);
-            return 0.0;
-        }
-    };
-
-    match float_val.f() {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to f32: {}", e);
-            0.0
-        }
-    }
-}
-
-/// Callback wrapper: (f32, f32) -> f32
-/// WAMR signature: "(ff)f"
-/// Expects Java BiFunction<Float, Float, Float>
-unsafe extern "C" fn callback_wrapper_f32_f32_to_f32(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> f32 {
-    let argv = crate::bindings::wasm_runtime_get_function_argv(exec_env);
-    if argv.is_null() {
-        eprintln!("ERROR: Failed to get function arguments");
-        return 0.0;
-    }
-
-    let arg0 = f32::from_bits(*argv);
-    let arg1 = f32::from_bits(*argv.offset(1));
-
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_f32_f32_to_f32");
-        return 0.0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0.0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0.0;
-        }
-    };
-
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0.0;
-        }
-    };
-
-    let arg0_obj = match env.new_object(
-        "java/lang/Float",
-        "(F)V",
-        &[jni::objects::JValue::Float(arg0)],
-    ) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Float object for arg0: {}", e);
-            return 0.0;
-        }
-    };
-
-    let arg1_obj = match env.new_object(
-        "java/lang/Float",
-        "(F)V",
-        &[jni::objects::JValue::Float(arg1)],
-    ) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Float object for arg1: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result = match env.call_method(
-        callback.as_obj(),
-        "apply",
-        "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
-        &[
-            jni::objects::JValue::Object(&arg0_obj),
-            jni::objects::JValue::Object(&arg1_obj),
-        ],
-    ) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0.0;
-        }
-    };
-
-    let float_val = match env.call_method(result_obj, "floatValue", "()F", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get float value: {}", e);
-            return 0.0;
-        }
-    };
-
-    match float_val.f() {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to f32: {}", e);
-            0.0
-        }
-    }
-}
-
-// =============================================================================
-// f64/Double Callback Wrappers
-// =============================================================================
-
-/// Callback wrapper: () -> f64
-/// WAMR signature: "()F"
-/// Expects Java Supplier<Double>
-unsafe extern "C" fn callback_wrapper_void_to_f64(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> f64 {
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_void_to_f64");
-        return 0.0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0.0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0.0;
-        }
-    };
-
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0.0;
-        }
-    };
-
-    let result = match env.call_method(callback.as_obj(), "get", "()Ljava/lang/Object;", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0.0;
-        }
-    };
-
-    let double_val = match env.call_method(result_obj, "doubleValue", "()D", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get double value: {}", e);
-            return 0.0;
-        }
-    };
-
-    match double_val.d() {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to f64: {}", e);
-            0.0
-        }
-    }
-}
-
-/// Callback wrapper: (f64) -> f64
-/// WAMR signature: "(F)F"
-/// Expects Java Function<Double, Double>
-unsafe extern "C" fn callback_wrapper_f64_to_f64(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> f64 {
-    let argv = crate::bindings::wasm_runtime_get_function_argv(exec_env);
-    if argv.is_null() {
-        eprintln!("ERROR: Failed to get function arguments");
-        return 0.0;
-    }
-
-    let arg0 = f64::from_bits(*(argv as *const u64));
-
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_f64_to_f64");
-        return 0.0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0.0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0.0;
-        }
-    };
-
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0.0;
-        }
-    };
-
-    let arg_obj = match env.new_object(
-        "java/lang/Double",
-        "(D)V",
-        &[jni::objects::JValue::Double(arg0)],
-    ) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Double object: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result = match env.call_method(
-        callback.as_obj(),
-        "apply",
-        "(Ljava/lang/Object;)Ljava/lang/Object;",
-        &[jni::objects::JValue::Object(&arg_obj)],
-    ) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0.0;
-        }
-    };
-
-    let double_val = match env.call_method(result_obj, "doubleValue", "()D", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get double value: {}", e);
-            return 0.0;
-        }
-    };
-
-    match double_val.d() {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to f64: {}", e);
-            0.0
-        }
-    }
-}
-
-/// Callback wrapper: (f64, f64) -> f64
-/// WAMR signature: "(FF)F"
-/// Expects Java BiFunction<Double, Double, Double>
-unsafe extern "C" fn callback_wrapper_f64_f64_to_f64(
-    exec_env: *mut crate::bindings::WasmExecEnv,
-) -> f64 {
-    let argv = crate::bindings::wasm_runtime_get_function_argv(exec_env);
-    if argv.is_null() {
-        eprintln!("ERROR: Failed to get function arguments");
-        return 0.0;
-    }
-
-    let arg0 = f64::from_bits(*(argv as *const u64));
-    let arg1 = f64::from_bits(*(argv as *const u64).offset(1));
-
-    let attachment = crate::bindings::wasm_runtime_get_function_attachment(exec_env);
-    if attachment.is_null() {
-        eprintln!("ERROR: No attachment data in callback_wrapper_f64_f64_to_f64");
-        return 0.0;
-    }
-
-    let callback_id = *(attachment as *const usize);
-
-    let jvm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            eprintln!("ERROR: JavaVM not initialized");
-            return 0.0;
-        }
-    };
-
-    let mut env = match jvm.attach_current_thread() {
-        Ok(env) => env,
-        Err(e) => {
-            eprintln!("ERROR: Failed to attach thread: {}", e);
-            return 0.0;
-        }
-    };
-
-    let callback = match get_callback(callback_id) {
-        Some(cb) => cb,
-        None => {
-            eprintln!("ERROR: Callback {} not found in registry", callback_id);
-            return 0.0;
-        }
-    };
-
-    let arg0_obj = match env.new_object(
-        "java/lang/Double",
-        "(D)V",
-        &[jni::objects::JValue::Double(arg0)],
-    ) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Double object for arg0: {}", e);
-            return 0.0;
-        }
-    };
-
-    let arg1_obj = match env.new_object(
-        "java/lang/Double",
-        "(D)V",
-        &[jni::objects::JValue::Double(arg1)],
-    ) {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create Double object for arg1: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result = match env.call_method(
-        callback.as_obj(),
-        "apply",
-        "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
-        &[
-            jni::objects::JValue::Object(&arg0_obj),
-            jni::objects::JValue::Object(&arg1_obj),
-        ],
-    ) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to call Java callback: {}", e);
-            return 0.0;
-        }
-    };
-
-    let result_obj = match result.l() {
-        Ok(obj) => obj,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get result object: {}", e);
-            return 0.0;
-        }
-    };
-
-    let double_val = match env.call_method(result_obj, "doubleValue", "()D", &[]) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("ERROR: Failed to get double value: {}", e);
-            return 0.0;
-        }
-    };
-
-    match double_val.d() {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("ERROR: Failed to convert to f64: {}", e);
-            0.0
-        }
-    }
-}
-
-/// Select appropriate callback wrapper based on signature
-fn get_callback_wrapper(
-    param_types: &[WasmType],
-    result_types: &[WasmType],
-) -> Option<*mut c_void> {
-    // Match on (param_types, result_types) to select wrapper function
-    match (param_types, result_types) {
-        // i32 variants
-        ([], [WasmType::I32]) => Some(callback_wrapper_void_to_i32 as *mut c_void),
-        ([WasmType::I32], [WasmType::I32]) => Some(callback_wrapper_i32_to_i32 as *mut c_void),
-        ([WasmType::I32, WasmType::I32], [WasmType::I32]) => {
-            Some(callback_wrapper_i32_i32_to_i32 as *mut c_void)
-        }
-
-        // i64 variants
-        ([], [WasmType::I64]) => Some(callback_wrapper_void_to_i64 as *mut c_void),
-        ([WasmType::I64], [WasmType::I64]) => Some(callback_wrapper_i64_to_i64 as *mut c_void),
-        ([WasmType::I64, WasmType::I64], [WasmType::I64]) => {
-            Some(callback_wrapper_i64_i64_to_i64 as *mut c_void)
-        }
-
-        // f32 variants
-        ([], [WasmType::F32]) => Some(callback_wrapper_void_to_f32 as *mut c_void),
-        ([WasmType::F32], [WasmType::F32]) => Some(callback_wrapper_f32_to_f32 as *mut c_void),
-        ([WasmType::F32, WasmType::F32], [WasmType::F32]) => {
-            Some(callback_wrapper_f32_f32_to_f32 as *mut c_void)
-        }
-
-        // f64 variants
-        ([], [WasmType::F64]) => Some(callback_wrapper_void_to_f64 as *mut c_void),
-        ([WasmType::F64], [WasmType::F64]) => Some(callback_wrapper_f64_to_f64 as *mut c_void),
-        ([WasmType::F64, WasmType::F64], [WasmType::F64]) => {
-            Some(callback_wrapper_f64_f64_to_f64 as *mut c_void)
-        }
-
-        // Unsupported signature
-        _ => {
-            eprintln!(
-                "WARNING: Unsupported callback signature: {:?} -> {:?}",
-                param_types, result_types
-            );
-            None
-        }
-    }
-}
-
-*/
-
-// =============================================================================
-// WAMR Host Function Registration
-// =============================================================================
-// NOTE: Host function registration is temporarily disabled along with callbacks
-// These will be re-enabled once WAMR is built with the required features.
-
-/*
-/// Generate WAMR signature string from parameter and result types
-///
-/// Examples:
-/// - (i32, i32) -> i32 becomes "(ii)i"
-/// - () -> i32 becomes "()i"
-/// - (i64, f32) -> f64 becomes "(If)F"
-fn generate_wamr_signature(
-    param_types: &[WasmType],
-    result_types: &[WasmType],
-) -> Result<CString, String> {
-    let mut sig = String::from("(");
-
-    for param in param_types {
-        sig.push(match param {
-            WasmType::I32 => 'i',
-            WasmType::I64 => 'I',
-            WasmType::F32 => 'f',
-            WasmType::F64 => 'F',
-        });
-    }
-
-    sig.push(')');
-
-    for result in result_types {
-        sig.push(match result {
-            WasmType::I32 => 'i',
-            WasmType::I64 => 'I',
-            WasmType::F32 => 'f',
-            WasmType::F64 => 'F',
-        });
-    }
-
-    CString::new(sig).map_err(|e| format!("Invalid signature string: {}", e))
-}
-
-/// Register function imports with WAMR for a given module
-fn register_function_imports(
-    module_name: &str,
-    functions: &HashMap<String, ImportItem>,
-) -> Result<(), String> {
-    if functions.is_empty() {
-        return Ok(());
-    }
-
-    let mut native_symbols = Vec::new();
-    let mut c_names = Vec::new();
-    let mut c_signatures = Vec::new();
-    let mut callback_ids = Vec::new();
-
-    for (name, import) in functions {
-        if let ImportItem::Function {
-            callback,
-            param_types,
-            result_types,
-        } = import
-        {
-            // Create C string for function name
-            let c_name = CString::new(name.as_str())
-                .map_err(|e| format!("Invalid function name '{}': {}", name, e))?;
-
-            // Generate WAMR signature
-            let signature = generate_wamr_signature(param_types, result_types)?;
-
-            // Get appropriate wrapper function based on signature
-            let func_ptr = match get_callback_wrapper(param_types, result_types) {
-                Some(ptr) => ptr,
-                None => {
-                    // Unsupported signature - log warning and skip
-                    eprintln!(
-                        "WARNING: Skipping function '{}' with unsupported signature {:?} -> {:?}",
-                        name, param_types, result_types
-                    );
-                    continue;
-                }
-            };
-
-            // Register callback in global registry and get unique ID
-            let callback_id = register_callback(callback.clone());
-
-            // Store callback ID as attachment (WAMR will pass this to the wrapper)
-            // Convert usize to pointer for attachment field
-            let attachment = Box::into_raw(Box::new(callback_id)) as *mut c_void;
-
-            // Create native symbol entry
-            native_symbols.push(NativeSymbol {
-                symbol: c_name.as_ptr(),
-                func_ptr,
-                signature: signature.as_ptr(),
-                attachment,
-            });
-
-            // Store strings to prevent deallocation
-            c_names.push(c_name);
-            c_signatures.push(signature);
-            callback_ids.push(callback_id);
-        }
-    }
-
-    if native_symbols.is_empty() {
-        return Ok(());
-    }
-
-    let c_module_name =
-        CString::new(module_name).map_err(|e| format!("Invalid module name: {}", e))?;
-
-    let success = unsafe {
-        crate::bindings::wasm_runtime_register_natives(
-            c_module_name.as_ptr(),
-            native_symbols.as_ptr(),
-            native_symbols.len() as u32,
-        )
-    };
-
-    if !success {
-        return Err(format!(
-            "Failed to register native functions for module '{}'",
-            module_name
-        ));
-    }
-
-    Ok(())
-}
-
-/// Register all imports with WAMR
-fn register_imports(
-    parsed_imports: &HashMap<String, HashMap<String, ImportItem>>,
-) -> Result<(), String> {
-    for (module_name, items) in parsed_imports {
-        // Filter function imports
-        let functions: HashMap<String, ImportItem> = items
-            .iter()
-            .filter(|(_, item)| matches!(item, ImportItem::Function { .. }))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        // Register function imports
-        if !functions.is_empty() {
-            register_function_imports(module_name, &functions)?;
-        }
-
-        // TODO: Register global imports
-        // TODO: Register memory imports
-        // TODO: Register table imports
-    }
-
-    Ok(())
-}
-*/
 
 /// Create a new WAMR runtime instance
 #[no_mangle]
@@ -1697,8 +58,8 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jlong {
-    match create_runtime() {
-        Ok(runtime) => Box::into_raw(Box::new(runtime)) as jlong,
+    match runtime::runtime_init() {
+        Ok(rt) => Box::into_raw(Box::new(rt)) as jlong,
         Err(_) => 0,
     }
 }
@@ -1713,7 +74,6 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
     if runtime_handle != 0 {
         unsafe {
             let _runtime = Box::from_raw(runtime_handle as *mut WamrRuntime);
-            // Box drop will clean up the runtime
         }
     }
 }
@@ -1721,7 +81,7 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
 /// Compile a WebAssembly module
 #[no_mangle]
 pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeCompileModule<'local>(
-    mut env: JNIEnv<'local>,
+    env: JNIEnv<'local>,
     _class: JClass<'local>,
     runtime_handle: jlong,
     wasm_bytes: JByteArray<'local>,
@@ -1737,24 +97,268 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
 
     unsafe {
         let runtime_ref = &*(runtime_handle as *const WamrRuntime);
-        match compile_module(runtime_ref, &bytes) {
+        match runtime::module_compile(runtime_ref, &bytes) {
             Ok(module) => Box::into_raw(Box::new(module)) as jlong,
             Err(_) => 0,
         }
     }
 }
 
-/// Get WAMR version
+/// Get WAMR version string (from actual runtime API)
 #[no_mangle]
 pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetVersion<'local>(
-    mut env: JNIEnv<'local>,
+    env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
-    let version = "2.4.4";
-    match env.new_string(version) {
+    let (major, minor, patch) = runtime::runtime_get_version();
+    let version = format!("{}.{}.{}", major, minor, patch);
+    match env.new_string(&version) {
         Ok(s) => s.into_raw(),
         Err(_) => ptr::null_mut(),
     }
+}
+
+/// Get WAMR major version number
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetMajorVersion<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jint {
+    let (major, _, _) = runtime::runtime_get_version();
+    major as jint
+}
+
+/// Get WAMR minor version number
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetMinorVersion<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jint {
+    let (_, minor, _) = runtime::runtime_get_version();
+    minor as jint
+}
+
+/// Get WAMR patch version number
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetPatchVersion<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jint {
+    let (_, _, patch) = runtime::runtime_get_version();
+    patch as jint
+}
+
+/// Check if a running mode is supported
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeIsRunningModeSupported<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    mode: jint,
+) -> jboolean {
+    if runtime::is_running_mode_supported(mode as u32) { 1 } else { 0 }
+}
+
+/// Set the default running mode for new module instances
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeSetDefaultRunningMode<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    mode: jint,
+) -> jboolean {
+    if runtime::set_default_running_mode(mode as u32) { 1 } else { 0 }
+}
+
+/// Set log verbosity level (0-5)
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeSetLogLevel<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    level: jint,
+) {
+    runtime::set_log_level(level as i32);
+}
+
+/// Initialize the thread environment for the current native thread.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeInitThreadEnv<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jboolean {
+    if runtime::init_thread_env() { 1 } else { 0 }
+}
+
+/// Destroy the thread environment for the current native thread.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeDestroyThreadEnv<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) {
+    runtime::destroy_thread_env();
+}
+
+/// Check if the thread environment has been initialized.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeIsThreadEnvInited<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jboolean {
+    if runtime::is_thread_env_inited() { 1 } else { 0 }
+}
+
+/// Set the maximum number of threads.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeSetMaxThreadNum<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    num: jint,
+) {
+    if num >= 0 {
+        runtime::set_max_thread_num(num as u32);
+    }
+}
+
+// =============================================================================
+// JniWebAssemblyModule
+// =============================================================================
+
+/// Set the name of a module
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeSetModuleName<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    name: JString<'local>,
+) -> jboolean {
+    if module_handle == 0 || name.is_null() {
+        return 0;
+    }
+    let name_str: String = match env.get_string(&name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        if runtime::module_set_name(module_ref, &name_str) { 1 } else { 0 }
+    }
+}
+
+/// Get the name of a module
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetModuleName<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+) -> jstring {
+    if module_handle == 0 {
+        return ptr::null_mut();
+    }
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        match runtime::module_get_name(module_ref) {
+            Some(name) => match env.new_string(&name) {
+                Ok(s) => s.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            None => ptr::null_mut(),
+        }
+    }
+}
+
+/// Get the module hash string
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetModuleHash<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+) -> jstring {
+    if module_handle == 0 {
+        return ptr::null_mut();
+    }
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        match runtime::module_get_hash(module_ref) {
+            Some(hash) => match env.new_string(&hash) {
+                Ok(s) => s.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            None => ptr::null_mut(),
+        }
+    }
+}
+
+/// Get the package type of a loaded module
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetPackageType<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+) -> jint {
+    if module_handle == 0 {
+        return bindings::PACKAGE_TYPE_UNKNOWN as jint;
+    }
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        runtime::get_module_package_type(module_ref) as jint
+    }
+}
+
+/// Get the package version of a loaded module
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetPackageVersion<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+) -> jint {
+    if module_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        runtime::get_module_package_version(module_ref) as jint
+    }
+}
+
+/// Check if the underlying binary is freeable
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeIsUnderlyingBinaryFreeable<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+) -> jboolean {
+    if module_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        if runtime::is_underlying_binary_freeable(module_ref) { 1 } else { 0 }
+    }
+}
+
+/// Get file package type from WASM bytecode
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetFilePackageType<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    wasm_bytes: JByteArray<'local>,
+) -> jint {
+    if wasm_bytes.is_null() {
+        return bindings::PACKAGE_TYPE_UNKNOWN as jint;
+    }
+    let bytes = match env.convert_byte_array(&wasm_bytes) {
+        Ok(b) => b,
+        Err(_) => return bindings::PACKAGE_TYPE_UNKNOWN as jint,
+    };
+    runtime::get_file_package_type(&bytes) as jint
+}
+
+/// Get the currently supported version for a package type
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetCurrentPackageVersion<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    package_type: jint,
+) -> jint {
+    runtime::get_current_package_version(package_type as u32) as jint
 }
 
 /// Destroy a WebAssembly module
@@ -1767,18 +371,16 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
     if module_handle != 0 {
         unsafe {
             let _module = Box::from_raw(module_handle as *mut WamrModule);
-            // Box drop will clean up the module
         }
     }
 }
 
-/// Instantiate a WebAssembly module with optional imports
+/// Instantiate a WebAssembly module (no imports)
 #[no_mangle]
 pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeInstantiateModule<'local>(
-    mut env: JNIEnv<'local>,
+    _env: JNIEnv<'local>,
     _class: JClass<'local>,
     module_handle: jlong,
-    imports: JObject<'local>,
 ) -> jlong {
     if module_handle == 0 {
         return 0;
@@ -1787,41 +389,2297 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
     unsafe {
         let module_ref = &*(module_handle as *const WamrModule);
 
-        // NOTE: Import registration temporarily disabled
-        // TODO: Re-enable once WAMR is built with required features
-        /*
-        // Parse and register imports if provided
-        if !imports.is_null() {
-            match parse_imports(&mut env, &imports) {
-                Ok(parsed_imports) => {
-                    if !parsed_imports.is_empty() {
-                        // Register imports with WAMR before instantiation
-                        if let Err(e) = register_imports(&parsed_imports) {
-                            eprintln!("ERROR: Failed to register imports: {}", e);
-                            return 0;
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("ERROR: Failed to parse imports: {}", e);
-                    return 0;
-                }
-            }
-        }
-        */
-
-        // For now, warn if imports were provided
-        if !imports.is_null() {
-            eprintln!("WARNING: Import registration not yet supported - ignoring imports");
-        }
-
-        // Instantiate module (with or without imports)
-        match instantiate_module(module_ref) {
+        let stack_size = crate::types::DEFAULT_STACK_SIZE;
+        let heap_size = crate::types::DEFAULT_HEAP_SIZE;
+        match runtime::instance_create(module_ref, stack_size, heap_size) {
             Ok(instance) => Box::into_raw(Box::new(instance)) as jlong,
             Err(_) => 0,
         }
     }
 }
 
-// Additional JNI bindings for other WebAssembly operations would be implemented here
-// following the same pattern...
+// =============================================================================
+// Host Function Registration (JNI)
+// =============================================================================
+
+/// Per-function JNI callback data. Holds a global reference to the Java
+/// HostFunction object and the WASM type information needed for conversions.
+struct JniCallbackData {
+    /// Global reference to the Java HostFunction object
+    host_function_ref: jni::objects::GlobalRef,
+    /// WASM type tags for parameters (0=i32, 1=i64, 2=f32, 3=f64)
+    param_types: Vec<u8>,
+    /// WASM type tags for results
+    result_types: Vec<u8>,
+}
+
+/// Holds both the WAMR native registration and the JNI callback data.
+/// Dropping this unregisters the native functions and frees the global refs.
+struct JniImportRegistration {
+    #[allow(dead_code)]
+    native_registration: NativeRegistration,
+    /// Boxed callback data — must outlive the native_registration because
+    /// the trampoline references them via user_data pointers.
+    _callback_data: Vec<Box<JniCallbackData>>,
+}
+
+/// The JNI host callback function. Called by the WAMR trampoline via
+/// HostFunctionContext.callback_fn. Bridges WAMR → Java HostFunction.execute().
+unsafe extern "C" fn jni_host_callback(
+    user_data: *mut c_void,
+    args: *const u64,
+    param_count: u32,
+    result: *mut u64,
+) -> i32 {
+    if user_data.is_null() {
+        return -1;
+    }
+
+    let data = &*(user_data as *const JniCallbackData);
+
+    // Get the JavaVM and attach the current thread
+    let vm = match JAVA_VM.get() {
+        Some(vm) => vm,
+        None => return -1,
+    };
+
+    let mut env = match vm.attach_current_thread_as_daemon() {
+        Ok(env) => env,
+        Err(_) => return -1,
+    };
+
+    // Build Java Object[] from raw args based on param_types
+    let obj_array = match env.new_object_array(
+        param_count as i32,
+        "java/lang/Object",
+        &JObject::null(),
+    ) {
+        Ok(arr) => arr,
+        Err(_) => return -1,
+    };
+
+    for i in 0..param_count as usize {
+        let arg_val = *args.add(i);
+        let java_obj = match data.param_types.get(i).copied().unwrap_or(0) {
+            0 => box_integer(&mut env, arg_val as i32),   // I32
+            1 => box_long(&mut env, arg_val as i64),      // I64
+            2 => box_float(&mut env, f32::from_bits(arg_val as u32)),  // F32
+            3 => box_double(&mut env, f64::from_bits(arg_val)),        // F64
+            _ => box_integer(&mut env, arg_val as i32),
+        };
+        let obj = JObject::from_raw(java_obj);
+        let _ = env.set_object_array_element(&obj_array, i as i32, &obj);
+    }
+
+    // Call HostFunction.execute(Object... args) -> Object
+    let result_obj = env.call_method(
+        data.host_function_ref.as_obj(),
+        "execute",
+        "([Ljava/lang/Object;)Ljava/lang/Object;",
+        &[JValue::Object(&JObject::from(obj_array))],
+    );
+
+    let result_obj = match result_obj {
+        Ok(v) => match v.l() {
+            Ok(obj) => obj,
+            Err(_) => return -1,
+        },
+        Err(_) => {
+            // Check if a Java exception was thrown
+            if env.exception_check().unwrap_or(false) {
+                env.exception_clear().ok();
+            }
+            return -1;
+        }
+    };
+
+    // Convert return value to uint64 based on result_types
+    if !data.result_types.is_empty() && !result_obj.is_null() {
+        let val: u64 = match data.result_types[0] {
+            0 => unbox_integer(&mut env, &result_obj) as u32 as u64,  // I32
+            1 => unbox_long(&mut env, &result_obj) as u64,            // I64
+            2 => unbox_float(&mut env, &result_obj).to_bits() as u64, // F32
+            3 => unbox_double(&mut env, &result_obj).to_bits(),       // F64
+            _ => 0,
+        };
+        *result = val;
+    }
+
+    0 // success
+}
+
+/// Register host functions for a set of import modules.
+/// Called from JniWebAssemblyModule before instantiation.
+///
+/// The imports parameter is a Map<String, Map<String, HostFunction>>.
+/// Returns a registration handle (jlong) or 0 on failure.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeRegisterHostFunctions<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    imports: JObject<'local>,
+) -> jlong {
+    if imports.is_null() {
+        return 0;
+    }
+
+    // Parse Map<String, Map<String, HostFunction>>
+    // We'll collect all registrations (one per module name)
+    let mut registrations: Vec<JniImportRegistration> = Vec::new();
+
+    // Get the outer Map's entrySet
+    let outer_entry_set = match env.call_method(&imports, "entrySet", "()Ljava/util/Set;", &[]) {
+        Ok(v) => match v.l() { Ok(o) => o, Err(_) => return 0 },
+        Err(_) => return 0,
+    };
+    let outer_iterator = match env.call_method(&outer_entry_set, "iterator", "()Ljava/util/Iterator;", &[]) {
+        Ok(v) => match v.l() { Ok(o) => o, Err(_) => return 0 },
+        Err(_) => return 0,
+    };
+
+    loop {
+        let has_next = match env.call_method(&outer_iterator, "hasNext", "()Z", &[]) {
+            Ok(v) => match v.z() { Ok(b) => b, Err(_) => break },
+            Err(_) => break,
+        };
+        if !has_next {
+            break;
+        }
+
+        let entry = match env.call_method(&outer_iterator, "next", "()Ljava/lang/Object;", &[]) {
+            Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+            Err(_) => continue,
+        };
+
+        // module_name = entry.getKey()
+        let module_name_obj = match env.call_method(&entry, "getKey", "()Ljava/lang/Object;", &[]) {
+            Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+            Err(_) => continue,
+        };
+        let module_name: String = match env.get_string(&JString::from(module_name_obj)) {
+            Ok(s) => s.into(),
+            Err(_) => continue,
+        };
+
+        // inner_map = entry.getValue()
+        let inner_map = match env.call_method(&entry, "getValue", "()Ljava/lang/Object;", &[]) {
+            Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+            Err(_) => continue,
+        };
+
+        // Iterate inner Map<String, HostFunction>
+        let inner_entry_set = match env.call_method(&inner_map, "entrySet", "()Ljava/util/Set;", &[]) {
+            Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+            Err(_) => continue,
+        };
+        let inner_iterator = match env.call_method(&inner_entry_set, "iterator", "()Ljava/util/Iterator;", &[]) {
+            Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+            Err(_) => continue,
+        };
+
+        let mut functions: Vec<(String, Vec<u8>, Vec<u8>, crate::types::HostCallbackFn, *mut c_void)> = Vec::new();
+        let mut callback_data_list: Vec<Box<JniCallbackData>> = Vec::new();
+
+        loop {
+            let has_next = match env.call_method(&inner_iterator, "hasNext", "()Z", &[]) {
+                Ok(v) => match v.z() { Ok(b) => b, Err(_) => break },
+                Err(_) => break,
+            };
+            if !has_next {
+                break;
+            }
+
+            let inner_entry = match env.call_method(&inner_iterator, "next", "()Ljava/lang/Object;", &[]) {
+                Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+                Err(_) => continue,
+            };
+
+            // func_name = inner_entry.getKey()
+            let func_name_obj = match env.call_method(&inner_entry, "getKey", "()Ljava/lang/Object;", &[]) {
+                Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+                Err(_) => continue,
+            };
+            let func_name: String = match env.get_string(&JString::from(func_name_obj)) {
+                Ok(s) => s.into(),
+                Err(_) => continue,
+            };
+
+            // host_function = inner_entry.getValue()
+            let host_func = match env.call_method(&inner_entry, "getValue", "()Ljava/lang/Object;", &[]) {
+                Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+                Err(_) => continue,
+            };
+
+            // Get FunctionSignature from HostFunction.getSignature()
+            let signature = match env.call_method(&host_func, "getSignature", "()Lai/tegmentum/wamr4j/FunctionSignature;", &[]) {
+                Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+                Err(_) => continue,
+            };
+
+            // Get parameterTypes array from FunctionSignature
+            let param_types_arr = match env.call_method(&signature, "getParameterTypes", "()[Lai/tegmentum/wamr4j/ValueType;", &[]) {
+                Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+                Err(_) => continue,
+            };
+            let param_types = extract_value_type_array(&mut env, &param_types_arr);
+
+            // Get returnTypes array from FunctionSignature
+            let result_types_arr = match env.call_method(&signature, "getReturnTypes", "()[Lai/tegmentum/wamr4j/ValueType;", &[]) {
+                Ok(v) => match v.l() { Ok(o) => o, Err(_) => continue },
+                Err(_) => continue,
+            };
+            let result_types = extract_value_type_array(&mut env, &result_types_arr);
+
+            // Create a global reference to the HostFunction so it survives GC
+            let host_func_global = match env.new_global_ref(&host_func) {
+                Ok(g) => g,
+                Err(_) => continue,
+            };
+
+            let cb_data = Box::new(JniCallbackData {
+                host_function_ref: host_func_global,
+                param_types: param_types.clone(),
+                result_types: result_types.clone(),
+            });
+
+            let user_data = &*cb_data as *const JniCallbackData as *mut c_void;
+
+            functions.push((func_name, param_types, result_types, jni_host_callback, user_data));
+            callback_data_list.push(cb_data);
+        }
+
+        if functions.is_empty() {
+            continue;
+        }
+
+        // Register with WAMR
+        match runtime::register_host_functions(&module_name, functions) {
+            Ok(native_reg) => {
+                registrations.push(JniImportRegistration {
+                    native_registration: native_reg,
+                    _callback_data: callback_data_list,
+                });
+            }
+            Err(_) => {
+                // Registration failed — callback_data_list will be dropped, freeing global refs
+                return 0;
+            }
+        }
+    }
+
+    if registrations.is_empty() {
+        return 0;
+    }
+
+    Box::into_raw(Box::new(registrations)) as jlong
+}
+
+/// Destroy a host function registration, unregistering all functions and freeing JNI global refs.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDestroyRegistration<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    registration_handle: jlong,
+) {
+    if registration_handle != 0 {
+        unsafe {
+            let _ = Box::from_raw(registration_handle as *mut Vec<JniImportRegistration>);
+        }
+    }
+}
+
+/// Extract a ValueType[] Java array into a Vec<u8> of WASM type tags.
+/// ValueType enum ordinals: I32=0, I64=1, F32=2, F64=3
+fn extract_value_type_array(env: &mut JNIEnv, arr: &JObject) -> Vec<u8> {
+    if arr.is_null() {
+        return Vec::new();
+    }
+    let jarray: jni::objects::JObjectArray = unsafe { JObject::from_raw(arr.as_raw()).into() };
+    let len = match env.get_array_length(&jarray) {
+        Ok(l) => l as usize,
+        Err(_) => return Vec::new(),
+    };
+    let mut types = Vec::with_capacity(len);
+    for i in 0..len {
+        let elem = match env.get_object_array_element(&jarray, i as i32) {
+            Ok(o) => o,
+            Err(_) => {
+                types.push(0); // fallback to I32
+                continue;
+            }
+        };
+        // Call ValueType.ordinal() to get the type tag
+        let ordinal = match env.call_method(&elem, "ordinal", "()I", &[]) {
+            Ok(v) => match v.i() { Ok(i) => i as u8, Err(_) => 0 },
+            Err(_) => 0,
+        };
+        types.push(ordinal);
+    }
+    types
+}
+
+/// Get names of all exports from a module
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetExportNames<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+) -> jobjectArray {
+    if module_handle == 0 {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        let export_count = bindings::wasm_runtime_get_export_count(module_ref.handle);
+        let mut names: Vec<String> = Vec::new();
+
+        for i in 0..export_count {
+            let mut export_info: bindings::wasm_export_t = std::mem::zeroed();
+            bindings::wasm_runtime_get_export_type(module_ref.handle, i as i32, &mut export_info);
+            if !export_info.name.is_null() {
+                if let Ok(name) = CStr::from_ptr(export_info.name).to_str() {
+                    names.push(name.to_string());
+                }
+            }
+        }
+
+        create_string_array(&mut env, &names)
+    }
+}
+
+/// Get names of all imports from a module
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetImportNames<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+) -> jobjectArray {
+    if module_handle == 0 {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        let import_count = bindings::wasm_runtime_get_import_count(module_ref.handle);
+        let mut names: Vec<String> = Vec::new();
+
+        for i in 0..import_count {
+            let mut import_info: bindings::wasm_import_t = std::mem::zeroed();
+            bindings::wasm_runtime_get_import_type(module_ref.handle, i as i32, &mut import_info);
+            if !import_info.name.is_null() {
+                let name = CStr::from_ptr(import_info.name).to_string_lossy();
+                if !import_info.module_name.is_null() {
+                    let module_name = CStr::from_ptr(import_info.module_name).to_string_lossy();
+                    names.push(format!("{}.{}", module_name, name));
+                } else {
+                    names.push(name.into_owned());
+                }
+            }
+        }
+
+        create_string_array(&mut env, &names)
+    }
+}
+
+/// Get the function signature for an exported function by name
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetExportFunctionSignature<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    function_name: JString<'local>,
+) -> jobject {
+    if module_handle == 0 || function_name.is_null() {
+        return ptr::null_mut();
+    }
+
+    let name: String = match env.get_string(&function_name) {
+        Ok(s) => s.into(),
+        Err(_) => return ptr::null_mut(),
+    };
+
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        let export_count = bindings::wasm_runtime_get_export_count(module_ref.handle);
+
+        for i in 0..export_count {
+            let mut export_info: bindings::wasm_export_t = std::mem::zeroed();
+            bindings::wasm_runtime_get_export_type(module_ref.handle, i as i32, &mut export_info);
+
+            if export_info.kind != bindings::WASM_IMPORT_EXPORT_KIND_FUNC {
+                continue;
+            }
+            if export_info.name.is_null() {
+                continue;
+            }
+            let export_name = match CStr::from_ptr(export_info.name).to_str() {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if export_name != name {
+                continue;
+            }
+
+            // Found the function export — get its type info
+            let func_type = export_info.type_ptr as *const bindings::WasmFuncTypeT;
+            if func_type.is_null() {
+                return ptr::null_mut();
+            }
+
+            let param_count = bindings::wasm_func_type_get_param_count(func_type);
+            let result_count = bindings::wasm_func_type_get_result_count(func_type);
+
+            let mut param_kinds = Vec::with_capacity(param_count as usize);
+            for j in 0..param_count {
+                param_kinds.push(bindings::wasm_func_type_get_param_valkind(func_type, j));
+            }
+
+            let mut result_kinds = Vec::with_capacity(result_count as usize);
+            for j in 0..result_count {
+                result_kinds.push(bindings::wasm_func_type_get_result_valkind(func_type, j));
+            }
+
+            return create_function_signature(&mut env, &param_kinds, &result_kinds);
+        }
+    }
+
+    ptr::null_mut()
+}
+
+// =============================================================================
+// JniWebAssemblyInstance
+// =============================================================================
+
+/// Destroy a WebAssembly instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDestroyInstance<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) {
+    if instance_handle != 0 {
+        unsafe {
+            let _instance = Box::from_raw(instance_handle as *mut WamrInstance);
+        }
+    }
+}
+
+/// Get a function from an instance by name
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetFunction<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    function_name: JString<'local>,
+) -> jlong {
+    if instance_handle == 0 || function_name.is_null() {
+        return 0;
+    }
+
+    let name: String = match env.get_string(&function_name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::function_lookup(instance_ref, &name) {
+            Ok(function) => Box::into_raw(Box::new(function)) as jlong,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Get memory from an instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetMemory<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jlong {
+    if instance_handle == 0 {
+        return 0;
+    }
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::memory_get(instance_ref) {
+            Ok(memory) => Box::into_raw(Box::new(memory)) as jlong,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Get a global variable value
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetGlobal<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    global_name: JString<'local>,
+) -> jobject {
+    if instance_handle == 0 || global_name.is_null() {
+        return ptr::null_mut();
+    }
+
+    let name: String = match env.get_string(&global_name) {
+        Ok(s) => s.into(),
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let c_name = match std::ffi::CString::new(name.clone()) {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::global_get(instance_ref.handle, c_name.as_ptr()) {
+            Ok(wasm_val) => wasm_value_to_jobject(&mut env, &wasm_val),
+            Err(e) => {
+                let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+                ptr::null_mut()
+            }
+        }
+    }
+}
+
+/// Set a global variable value
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetGlobal<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    global_name: JString<'local>,
+    value: JObject<'local>,
+) {
+    if instance_handle == 0 || global_name.is_null() || value.is_null() {
+        return;
+    }
+
+    let name: String = match env.get_string(&global_name) {
+        Ok(s) => s.into(),
+        Err(_) => return,
+    };
+
+    let c_name = match std::ffi::CString::new(name.clone()) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    // Convert Java boxed value to WasmValue
+    let wasm_val = if is_instance_of(&mut env, &value, "java/lang/Integer") {
+        WasmValue::I32(unbox_integer(&mut env, &value))
+    } else if is_instance_of(&mut env, &value, "java/lang/Long") {
+        WasmValue::I64(unbox_long(&mut env, &value))
+    } else if is_instance_of(&mut env, &value, "java/lang/Float") {
+        WasmValue::F32(unbox_float(&mut env, &value))
+    } else if is_instance_of(&mut env, &value, "java/lang/Double") {
+        WasmValue::F64(unbox_double(&mut env, &value))
+    } else {
+        let _ = throw_wasm_exception(&mut env, "Unsupported value type for global");
+        return;
+    };
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if let Err(e) = runtime::global_set(instance_ref.handle, c_name.as_ptr(), &wasm_val) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
+/// Get names of all exported functions from an instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetFunctionNames<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jobjectArray {
+    if instance_handle == 0 {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        let names = runtime::get_export_names_by_kind(
+            instance_ref.handle, bindings::WASM_IMPORT_EXPORT_KIND_FUNC);
+        create_string_array(&mut env, &names)
+    }
+}
+
+/// Get names of all exported globals from an instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetGlobalNames<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jobjectArray {
+    if instance_handle == 0 {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        let names = runtime::get_export_names_by_kind(
+            instance_ref.handle, bindings::WASM_IMPORT_EXPORT_KIND_GLOBAL);
+        create_string_array(&mut env, &names)
+    }
+}
+
+/// Set the running mode for an instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetRunningMode<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    mode: jint,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if runtime::set_running_mode(instance_ref, mode as u32) { 1 } else { 0 }
+    }
+}
+
+/// Get the running mode for an instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetRunningMode<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jint {
+    if instance_handle == 0 {
+        return -1;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::get_running_mode(instance_ref) as jint
+    }
+}
+
+/// Enable or disable bounds checks for an instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetBoundsChecks<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    enable: jboolean,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if runtime::set_bounds_checks(instance_ref, enable != 0) { 1 } else { 0 }
+    }
+}
+
+/// Check if bounds checks are enabled for an instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeIsBoundsChecksEnabled<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if runtime::is_bounds_checks_enabled(instance_ref) { 1 } else { 0 }
+    }
+}
+
+/// Get an exported table by name
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetTable<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    table_name: JString<'local>,
+) -> jlong {
+    if instance_handle == 0 || table_name.is_null() {
+        return 0;
+    }
+
+    let name: String = match env.get_string(&table_name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::table_get(instance_ref, &name) {
+            Ok(table) => Box::into_raw(Box::new(table)) as jlong,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Get names of all exported tables from an instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetTableNames<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jobjectArray {
+    if instance_handle == 0 {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        let names = runtime::get_export_names_by_kind(
+            instance_ref.handle, bindings::WASM_IMPORT_EXPORT_KIND_TABLE);
+        create_string_array(&mut env, &names)
+    }
+}
+
+/// Allocate memory within the module instance heap
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeModuleMalloc<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    size: jlong,
+) -> jlong {
+    if instance_handle == 0 || size <= 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::module_malloc(instance_ref, size as u64) {
+            Ok((app_offset, _)) => app_offset as jlong,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Free memory previously allocated by module_malloc
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeModuleFree<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    ptr: jlong,
+) {
+    if instance_handle == 0 || ptr <= 0 {
+        return;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::module_free(instance_ref, ptr as u64);
+    }
+}
+
+/// Duplicate data into the module instance memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeModuleDupData<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    data: JByteArray<'local>,
+) -> jlong {
+    if instance_handle == 0 || data.is_null() {
+        return 0;
+    }
+    let bytes = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::module_dup_data(instance_ref, &bytes) {
+            Ok(offset) => offset as jlong,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Validate an application address range
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeValidateAppAddr<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    app_offset: jlong,
+    size: jlong,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if runtime::validate_app_addr(instance_ref, app_offset as u64, size as u64) { 1 } else { 0 }
+    }
+}
+
+/// Validate an application string address
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeValidateAppStrAddr<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    app_str_offset: jlong,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if runtime::validate_app_str_addr(instance_ref, app_str_offset as u64) { 1 } else { 0 }
+    }
+}
+
+/// Get memory instance by index
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetMemoryByIndex<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    index: jint,
+) -> jlong {
+    if instance_handle == 0 || index < 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::memory_get_by_index(instance_ref, index as u32) {
+            Ok(memory) => Box::into_raw(Box::new(memory)) as jlong,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Get memory base address as a long (native pointer)
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetBaseAddress<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+) -> jlong {
+    if memory_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        runtime::memory_base_address(memory_ref) as jlong
+    }
+}
+
+/// Get bytes per page for a memory instance
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetBytesPerPage<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+) -> jlong {
+    if memory_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        runtime::memory_bytes_per_page(memory_ref) as jlong
+    }
+}
+
+/// Check if the instance exports memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeHasMemory<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        let memory_handle = crate::bindings::wasm_runtime_get_default_memory(instance_ref.handle);
+        if memory_handle.is_null() { 0 } else { 1 }
+    }
+}
+
+// =============================================================================
+// Exception & Execution Control
+// =============================================================================
+
+/// Get the current exception on an instance. Returns null if no exception.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetException<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jstring {
+    if instance_handle == 0 {
+        return ptr::null_mut();
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::instance_get_exception(instance_ref) {
+            Some(msg) => {
+                match env.new_string(&msg) {
+                    Ok(s) => s.into_raw(),
+                    Err(_) => ptr::null_mut(),
+                }
+            }
+            None => ptr::null_mut(),
+        }
+    }
+}
+
+/// Set a custom exception on an instance.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetException<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    exception: JString<'local>,
+) {
+    if instance_handle == 0 || exception.is_null() {
+        return;
+    }
+    let exception_str: String = match env.get_string(&exception) {
+        Ok(s) => s.into(),
+        Err(_) => return,
+    };
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        let _ = runtime::instance_set_exception(instance_ref, &exception_str);
+    }
+}
+
+/// Clear the current exception on an instance.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeClearException<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::instance_clear_exception(instance_ref);
+    }
+}
+
+/// Terminate execution of an instance.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeTerminate<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::instance_terminate(instance_ref);
+    }
+}
+
+/// Set the instruction count limit for an instance's execution environment.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetInstructionCountLimit<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    limit: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::set_instruction_count_limit(instance_ref, limit as i32);
+    }
+}
+
+// =============================================================================
+// WASI Support (JniWebAssemblyModule)
+// =============================================================================
+
+/// Configure WASI arguments on a module.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeSetWasiArgs<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    dir_list: JObjectArray<'local>,
+    map_dir_list: JObjectArray<'local>,
+    env_vars: JObjectArray<'local>,
+    argv: JObjectArray<'local>,
+) {
+    if module_handle == 0 {
+        return;
+    }
+    let dirs = jni_string_array_to_vec(&mut env, &dir_list);
+    let map_dirs = jni_string_array_to_vec(&mut env, &map_dir_list);
+    let envs = jni_string_array_to_vec(&mut env, &env_vars);
+    let args = jni_string_array_to_vec(&mut env, &argv);
+
+    let dir_refs: Vec<&str> = dirs.iter().map(|s| s.as_str()).collect();
+    let map_dir_refs: Vec<&str> = map_dirs.iter().map(|s| s.as_str()).collect();
+    let env_refs: Vec<&str> = envs.iter().map(|s| s.as_str()).collect();
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        let _ = runtime::module_set_wasi_args(module_ref, &dir_refs, &map_dir_refs, &env_refs, &arg_refs);
+    }
+}
+
+/// Configure WASI address pool on a module.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeSetWasiAddrPool<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    addr_pool: JObjectArray<'local>,
+) {
+    if module_handle == 0 {
+        return;
+    }
+    let addrs = jni_string_array_to_vec(&mut env, &addr_pool);
+    let addr_refs: Vec<&str> = addrs.iter().map(|s| s.as_str()).collect();
+
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        let _ = runtime::module_set_wasi_addr_pool(module_ref, &addr_refs);
+    }
+}
+
+/// Configure WASI NS lookup pool on a module.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeSetWasiNsLookupPool<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    ns_lookup_pool: JObjectArray<'local>,
+) {
+    if module_handle == 0 {
+        return;
+    }
+    let ns = jni_string_array_to_vec(&mut env, &ns_lookup_pool);
+    let ns_refs: Vec<&str> = ns.iter().map(|s| s.as_str()).collect();
+
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        let _ = runtime::module_set_wasi_ns_lookup_pool(module_ref, &ns_refs);
+    }
+}
+
+// =============================================================================
+// Advanced Instantiation — JniWebAssemblyModule
+// =============================================================================
+
+/// Instantiate a module with extended arguments.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeInstantiateEx<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    default_stack_size: jint,
+    host_managed_heap_size: jint,
+    max_memory_pages: jint,
+) -> jlong {
+    if module_handle == 0 {
+        let _ = env.throw_new("ai/tegmentum/wamr4j/exception/WasmRuntimeException",
+            "Module handle is null");
+        return 0;
+    }
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        match runtime::instance_create_ex(
+            module_ref,
+            default_stack_size as u32,
+            host_managed_heap_size as u32,
+            max_memory_pages as u32,
+        ) {
+            Ok(instance) => Box::into_raw(instance) as jlong,
+            Err(e) => {
+                let msg = format!("{}", e);
+                let _ = env.throw_new("ai/tegmentum/wamr4j/exception/WasmRuntimeException", &msg);
+                0
+            }
+        }
+    }
+}
+
+/// Get a custom section from a module by name.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetCustomSection<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    name: JString<'local>,
+) -> JByteArray<'local> {
+    if module_handle == 0 || name.is_null() {
+        return JByteArray::default();
+    }
+    let name_str: String = match env.get_string(&name) {
+        Ok(s) => s.into(),
+        Err(_) => return JByteArray::default(),
+    };
+    let module_ref = unsafe { &*(module_handle as *const WamrModule) };
+    let data = runtime::module_get_custom_section(module_ref, &name_str);
+    if data.is_empty() {
+        return JByteArray::default();
+    }
+    match env.byte_array_from_slice(&data) {
+        Ok(arr) => arr,
+        Err(_) => JByteArray::default(),
+    }
+}
+
+// =============================================================================
+// WASI Support (JniWebAssemblyInstance)
+// =============================================================================
+
+/// Check if instance is in WASI mode.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeIsWasiMode<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if runtime::instance_is_wasi_mode(instance_ref) { 1 } else { 0 }
+    }
+}
+
+/// Get the WASI exit code.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetWasiExitCode<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jint {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::instance_get_wasi_exit_code(instance_ref) as jint
+    }
+}
+
+/// Check if WASI _start function exists.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeHasWasiStartFunction<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        let func = runtime::instance_lookup_wasi_start_function(instance_ref);
+        if func.is_null() { 0 } else { 1 }
+    }
+}
+
+/// Execute the WASI _start function (execute main).
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeExecuteMain<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    argv: JObjectArray<'local>,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    let args = jni_string_array_to_vec(&mut env, &argv);
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::instance_execute_main(instance_ref, &arg_refs) {
+            Ok(()) => 1,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Execute a named function with string arguments.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeExecuteFunc<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    name: JString<'local>,
+    argv: JObjectArray<'local>,
+) -> jboolean {
+    if instance_handle == 0 || name.is_null() {
+        return 0;
+    }
+    let func_name: String = match env.get_string(&name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    let args = jni_string_array_to_vec(&mut env, &argv);
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        match runtime::instance_execute_func(instance_ref, &func_name, &arg_refs) {
+            Ok(()) => 1,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Helper: convert a JNI String[] to Vec<String>.
+fn jni_string_array_to_vec(env: &mut JNIEnv, arr: &JObjectArray) -> Vec<String> {
+    if arr.is_null() {
+        return Vec::new();
+    }
+    let len = match env.get_array_length(arr) {
+        Ok(l) => l as usize,
+        Err(_) => return Vec::new(),
+    };
+    let mut result = Vec::with_capacity(len);
+    for i in 0..len {
+        if let Ok(obj) = env.get_object_array_element(arr, i as i32) {
+            if !obj.is_null() {
+                let s: String = match env.get_string(&JString::from(obj)) {
+                    Ok(js) => js.into(),
+                    Err(_) => continue,
+                };
+                result.push(s);
+            }
+        }
+    }
+    result
+}
+
+// =============================================================================
+// Custom Data (JniWebAssemblyInstance)
+// =============================================================================
+
+/// Set custom data on a module instance.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetCustomData<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    custom_data: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::instance_set_custom_data(instance_ref, custom_data as u64);
+    }
+}
+
+/// Get custom data from a module instance.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetCustomData<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jlong {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::instance_get_custom_data(instance_ref) as jlong
+    }
+}
+
+// =============================================================================
+// Debugging & Profiling — JniWebAssemblyInstance
+// =============================================================================
+
+/// Get the call stack as a Java string. Returns null if unavailable.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetCallStack<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> JString<'local> {
+    if instance_handle == 0 {
+        return JString::default();
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    let stack = runtime::instance_get_call_stack(instance_ref);
+    if stack.is_empty() {
+        return JString::default();
+    }
+    match env.new_string(&stack) {
+        Ok(s) => s,
+        Err(_) => JString::default(),
+    }
+}
+
+/// Dump call stack to stdout.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDumpCallStack<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::instance_dump_call_stack(instance_ref);
+}
+
+/// Dump performance profiling data to stdout.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDumpPerfProfiling<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::instance_dump_perf_profiling(instance_ref);
+}
+
+/// Get total WASM execution time in milliseconds.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSumExecTime<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jdouble {
+    if instance_handle == 0 {
+        return 0.0;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::instance_sum_wasm_exec_time(instance_ref)
+}
+
+/// Get execution time for a specific function in milliseconds.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetFuncExecTime<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    func_name: JString<'local>,
+) -> jdouble {
+    if instance_handle == 0 {
+        return 0.0;
+    }
+    let name: String = match env.get_string(&func_name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0.0,
+    };
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::instance_get_wasm_func_exec_time(instance_ref, &name)
+}
+
+/// Dump memory consumption to stdout.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDumpMemConsumption<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::instance_dump_mem_consumption(instance_ref);
+}
+
+// =============================================================================
+// JniWebAssemblyFunction
+// =============================================================================
+
+/// Destroy a WebAssembly function handle (frees the Rust Box wrapper)
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeDestroyFunction<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+) {
+    if function_handle != 0 {
+        unsafe {
+            let _function = Box::from_raw(function_handle as *mut WamrFunction);
+        }
+    }
+}
+
+/// Invoke a WebAssembly function with arguments
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeFunction<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    args: JObjectArray<'local>,
+) -> jobject {
+    if function_handle == 0 {
+        let _ = throw_wasm_exception(&mut env, "Invalid function handle");
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let function_ref = &*(function_handle as *const WamrFunction);
+
+        // Convert Java Object[] to Vec<WasmValue>
+        let wasm_args = match convert_args_to_wasm(&mut env, &args, &function_ref.param_types) {
+            Ok(a) => a,
+            Err(msg) => {
+                let _ = throw_wasm_exception(&mut env, &msg);
+                return ptr::null_mut();
+            }
+        };
+
+        // Call the function
+        match runtime::function_call(function_ref, function_ref.exec_env, &wasm_args) {
+            Ok(results) => {
+                if results.is_empty() {
+                    return ptr::null_mut(); // void function
+                }
+                // Return single result as boxed value, or first result if multiple
+                wasm_value_to_jobject(&mut env, &results[0])
+            }
+            Err(e) => {
+                let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+                ptr::null_mut()
+            }
+        }
+    }
+}
+
+/// Get the function signature
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeGetFunctionSignature<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+) -> jobject {
+    if function_handle == 0 {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let function_ref = &*(function_handle as *const WamrFunction);
+        let param_kinds: Vec<u8> = function_ref.param_types.iter().map(|t| wasm_type_to_valkind(t)).collect();
+        let result_kinds: Vec<u8> = function_ref.result_types.iter().map(|t| wasm_type_to_valkind(t)).collect();
+        create_function_signature(&mut env, &param_kinds, &result_kinds)
+    }
+}
+
+// =============================================================================
+// JniWebAssemblyMemory
+// =============================================================================
+
+/// Destroy a WebAssembly memory handle (frees the Rust Box wrapper)
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeDestroyMemory<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+) {
+    if memory_handle != 0 {
+        unsafe {
+            let _memory = Box::from_raw(memory_handle as *mut WamrMemory);
+        }
+    }
+}
+
+/// Read raw bytes from memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeReadMemory<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+    length: jint,
+) -> jbyteArray {
+    if memory_handle == 0 || offset < 0 || length < 0 {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        let mut buffer = vec![0u8; length as usize];
+        match runtime::memory_read(memory_ref, offset as usize, &mut buffer) {
+            Ok(bytes_read) => {
+                match env.new_byte_array(bytes_read as i32) {
+                    Ok(array) => {
+                        let signed: Vec<i8> = buffer[..bytes_read].iter().map(|&b| b as i8).collect();
+                        let _ = env.set_byte_array_region(&array, 0, &signed);
+                        array.into_raw()
+                    }
+                    Err(_) => ptr::null_mut(),
+                }
+            }
+            Err(e) => {
+                let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+                ptr::null_mut()
+            }
+        }
+    }
+}
+
+/// Write raw bytes to memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeWriteMemory<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+    data: JByteArray<'local>,
+) {
+    if memory_handle == 0 || offset < 0 || data.is_null() {
+        return;
+    }
+
+    let bytes = match env.convert_byte_array(&data) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+
+    unsafe {
+        let memory_ref = &mut *(memory_handle as *mut WamrMemory);
+        if let Err(e) = runtime::memory_write(memory_ref, offset as usize, &bytes) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
+/// Read an i32 from memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeReadInt32<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+) -> jint {
+    if memory_handle == 0 || offset < 0 {
+        return 0;
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        let mut buffer = [0u8; 4];
+        match runtime::memory_read(memory_ref, offset as usize, &mut buffer) {
+            Ok(4) => i32::from_le_bytes(buffer),
+            _ => {
+                let _ = throw_wasm_exception(&mut env, "Failed to read i32 from memory");
+                0
+            }
+        }
+    }
+}
+
+/// Write an i32 to memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeWriteInt32<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+    value: jint,
+) {
+    if memory_handle == 0 || offset < 0 {
+        return;
+    }
+
+    unsafe {
+        let memory_ref = &mut *(memory_handle as *mut WamrMemory);
+        let bytes = value.to_le_bytes();
+        if let Err(e) = runtime::memory_write(memory_ref, offset as usize, &bytes) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
+/// Read an i64 from memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeReadInt64<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+) -> jlong {
+    if memory_handle == 0 || offset < 0 {
+        return 0;
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        let mut buffer = [0u8; 8];
+        match runtime::memory_read(memory_ref, offset as usize, &mut buffer) {
+            Ok(8) => i64::from_le_bytes(buffer),
+            _ => {
+                let _ = throw_wasm_exception(&mut env, "Failed to read i64 from memory");
+                0
+            }
+        }
+    }
+}
+
+/// Write an i64 to memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeWriteInt64<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+    value: jlong,
+) {
+    if memory_handle == 0 || offset < 0 {
+        return;
+    }
+
+    unsafe {
+        let memory_ref = &mut *(memory_handle as *mut WamrMemory);
+        let bytes = value.to_le_bytes();
+        if let Err(e) = runtime::memory_write(memory_ref, offset as usize, &bytes) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
+/// Read a f32 from memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeReadFloat32<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+) -> jfloat {
+    if memory_handle == 0 || offset < 0 {
+        return 0.0;
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        let mut buffer = [0u8; 4];
+        match runtime::memory_read(memory_ref, offset as usize, &mut buffer) {
+            Ok(4) => f32::from_le_bytes(buffer),
+            _ => {
+                let _ = throw_wasm_exception(&mut env, "Failed to read f32 from memory");
+                0.0
+            }
+        }
+    }
+}
+
+/// Write a f32 to memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeWriteFloat32<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+    value: jfloat,
+) {
+    if memory_handle == 0 || offset < 0 {
+        return;
+    }
+
+    unsafe {
+        let memory_ref = &mut *(memory_handle as *mut WamrMemory);
+        let bytes = value.to_le_bytes();
+        if let Err(e) = runtime::memory_write(memory_ref, offset as usize, &bytes) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
+/// Read a f64 from memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeReadFloat64<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+) -> jdouble {
+    if memory_handle == 0 || offset < 0 {
+        return 0.0;
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        let mut buffer = [0u8; 8];
+        match runtime::memory_read(memory_ref, offset as usize, &mut buffer) {
+            Ok(8) => f64::from_le_bytes(buffer),
+            _ => {
+                let _ = throw_wasm_exception(&mut env, "Failed to read f64 from memory");
+                0.0
+            }
+        }
+    }
+}
+
+/// Write a f64 to memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeWriteFloat64<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    offset: jint,
+    value: jdouble,
+) {
+    if memory_handle == 0 || offset < 0 {
+        return;
+    }
+
+    unsafe {
+        let memory_ref = &mut *(memory_handle as *mut WamrMemory);
+        let bytes = value.to_le_bytes();
+        if let Err(e) = runtime::memory_write(memory_ref, offset as usize, &bytes) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
+/// Get memory size in bytes
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetMemorySize<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+) -> jint {
+    if memory_handle == 0 {
+        return -1;
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        memory_ref.size as jint
+    }
+}
+
+/// Grow memory by specified pages
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGrowMemory<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    pages: jint,
+) -> jint {
+    if memory_handle == 0 || pages < 0 {
+        return -1;
+    }
+
+    unsafe {
+        let memory_ref = &mut *(memory_handle as *mut WamrMemory);
+        match runtime::memory_grow(memory_ref, pages as u32) {
+            Ok(old_pages) => old_pages as jint,
+            Err(_) => -1,
+        }
+    }
+}
+
+/// Get a direct ByteBuffer wrapping the WebAssembly memory
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetMemoryBuffer<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+) -> jobject {
+    if memory_handle == 0 {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        let data_ptr = memory_ref.data_ptr;
+        let size = memory_ref.size;
+
+        if data_ptr.is_null() || size == 0 {
+            return ptr::null_mut();
+        }
+
+        match env.new_direct_byte_buffer(data_ptr, size) {
+            Ok(buf) => buf.into_raw(),
+            Err(_) => ptr::null_mut(),
+        }
+    }
+}
+
+/// Get current page count
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetPageCount<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+) -> jint {
+    if memory_handle == 0 {
+        return 0;
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        runtime::memory_page_count(memory_ref) as jint
+    }
+}
+
+/// Get maximum page count
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetMaxPageCount<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+) -> jint {
+    if memory_handle == 0 {
+        return 0;
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        runtime::memory_max_page_count(memory_ref) as jint
+    }
+}
+
+/// Check if memory is shared
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeIsShared<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+) -> jboolean {
+    if memory_handle == 0 {
+        return 0; // false
+    }
+
+    unsafe {
+        let memory_ref = &*(memory_handle as *const WamrMemory);
+        if runtime::memory_is_shared(memory_ref) { 1 } else { 0 }
+    }
+}
+
+// =============================================================================
+// JniWebAssemblyTable
+// =============================================================================
+
+/// Destroy a table handle
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeDestroyTable<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    table_handle: jlong,
+) {
+    if table_handle != 0 {
+        unsafe {
+            let _table = Box::from_raw(table_handle as *mut WamrTable);
+        }
+    }
+}
+
+/// Get table current size
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetSize<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    table_handle: jlong,
+) -> jint {
+    if table_handle == 0 {
+        return -1;
+    }
+    unsafe {
+        let table_ref = &*(table_handle as *const WamrTable);
+        table_ref.table_inst.cur_size as jint
+    }
+}
+
+/// Get table maximum size
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetMaxSize<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    table_handle: jlong,
+) -> jint {
+    if table_handle == 0 {
+        return -1;
+    }
+    unsafe {
+        let table_ref = &*(table_handle as *const WamrTable);
+        table_ref.table_inst.max_size as jint
+    }
+}
+
+/// Get table element kind
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetElementKind<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    table_handle: jlong,
+) -> jint {
+    if table_handle == 0 {
+        return -1;
+    }
+    unsafe {
+        let table_ref = &*(table_handle as *const WamrTable);
+        table_ref.table_inst.elem_kind as jint
+    }
+}
+
+/// Get a function from a table at the given index
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetFunction<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    table_handle: jlong,
+    index: jint,
+) -> jlong {
+    if table_handle == 0 || index < 0 {
+        return 0;
+    }
+    unsafe {
+        let table_ref = &*(table_handle as *const WamrTable);
+        match runtime::table_get_function(table_ref, index as u32) {
+            Ok(function) => Box::into_raw(Box::new(function)) as jlong,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Call a function indirectly via table index
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeCallIndirect<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    table_handle: jlong,
+    element_index: jint,
+    args: JObjectArray<'local>,
+    result_type_ordinals: JObject<'local>,
+) -> jobject {
+    if table_handle == 0 || element_index < 0 {
+        let _ = throw_wasm_exception(&mut env, "Invalid table handle or element index");
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let table_ref = &*(table_handle as *const WamrTable);
+
+        // Get the instance from the table
+        let instance = WamrInstance {
+            handle: table_ref.instance_handle,
+            exec_env: table_ref.exec_env,
+            stack_size: 0,
+            heap_size: 0,
+        };
+
+        // Convert result type ordinals from int[] to Vec<WasmType>
+        let result_types = if !result_type_ordinals.is_null() {
+            let int_array: jni::objects::JIntArray = JObject::into(result_type_ordinals);
+            let len = env.get_array_length(&int_array).unwrap_or(0) as usize;
+            let mut buf = vec![0i32; len];
+            let _ = env.get_int_array_region(&int_array, 0, &mut buf);
+            buf.iter().map(|&t| match t {
+                0 => WasmType::I32,
+                1 => WasmType::I64,
+                2 => WasmType::F32,
+                3 => WasmType::F64,
+                _ => WasmType::I32,
+            }).collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        // Convert Java args to WasmValue
+        let wasm_args = if !args.is_null() {
+            match convert_args_with_autodetect(&mut env, &args) {
+                Ok(a) => a,
+                Err(msg) => {
+                    let _ = throw_wasm_exception(&mut env, &msg);
+                    // Prevent Drop from destroying the instance we don't own
+                    std::mem::forget(instance);
+                    return ptr::null_mut();
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        match runtime::call_indirect(&instance, element_index as u32, &wasm_args, &result_types) {
+            Ok(results) => {
+                // Prevent Drop from destroying the instance we don't own
+                std::mem::forget(instance);
+                if results.is_empty() {
+                    return ptr::null_mut();
+                }
+                wasm_value_to_jobject(&mut env, &results[0])
+            }
+            Err(e) => {
+                // Prevent Drop from destroying the instance we don't own
+                std::mem::forget(instance);
+                let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+                ptr::null_mut()
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/// Create a Java String[] array from a Vec<String>
+fn create_string_array(env: &mut JNIEnv, names: &[String]) -> jobjectArray {
+    let string_class = match env.find_class("java/lang/String") {
+        Ok(c) => c,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let empty = match env.new_string("") {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let array = match env.new_object_array(names.len() as i32, &string_class, &empty) {
+        Ok(a) => a,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    for (i, name) in names.iter().enumerate() {
+        let jstr = match env.new_string(name) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let _ = env.set_object_array_element(&array, i as i32, &jstr);
+    }
+
+    array.into_raw()
+}
+
+/// Create a FunctionSignature Java object from parameter and result value kinds
+fn create_function_signature(env: &mut JNIEnv, param_kinds: &[u8], result_kinds: &[u8]) -> jobject {
+    // Find ValueType enum class
+    let vt_class = match env.find_class("ai/tegmentum/wamr4j/ValueType") {
+        Ok(c) => c,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    // Create ValueType arrays
+    let param_array = match env.new_object_array(param_kinds.len() as i32, &vt_class, &JObject::null()) {
+        Ok(a) => a,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    for (i, &kind) in param_kinds.iter().enumerate() {
+        let vt = match valkind_to_valuetype_jobject(env, &vt_class, kind) {
+            Some(v) => v,
+            None => continue,
+        };
+        let _ = env.set_object_array_element(&param_array, i as i32, &vt);
+    }
+
+    let result_array = match env.new_object_array(result_kinds.len() as i32, &vt_class, &JObject::null()) {
+        Ok(a) => a,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    for (i, &kind) in result_kinds.iter().enumerate() {
+        let vt = match valkind_to_valuetype_jobject(env, &vt_class, kind) {
+            Some(v) => v,
+            None => continue,
+        };
+        let _ = env.set_object_array_element(&result_array, i as i32, &vt);
+    }
+
+    // Find FunctionSignature class and constructor
+    let sig_class = match env.find_class("ai/tegmentum/wamr4j/FunctionSignature") {
+        Ok(c) => c,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match env.new_object(
+        &sig_class,
+        "([Lai/tegmentum/wamr4j/ValueType;[Lai/tegmentum/wamr4j/ValueType;)V",
+        &[JValue::Object(&param_array.into()), JValue::Object(&result_array.into())],
+    ) {
+        Ok(obj) => obj.into_raw(),
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Convert WAMR valkind byte to Java ValueType enum constant
+fn valkind_to_valuetype_jobject<'local>(
+    env: &mut JNIEnv<'local>,
+    vt_class: &JClass<'local>,
+    kind: u8,
+) -> Option<JObject<'local>> {
+    let field_name = match kind {
+        bindings::WASM_I32 => "I32",
+        bindings::WASM_I64 => "I64",
+        bindings::WASM_F32 => "F32",
+        bindings::WASM_F64 => "F64",
+        _ => return None,
+    };
+
+    env.get_static_field(vt_class, field_name, "Lai/tegmentum/wamr4j/ValueType;")
+        .ok()
+        .and_then(|v| v.l().ok())
+}
+
+/// Convert WasmType to WAMR valkind byte
+fn wasm_type_to_valkind(t: &WasmType) -> u8 {
+    match t {
+        WasmType::I32 => bindings::WASM_I32,
+        WasmType::I64 => bindings::WASM_I64,
+        WasmType::F32 => bindings::WASM_F32,
+        WasmType::F64 => bindings::WASM_F64,
+    }
+}
+
+/// Convert Java Object[] arguments to Vec<WasmValue>
+fn convert_args_to_wasm(
+    env: &mut JNIEnv,
+    args: &JObjectArray,
+    param_types: &[WasmType],
+) -> Result<Vec<WasmValue>, String> {
+    if args.is_null() {
+        return Ok(Vec::new());
+    }
+
+    let arg_count = env.get_array_length(args).map_err(|e| format!("Failed to get args length: {}", e))? as usize;
+
+    if arg_count != param_types.len() {
+        return Err(format!(
+            "Argument count mismatch: expected {}, got {}",
+            param_types.len(), arg_count
+        ));
+    }
+
+    let mut wasm_args = Vec::with_capacity(arg_count);
+
+    for i in 0..arg_count {
+        let arg = env.get_object_array_element(args, i as i32)
+            .map_err(|e| format!("Failed to get arg {}: {}", i, e))?;
+
+        let wasm_val = match &param_types[i] {
+            WasmType::I32 => WasmValue::I32(unbox_integer(env, &arg)),
+            WasmType::I64 => WasmValue::I64(unbox_long(env, &arg)),
+            WasmType::F32 => WasmValue::F32(unbox_float(env, &arg)),
+            WasmType::F64 => WasmValue::F64(unbox_double(env, &arg)),
+        };
+
+        wasm_args.push(wasm_val);
+    }
+
+    Ok(wasm_args)
+}
+
+/// Convert Java Object[] arguments to Vec<WasmValue> with auto-detected types
+fn convert_args_with_autodetect(
+    env: &mut JNIEnv,
+    args: &JObjectArray,
+) -> Result<Vec<WasmValue>, String> {
+    let arg_count = env.get_array_length(args).map_err(|e| format!("Failed to get args length: {}", e))? as usize;
+    let mut wasm_args = Vec::with_capacity(arg_count);
+
+    for i in 0..arg_count {
+        let arg = env.get_object_array_element(args, i as i32)
+            .map_err(|e| format!("Failed to get arg {}: {}", i, e))?;
+
+        let wasm_val = if is_instance_of(env, &arg, "java/lang/Integer") {
+            WasmValue::I32(unbox_integer(env, &arg))
+        } else if is_instance_of(env, &arg, "java/lang/Long") {
+            WasmValue::I64(unbox_long(env, &arg))
+        } else if is_instance_of(env, &arg, "java/lang/Float") {
+            WasmValue::F32(unbox_float(env, &arg))
+        } else if is_instance_of(env, &arg, "java/lang/Double") {
+            WasmValue::F64(unbox_double(env, &arg))
+        } else {
+            return Err(format!("Unsupported argument type at index {}", i));
+        };
+
+        wasm_args.push(wasm_val);
+    }
+
+    Ok(wasm_args)
+}
+
+/// Convert WasmValue to a boxed Java object
+fn wasm_value_to_jobject(env: &mut JNIEnv, value: &WasmValue) -> jobject {
+    match value {
+        WasmValue::I32(v) => box_integer(env, *v),
+        WasmValue::I64(v) => box_long(env, *v),
+        WasmValue::F32(v) => box_float(env, *v),
+        WasmValue::F64(v) => box_double(env, *v),
+    }
+}
+
+/// Throw a WasmRuntimeException
+fn throw_wasm_exception(env: &mut JNIEnv, msg: &str) -> Result<(), jni::errors::Error> {
+    env.throw_new("ai/tegmentum/wamr4j/exception/WasmRuntimeException", msg)
+}
+
+/// Check if a JObject is an instance of a class
+fn is_instance_of(env: &mut JNIEnv, obj: &JObject, class_name: &str) -> bool {
+    env.find_class(class_name)
+        .and_then(|cls| env.is_instance_of(obj, &cls))
+        .unwrap_or(false)
+}
+
+// =============================================================================
+// Boxing/Unboxing Helpers
+// =============================================================================
+
+fn box_integer(env: &mut JNIEnv, val: i32) -> jobject {
+    env.new_object("java/lang/Integer", "(I)V", &[JValue::Int(val)])
+        .map(|o| o.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
+fn box_long(env: &mut JNIEnv, val: i64) -> jobject {
+    env.new_object("java/lang/Long", "(J)V", &[JValue::Long(val)])
+        .map(|o| o.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
+fn box_float(env: &mut JNIEnv, val: f32) -> jobject {
+    env.new_object("java/lang/Float", "(F)V", &[JValue::Float(val)])
+        .map(|o| o.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
+fn box_double(env: &mut JNIEnv, val: f64) -> jobject {
+    env.new_object("java/lang/Double", "(D)V", &[JValue::Double(val)])
+        .map(|o| o.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
+fn unbox_integer(env: &mut JNIEnv, obj: &JObject) -> i32 {
+    env.call_method(obj, "intValue", "()I", &[])
+        .and_then(|v| v.i())
+        .unwrap_or(0)
+}
+
+fn unbox_long(env: &mut JNIEnv, obj: &JObject) -> i64 {
+    env.call_method(obj, "longValue", "()J", &[])
+        .and_then(|v| v.j())
+        .unwrap_or(0)
+}
+
+fn unbox_float(env: &mut JNIEnv, obj: &JObject) -> f32 {
+    env.call_method(obj, "floatValue", "()F", &[])
+        .and_then(|v| v.f())
+        .unwrap_or(0.0)
+}
+
+fn unbox_double(env: &mut JNIEnv, obj: &JObject) -> f64 {
+    env.call_method(obj, "doubleValue", "()D", &[])
+        .and_then(|v| v.d())
+        .unwrap_or(0.0)
+}

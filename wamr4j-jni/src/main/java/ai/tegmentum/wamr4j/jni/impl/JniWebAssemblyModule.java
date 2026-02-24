@@ -17,9 +17,14 @@
 package ai.tegmentum.wamr4j.jni.impl;
 
 import ai.tegmentum.wamr4j.FunctionSignature;
+import ai.tegmentum.wamr4j.HostFunction;
+import ai.tegmentum.wamr4j.PackageType;
+import ai.tegmentum.wamr4j.WasiConfiguration;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -58,27 +63,57 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
 
     @Override
     public WebAssemblyInstance instantiate() throws WasmRuntimeException {
-        return instantiate(null);
+        return instantiate(Collections.emptyMap());
     }
 
     @Override
     public WebAssemblyInstance instantiate(final Map<String, Map<String, Object>> imports) throws WasmRuntimeException {
-        if (imports != null && !imports.isEmpty()) {
-            throw new UnsupportedOperationException("Import handling is not yet supported");
-        }
-
         ensureNotClosed();
-        
+
+        long registrationHandle = 0L;
+
         try {
-            final long instanceHandle = nativeInstantiateModule(nativeHandle, imports);
+            // Register host functions if imports are provided
+            if (imports != null && !imports.isEmpty()) {
+                // Extract HostFunction objects from the imports map
+                final Map<String, Map<String, HostFunction>> hostFunctionImports = new HashMap<>();
+                for (final Map.Entry<String, Map<String, Object>> moduleEntry : imports.entrySet()) {
+                    final Map<String, HostFunction> moduleFunctions = new HashMap<>();
+                    for (final Map.Entry<String, Object> funcEntry : moduleEntry.getValue().entrySet()) {
+                        if (funcEntry.getValue() instanceof HostFunction) {
+                            moduleFunctions.put(funcEntry.getKey(), (HostFunction) funcEntry.getValue());
+                        }
+                    }
+                    if (!moduleFunctions.isEmpty()) {
+                        hostFunctionImports.put(moduleEntry.getKey(), moduleFunctions);
+                    }
+                }
+
+                if (!hostFunctionImports.isEmpty()) {
+                    registrationHandle = nativeRegisterHostFunctions(hostFunctionImports);
+                    if (registrationHandle == 0L) {
+                        throw new WasmRuntimeException("Failed to register host functions");
+                    }
+                }
+            }
+
+            final long instanceHandle = nativeInstantiateModule(nativeHandle);
             if (instanceHandle == 0L) {
+                // Clean up registration on failure
+                if (registrationHandle != 0L) {
+                    JniWebAssemblyInstance.destroyRegistration(registrationHandle);
+                }
                 throw new WasmRuntimeException("Failed to instantiate WebAssembly module");
             }
-            
-            return new JniWebAssemblyInstance(instanceHandle);
+
+            return new JniWebAssemblyInstance(instanceHandle, registrationHandle);
         } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Exception e) {
+            // Clean up registration on unexpected failure
+            if (registrationHandle != 0L) {
+                JniWebAssemblyInstance.destroyRegistration(registrationHandle);
+            }
             throw new WasmRuntimeException("Unexpected error during module instantiation", e);
         }
     }
@@ -126,6 +161,150 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
     }
 
     @Override
+    public boolean setName(final String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("Module name cannot be null");
+        }
+        ensureNotClosed();
+        try {
+            return nativeSetModuleName(nativeHandle, name);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to set module name: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public String getName() {
+        ensureNotClosed();
+        try {
+            final String name = nativeGetModuleName(nativeHandle);
+            return name != null ? name : "";
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get module name: " + e.getMessage());
+            return "";
+        }
+    }
+
+    @Override
+    public PackageType getPackageType() {
+        ensureNotClosed();
+        try {
+            return PackageType.fromNativeValue(nativeGetPackageType(nativeHandle));
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get package type: " + e.getMessage());
+            return PackageType.UNKNOWN;
+        }
+    }
+
+    @Override
+    public int getPackageVersion() {
+        ensureNotClosed();
+        try {
+            return nativeGetPackageVersion(nativeHandle);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get package version: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public String getHash() {
+        ensureNotClosed();
+        try {
+            final String hash = nativeGetModuleHash(nativeHandle);
+            return hash != null ? hash : "";
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get module hash: " + e.getMessage());
+            return "";
+        }
+    }
+
+    @Override
+    public boolean isUnderlyingBinaryFreeable() {
+        ensureNotClosed();
+        try {
+            return nativeIsUnderlyingBinaryFreeable(nativeHandle);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to check binary freeability: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void configureWasi(final WasiConfiguration config) {
+        if (config == null) {
+            throw new IllegalArgumentException("WASI configuration cannot be null");
+        }
+        ensureNotClosed();
+
+        try {
+            nativeSetWasiArgs(nativeHandle,
+                config.getPreopens(),
+                config.getMappedDirs(),
+                config.getEnvVars(),
+                config.getArgs());
+
+            final String[] addrPool = config.getAddrPool();
+            if (addrPool.length > 0) {
+                nativeSetWasiAddrPool(nativeHandle, addrPool);
+            }
+
+            final String[] nsLookupPool = config.getNsLookupPool();
+            if (nsLookupPool.length > 0) {
+                nativeSetWasiNsLookupPool(nativeHandle, nsLookupPool);
+            }
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to configure WASI: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public WebAssemblyInstance instantiateEx(final int defaultStackSize,
+            final int hostManagedHeapSize, final int maxMemoryPages) throws WasmRuntimeException {
+        if (defaultStackSize < 0) {
+            throw new IllegalArgumentException("defaultStackSize cannot be negative");
+        }
+        if (hostManagedHeapSize < 0) {
+            throw new IllegalArgumentException("hostManagedHeapSize cannot be negative");
+        }
+        if (maxMemoryPages < 0) {
+            throw new IllegalArgumentException("maxMemoryPages cannot be negative");
+        }
+        ensureNotClosed();
+
+        try {
+            final long instanceHandle = nativeInstantiateEx(nativeHandle,
+                defaultStackSize, hostManagedHeapSize, maxMemoryPages);
+            if (instanceHandle == 0L) {
+                throw new WasmRuntimeException(
+                    "Failed to instantiate WebAssembly module with extended args");
+            }
+            return new JniWebAssemblyInstance(instanceHandle, 0L);
+        } catch (final WasmRuntimeException e) {
+            throw e;
+        } catch (final Exception e) {
+            throw new WasmRuntimeException(
+                "Unexpected error during extended module instantiation", e);
+        }
+    }
+
+    @Override
+    public byte[] getCustomSection(final String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("Custom section name cannot be null");
+        }
+        ensureNotClosed();
+
+        try {
+            return nativeGetCustomSection(nativeHandle, name);
+        } catch (final Exception e) {
+            LOGGER.fine("Failed to get custom section '" + name + "': " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -163,15 +342,22 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
     private static native void nativeDestroyModule(long moduleHandle);
 
     /**
-     * Instantiates a WebAssembly module with optional imports.
-     * 
+     * Instantiates a WebAssembly module.
+     *
      * @param moduleHandle the native module handle
-     * @param imports the import bindings, may be null
      * @return the native instance handle, or 0 on failure
      * @throws WasmRuntimeException if instantiation fails
      */
-    private static native long nativeInstantiateModule(long moduleHandle, Map<String, Map<String, Object>> imports)
-        throws WasmRuntimeException;
+    private static native long nativeInstantiateModule(long moduleHandle) throws WasmRuntimeException;
+
+    /**
+     * Registers host functions with WAMR for import resolution.
+     * Must be called before instantiation.
+     *
+     * @param imports map of module_name to map of func_name to HostFunction
+     * @return the native registration handle, or 0 on failure
+     */
+    private static native long nativeRegisterHostFunctions(Map<String, Map<String, HostFunction>> imports);
 
     /**
      * Gets the names of all exports defined by the module.
@@ -191,11 +377,111 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
 
     /**
      * Gets the function signature for an exported function.
-     * 
+     *
      * @param moduleHandle the native module handle
      * @param functionName the name of the function
      * @return the function signature, or null if not found
      */
     private static native FunctionSignature nativeGetExportFunctionSignature(long moduleHandle, String functionName);
+
+    /**
+     * Sets the name of a module.
+     *
+     * @param moduleHandle the native module handle
+     * @param name the module name
+     * @return true if set successfully
+     */
+    private static native boolean nativeSetModuleName(long moduleHandle, String name);
+
+    /**
+     * Gets the name of a module.
+     *
+     * @param moduleHandle the native module handle
+     * @return the module name, or null
+     */
+    private static native String nativeGetModuleName(long moduleHandle);
+
+    /**
+     * Gets the hash string for a module.
+     *
+     * @param moduleHandle the native module handle
+     * @return the module hash, or null
+     */
+    private static native String nativeGetModuleHash(long moduleHandle);
+
+    /**
+     * Gets the package type of a module.
+     *
+     * @param moduleHandle the native module handle
+     * @return the native package type constant
+     */
+    private static native int nativeGetPackageType(long moduleHandle);
+
+    /**
+     * Gets the package version of a module.
+     *
+     * @param moduleHandle the native module handle
+     * @return the package version number
+     */
+    private static native int nativeGetPackageVersion(long moduleHandle);
+
+    /**
+     * Checks if the underlying binary is freeable.
+     *
+     * @param moduleHandle the native module handle
+     * @return true if freeable
+     */
+    private static native boolean nativeIsUnderlyingBinaryFreeable(long moduleHandle);
+
+    /**
+     * Sets WASI arguments on the module.
+     *
+     * @param moduleHandle the native module handle
+     * @param dirList preopened directories
+     * @param mapDirList mapped directories (guest::host format)
+     * @param envVars environment variables (KEY=VALUE format)
+     * @param argv command-line arguments
+     */
+    private static native void nativeSetWasiArgs(long moduleHandle,
+        String[] dirList, String[] mapDirList, String[] envVars, String[] argv);
+
+    /**
+     * Sets WASI address pool on the module.
+     *
+     * @param moduleHandle the native module handle
+     * @param addrPool allowed IP addresses
+     */
+    private static native void nativeSetWasiAddrPool(long moduleHandle, String[] addrPool);
+
+    /**
+     * Sets WASI NS lookup pool on the module.
+     *
+     * @param moduleHandle the native module handle
+     * @param nsLookupPool allowed name servers
+     */
+    private static native void nativeSetWasiNsLookupPool(long moduleHandle, String[] nsLookupPool);
+
+    /**
+     * Instantiates a module with extended configuration.
+     *
+     * @param moduleHandle the native module handle
+     * @param defaultStackSize the default stack size in bytes
+     * @param hostManagedHeapSize the host-managed heap size in bytes
+     * @param maxMemoryPages the maximum memory pages
+     * @return the native instance handle, or 0 on failure
+     * @throws WasmRuntimeException if instantiation fails
+     */
+    private static native long nativeInstantiateEx(long moduleHandle,
+        int defaultStackSize, int hostManagedHeapSize, int maxMemoryPages)
+        throws WasmRuntimeException;
+
+    /**
+     * Gets the raw bytes of a custom section by name.
+     *
+     * @param moduleHandle the native module handle
+     * @param name the custom section name
+     * @return the section data, or null if not found
+     */
+    private static native byte[] nativeGetCustomSection(long moduleHandle, String name);
 
 }

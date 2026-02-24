@@ -39,7 +39,7 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
     private static final int PAGE_SIZE = 65536;
     
     // Native memory handle
-    private final long nativeHandle;
+    private volatile long nativeHandle;
     
     // Parent instance reference
     private final JniWebAssemblyInstance parentInstance;
@@ -256,7 +256,35 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
 
     @Override
     public int pageCount() {
-        return size() / PAGE_SIZE;
+        ensureValid();
+        try {
+            return nativeGetPageCount(nativeHandle);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get page count: " + e.getMessage());
+            return size() / PAGE_SIZE;
+        }
+    }
+
+    @Override
+    public int maxPageCount() {
+        ensureValid();
+        try {
+            return nativeGetMaxPageCount(nativeHandle);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get max page count: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public boolean isShared() {
+        ensureValid();
+        try {
+            return nativeIsShared(nativeHandle);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to check shared status: " + e.getMessage());
+            return false;
+        }
     }
 
     @Override
@@ -292,8 +320,48 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
     }
 
     @Override
+    public long getBaseAddress() {
+        ensureValid();
+
+        try {
+            return nativeGetBaseAddress(nativeHandle);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get base address: " + e.getMessage());
+            return 0L;
+        }
+    }
+
+    @Override
+    public long getBytesPerPage() {
+        ensureValid();
+
+        try {
+            return nativeGetBytesPerPage(nativeHandle);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get bytes per page: " + e.getMessage());
+            return PAGE_SIZE;
+        }
+    }
+
+    @Override
     public boolean isValid() {
-        return parentInstance.isValid();
+        return nativeHandle != 0L && parentInstance.isValid();
+    }
+
+    /**
+     * Destroys the native memory handle, freeing the Rust Box wrapper.
+     * Called by the parent instance during cleanup.
+     */
+    void close() {
+        final long handle = nativeHandle;
+        nativeHandle = 0L;
+        if (handle != 0L) {
+            try {
+                nativeDestroyMemory(handle);
+            } catch (final Exception e) {
+                LOGGER.warning("Error destroying native memory: " + e.getMessage());
+            }
+        }
     }
 
     private void ensureValid() {
@@ -424,9 +492,56 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
 
     /**
      * Gets a ByteBuffer view of the memory.
-     * 
+     *
      * @param memoryHandle the native memory handle
      * @return a ByteBuffer view of the memory
      */
     private static native ByteBuffer nativeGetMemoryBuffer(long memoryHandle);
+
+    /**
+     * Gets the current page count.
+     *
+     * @param memoryHandle the native memory handle
+     * @return the page count
+     */
+    private static native int nativeGetPageCount(long memoryHandle);
+
+    /**
+     * Gets the maximum page count.
+     *
+     * @param memoryHandle the native memory handle
+     * @return the maximum page count
+     */
+    private static native int nativeGetMaxPageCount(long memoryHandle);
+
+    /**
+     * Checks if the memory is shared.
+     *
+     * @param memoryHandle the native memory handle
+     * @return true if shared
+     */
+    private static native boolean nativeIsShared(long memoryHandle);
+
+    /**
+     * Gets the base address of the memory as a native pointer value.
+     *
+     * @param memoryHandle the native memory handle
+     * @return the base address as a long
+     */
+    private static native long nativeGetBaseAddress(long memoryHandle);
+
+    /**
+     * Gets the number of bytes per page for this memory.
+     *
+     * @param memoryHandle the native memory handle
+     * @return the bytes per page
+     */
+    private static native long nativeGetBytesPerPage(long memoryHandle);
+
+    /**
+     * Destroys a native WebAssembly memory handle.
+     *
+     * @param memoryHandle the native memory handle
+     */
+    private static native void nativeDestroyMemory(long memoryHandle);
 }

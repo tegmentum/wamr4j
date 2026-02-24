@@ -22,6 +22,7 @@ import ai.tegmentum.wamr4j.panama.internal.NativeLibraryLoader;
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
@@ -55,6 +56,12 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
         static final MethodHandle GET_SIZE;
         static final MethodHandle GET_DATA;
         static final MethodHandle GROW;
+        static final MethodHandle PAGE_COUNT;
+        static final MethodHandle MAX_PAGE_COUNT;
+        static final MethodHandle IS_SHARED;
+        static final MethodHandle DESTROY_MEMORY;
+        static final MethodHandle BASE_ADDRESS;
+        static final MethodHandle BYTES_PER_PAGE;
 
         static {
             final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
@@ -69,6 +76,28 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
             GROW = growSymbol.isPresent()
                 ? linker.downcallHandle(growSymbol.get(),
                     FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG))
+                : null;
+            PAGE_COUNT = linker.downcallHandle(
+                lookup.find("wamr_memory_page_count").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+            MAX_PAGE_COUNT = linker.downcallHandle(
+                lookup.find("wamr_memory_max_page_count").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+            IS_SHARED = linker.downcallHandle(
+                lookup.find("wamr_memory_is_shared").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+            DESTROY_MEMORY = linker.downcallHandle(
+                lookup.find("wamr_memory_destroy").orElseThrow(),
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            final var baseAddrSymbol = lookup.find("wamr_memory_base_address");
+            BASE_ADDRESS = baseAddrSymbol.isPresent()
+                ? linker.downcallHandle(baseAddrSymbol.get(),
+                    FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS))
+                : null;
+            final var bytesPerPageSymbol = lookup.find("wamr_memory_bytes_per_page");
+            BYTES_PER_PAGE = bytesPerPageSymbol.isPresent()
+                ? linker.downcallHandle(bytesPerPageSymbol.get(),
+                    FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS))
                 : null;
         }
     }
@@ -126,7 +155,8 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
             final long size = size();
             final MemorySegment memorySegment = dataPtr.reinterpret(size);
 
-            final ByteBuffer buffer = memorySegment.asByteBuffer();
+            final ByteBuffer buffer = memorySegment.asByteBuffer()
+                .order(ByteOrder.LITTLE_ENDIAN);
             cachedBuffer = buffer;
             return buffer;
         } catch (final Throwable e) {
@@ -253,11 +283,19 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
         }
     }
 
-    // Memory is owned by the instance and has no separate native destroy
     void close() {
-        closed.set(true);
-        cachedBuffer = null;
-        nativeHandle = MemorySegment.NULL;
+        if (closed.compareAndSet(false, true)) {
+            cachedBuffer = null;
+            final MemorySegment handle = nativeHandle;
+            nativeHandle = MemorySegment.NULL;
+            if (handle != null && !handle.equals(MemorySegment.NULL)) {
+                try {
+                    Handles.DESTROY_MEMORY.invoke(handle);
+                } catch (final Throwable e) {
+                    LOGGER.warning("Error destroying native memory: " + e.getMessage());
+                }
+            }
+        }
     }
 
     private void ensureNotClosed() {
@@ -324,11 +362,70 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public int pageCount() {
         ensureNotClosed();
+        try {
+            final long pages = (long) Handles.PAGE_COUNT.invoke(nativeHandle);
+            return (int) pages;
+        } catch (final Throwable e) {
+            throw new IllegalStateException("Unexpected error getting page count", e);
+        }
+    }
 
-        // WebAssembly page size is 64KB
-        final int pageSize = 65536;
-        final int totalSize = size();
-        return totalSize / pageSize;
+    @Override
+    public int maxPageCount() {
+        ensureNotClosed();
+        try {
+            final long maxPages = (long) Handles.MAX_PAGE_COUNT.invoke(nativeHandle);
+            return (int) maxPages;
+        } catch (final Throwable e) {
+            throw new IllegalStateException("Unexpected error getting max page count", e);
+        }
+    }
+
+    @Override
+    public boolean isShared() {
+        ensureNotClosed();
+        try {
+            final int shared = (int) Handles.IS_SHARED.invoke(nativeHandle);
+            return shared != 0;
+        } catch (final Throwable e) {
+            throw new IllegalStateException("Unexpected error checking shared status", e);
+        }
+    }
+
+    @Override
+    public long getBaseAddress() {
+        ensureNotClosed();
+
+        if (Handles.BASE_ADDRESS == null) {
+            return 0L;
+        }
+
+        try {
+            final MemorySegment addr = (MemorySegment) Handles.BASE_ADDRESS.invoke(nativeHandle);
+            if (addr.equals(MemorySegment.NULL)) {
+                return 0L;
+            }
+            return addr.address();
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to get base address: " + e.getMessage());
+            return 0L;
+        }
+    }
+
+    @Override
+    public long getBytesPerPage() {
+        ensureNotClosed();
+
+        if (Handles.BYTES_PER_PAGE == null) {
+            return 65536L;
+        }
+
+        try {
+            return (long) Handles.BYTES_PER_PAGE.invoke(nativeHandle);
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to get bytes per page: " + e.getMessage());
+            return 65536L;
+        }
     }
 
     @Override

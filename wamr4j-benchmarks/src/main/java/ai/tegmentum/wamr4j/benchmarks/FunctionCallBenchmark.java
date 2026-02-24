@@ -48,7 +48,7 @@ import org.openjdk.jmh.infra.Blackhole;
  * @since 1.0.0
  */
 @BenchmarkMode(Mode.Throughput)
-@OutputTimeUnit(TimeUnit.OPERATIONS)
+@OutputTimeUnit(TimeUnit.MILLISECONDS)
 @State(Scope.Benchmark)
 @Warmup(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 10, time = 1, timeUnit = TimeUnit.SECONDS)
