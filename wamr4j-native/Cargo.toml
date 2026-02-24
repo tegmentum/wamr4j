@@ -20,40 +20,18 @@ cc = "1.0"
 cmake = "0.1"
 bindgen = { version = "0.68", optional = true }
 
-[dev-dependencies]
-# criterion = { version = "0.5", features = ["html_reports"] }  # Uncomment when benchmark files are created
-
 [features]
 default = []
 bindgen = ["dep:bindgen"]
 
-# Cross-compilation targets are configured in .cargo/config.toml
-
 [profile.release]
-lto = "fat"           # Full LTO for maximum optimization
-codegen-units = 1     # Single codegen unit for better optimization
-panic = "abort"       # Smaller binary, no unwinding
-strip = true          # Remove debug symbols
-opt-level = 3         # Maximum optimization level
-debug = false         # No debug info
-overflow-checks = false # Disable overflow checks for performance
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3
+debug = false
+overflow-checks = true
 
 [profile.dev]
 panic = "abort"
-
-# Benchmark configuration - uncomment when benchmark files are created
-# [[bench]]
-# name = "call_overhead"
-# harness = false
-#
-# [[bench]]
-# name = "memory_operations"
-# harness = false
-#
-# [[bench]]
-# name = "module_lifecycle"
-# harness = false
-#
-# [[bench]]
-# name = "value_conversion"
-# harness = false

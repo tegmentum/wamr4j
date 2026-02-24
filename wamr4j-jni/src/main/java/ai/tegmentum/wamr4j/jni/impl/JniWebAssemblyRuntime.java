@@ -16,6 +16,8 @@
 
 package ai.tegmentum.wamr4j.jni.impl;
 
+import ai.tegmentum.wamr4j.PackageType;
+import ai.tegmentum.wamr4j.RunningMode;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
 import ai.tegmentum.wamr4j.exception.CompilationException;
@@ -125,13 +127,128 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
     @Override
     public String getVersion() {
         ensureNotClosed();
-        
+
         try {
             final String version = nativeGetVersion();
             return version != null ? version : "unknown";
         } catch (final Exception e) {
             LOGGER.warning("Failed to get WAMR version: " + e.getMessage());
             return "unknown";
+        }
+    }
+
+    @Override
+    public int getMajorVersion() {
+        ensureNotClosed();
+        return nativeGetMajorVersion();
+    }
+
+    @Override
+    public int getMinorVersion() {
+        ensureNotClosed();
+        return nativeGetMinorVersion();
+    }
+
+    @Override
+    public int getPatchVersion() {
+        ensureNotClosed();
+        return nativeGetPatchVersion();
+    }
+
+    @Override
+    public boolean isRunningModeSupported(final RunningMode mode) {
+        if (mode == null) {
+            throw new IllegalArgumentException("Running mode cannot be null");
+        }
+        ensureNotClosed();
+        return nativeIsRunningModeSupported(mode.getNativeValue());
+    }
+
+    @Override
+    public boolean setDefaultRunningMode(final RunningMode mode) {
+        if (mode == null) {
+            throw new IllegalArgumentException("Running mode cannot be null");
+        }
+        ensureNotClosed();
+        return nativeSetDefaultRunningMode(mode.getNativeValue());
+    }
+
+    @Override
+    public void setLogLevel(final int level) {
+        ensureNotClosed();
+        nativeSetLogLevel(level);
+    }
+
+    @Override
+    public boolean initThreadEnv() {
+        ensureNotClosed();
+        try {
+            return nativeInitThreadEnv();
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to init thread env: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void destroyThreadEnv() {
+        ensureNotClosed();
+        try {
+            nativeDestroyThreadEnv();
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to destroy thread env: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean isThreadEnvInited() {
+        ensureNotClosed();
+        try {
+            return nativeIsThreadEnvInited();
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to check thread env: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void setMaxThreadNum(final int num) {
+        if (num < 0) {
+            throw new IllegalArgumentException("Max thread number cannot be negative: " + num);
+        }
+        ensureNotClosed();
+        try {
+            nativeSetMaxThreadNum(num);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to set max thread num: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public PackageType getFilePackageType(final byte[] wasmBytes) {
+        if (wasmBytes == null) {
+            throw new IllegalArgumentException("WebAssembly bytes cannot be null");
+        }
+        ensureNotClosed();
+        try {
+            return PackageType.fromNativeValue(nativeGetFilePackageType(wasmBytes));
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get file package type: " + e.getMessage());
+            return PackageType.UNKNOWN;
+        }
+    }
+
+    @Override
+    public int getCurrentPackageVersion(final PackageType packageType) {
+        if (packageType == null) {
+            throw new IllegalArgumentException("Package type cannot be null");
+        }
+        ensureNotClosed();
+        try {
+            return nativeGetCurrentPackageVersion(packageType.getNativeValue());
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get current package version: " + e.getMessage());
+            return 0;
         }
     }
 
@@ -193,8 +310,94 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
 
     /**
      * Gets the version of the underlying WAMR runtime.
-     * 
+     *
      * @return the WAMR version string
      */
     private static native String nativeGetVersion();
+
+    /**
+     * Gets the major version number of the underlying WAMR runtime.
+     *
+     * @return the major version number
+     */
+    private static native int nativeGetMajorVersion();
+
+    /**
+     * Gets the minor version number of the underlying WAMR runtime.
+     *
+     * @return the minor version number
+     */
+    private static native int nativeGetMinorVersion();
+
+    /**
+     * Gets the patch version number of the underlying WAMR runtime.
+     *
+     * @return the patch version number
+     */
+    private static native int nativeGetPatchVersion();
+
+    /**
+     * Checks if a running mode is supported.
+     *
+     * @param mode the native running mode constant
+     * @return true if supported
+     */
+    private static native boolean nativeIsRunningModeSupported(int mode);
+
+    /**
+     * Sets the default running mode for new module instances.
+     *
+     * @param mode the native running mode constant
+     * @return true if set successfully
+     */
+    private static native boolean nativeSetDefaultRunningMode(int mode);
+
+    /**
+     * Sets the WAMR log verbosity level.
+     *
+     * @param level the log level (0-5)
+     */
+    private static native void nativeSetLogLevel(int level);
+
+    /**
+     * Initializes the thread environment for the current native thread.
+     *
+     * @return true if initialization succeeded
+     */
+    private static native boolean nativeInitThreadEnv();
+
+    /**
+     * Destroys the thread environment for the current native thread.
+     */
+    private static native void nativeDestroyThreadEnv();
+
+    /**
+     * Checks if the thread environment has been initialized.
+     *
+     * @return true if initialized
+     */
+    private static native boolean nativeIsThreadEnvInited();
+
+    /**
+     * Sets the maximum number of threads.
+     *
+     * @param num the maximum number of threads
+     */
+    private static native void nativeSetMaxThreadNum(int num);
+
+    /**
+     * Determines the package type of a WebAssembly binary buffer.
+     *
+     * @param wasmBytes the binary data to inspect
+     * @return the native package type constant
+     */
+    private static native int nativeGetFilePackageType(byte[] wasmBytes);
+
+    /**
+     * Returns the current supported package version for a given package type.
+     *
+     * @param packageType the native package type constant
+     * @return the current supported version number
+     */
+    private static native int nativeGetCurrentPackageVersion(int packageType);
 }

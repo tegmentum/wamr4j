@@ -25,32 +25,57 @@ use std::os::raw::{c_char, c_int, c_long, c_uchar, c_void};
 use std::ptr;
 
 use crate::runtime::{
-    runtime_init,
+    runtime_init, runtime_get_version,
     module_compile,
     instance_create,
-    function_lookup, function_call, function_get_signature,
-    memory_get, memory_size, memory_data, memory_grow,
+    function_lookup, function_call,
+    memory_get, memory_grow,
+    memory_page_count, memory_max_page_count, memory_is_shared,
+    memory_get_by_index, memory_base_address, memory_bytes_per_page, memory_enlarge,
+    module_malloc, module_free, module_dup_data,
+    validate_app_addr, validate_app_str_addr, validate_native_addr,
+    addr_app_to_native, addr_native_to_app,
+    get_export_names_by_kind, global_get, global_set,
+    module_get_export_names, module_get_import_names,
+    module_get_export_function_signature,
+    is_running_mode_supported, set_default_running_mode,
+    set_running_mode, get_running_mode,
+    set_log_level, set_bounds_checks, is_bounds_checks_enabled,
+    module_set_name, module_get_name, module_register,
+    module_get_hash,
+    get_file_package_type, get_module_package_type,
+    get_file_package_version, get_module_package_version,
+    get_current_package_version, is_xip_file,
+    is_underlying_binary_freeable,
+    table_get, table_get_function, call_indirect,
+    register_host_functions,
+    instance_get_exception, instance_set_exception, instance_clear_exception,
+    instance_terminate, set_instruction_count_limit,
+    module_set_wasi_args, module_set_wasi_addr_pool, module_set_wasi_ns_lookup_pool,
+    instance_is_wasi_mode, instance_get_wasi_exit_code,
+    instance_lookup_wasi_start_function,
+    instance_execute_main, instance_execute_func,
+    instance_set_custom_data, instance_get_custom_data,
+    instance_get_call_stack, instance_dump_call_stack,
+    instance_dump_perf_profiling, instance_sum_wasm_exec_time,
+    instance_get_wasm_func_exec_time, instance_dump_mem_consumption,
+    init_thread_env, destroy_thread_env, is_thread_env_inited, set_max_thread_num,
+    instance_create_ex, module_get_custom_section,
 };
 use crate::utils::{
-    write_error_to_buffer, get_last_error, set_last_error,
+    write_error_to_buffer, get_last_error, set_last_error, clear_last_error,
     wasm_value_from_ffi, wasm_value_to_ffi, wasm_type_to_ffi,
     WasmValueFFI,
+    WASM_TYPE_I32, WASM_TYPE_I64, WASM_TYPE_F32, WASM_TYPE_F64,
 };
 use crate::types::{
-    WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory,
-    WasmValue,
+    WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemory, WamrTable,
+    WasmValue, WasmType, HostCallbackFn, NativeRegistration,
 };
 use crate::bindings::{
-    WasmModuleInstT,
-    wasm_runtime_get_module,
-    wasm_runtime_get_export_count,
-    wasm_runtime_get_export_type,
-    wasm_runtime_get_export_global_inst,
-    wasm_export_t,
-    wasm_global_inst_t,
     WASM_IMPORT_EXPORT_KIND_FUNC,
+    WASM_IMPORT_EXPORT_KIND_TABLE,
     WASM_IMPORT_EXPORT_KIND_GLOBAL,
-    WASM_I32, WASM_I64, WASM_F32, WASM_F64,
 };
 
 // =============================================================================
@@ -60,6 +85,7 @@ use crate::bindings::{
 /// Initialize the WAMR runtime with default configuration
 #[no_mangle]
 pub extern "C" fn wamr_runtime_init() -> *mut c_void {
+    clear_last_error();
     match runtime_init() {
         Ok(runtime) => Box::into_raw(Box::new(runtime)) as *mut c_void,
         Err(_) => ptr::null_mut(),
@@ -69,6 +95,7 @@ pub extern "C" fn wamr_runtime_init() -> *mut c_void {
 /// Destroy the WAMR runtime and clean up all resources
 #[no_mangle]
 pub extern "C" fn wamr_runtime_destroy(runtime: *mut c_void) {
+    clear_last_error();
     if !runtime.is_null() {
         unsafe {
             let _runtime = Box::from_raw(runtime as *mut WamrRuntime);
@@ -90,6 +117,7 @@ pub extern "C" fn wamr_module_compile(
     error_buf: *mut c_char,
     error_buf_size: c_int,
 ) -> *mut c_void {
+    clear_last_error();
     if runtime.is_null() || wasm_bytes.is_null() || length <= 0 {
         write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
         return ptr::null_mut();
@@ -98,7 +126,7 @@ pub extern "C" fn wamr_module_compile(
     unsafe {
         let runtime_ref = &*(runtime as *const WamrRuntime);
         let bytes = std::slice::from_raw_parts(wasm_bytes, length as usize);
-        
+
         match module_compile(runtime_ref, bytes) {
             Ok(module) => Box::into_raw(Box::new(module)) as *mut c_void,
             Err(e) => {
@@ -113,6 +141,7 @@ pub extern "C" fn wamr_module_compile(
 /// Destroy a WebAssembly module
 #[no_mangle]
 pub extern "C" fn wamr_module_destroy(module: *mut c_void) {
+    clear_last_error();
     if !module.is_null() {
         unsafe {
             let _module = Box::from_raw(module as *mut WamrModule);
@@ -134,6 +163,7 @@ pub extern "C" fn wamr_instance_create(
     error_buf: *mut c_char,
     error_buf_size: c_int,
 ) -> *mut c_void {
+    clear_last_error();
     if module.is_null() || stack_size < 0 || heap_size < 0 {
         write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
         return ptr::null_mut();
@@ -155,6 +185,7 @@ pub extern "C" fn wamr_instance_create(
 /// Destroy a WebAssembly instance
 #[no_mangle]
 pub extern "C" fn wamr_instance_destroy(instance: *mut c_void) {
+    clear_last_error();
     if !instance.is_null() {
         unsafe {
             let _instance = Box::from_raw(instance as *mut WamrInstance);
@@ -175,6 +206,7 @@ pub extern "C" fn wamr_function_lookup(
     error_buf: *mut c_char,
     error_buf_size: c_int,
 ) -> *mut c_void {
+    clear_last_error();
     if instance.is_null() || name.is_null() {
         write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
         return ptr::null_mut();
@@ -212,6 +244,7 @@ pub extern "C" fn wamr_function_call(
     error_buf: *mut c_char,
     error_buf_size: c_int,
 ) -> c_int {
+    clear_last_error();
     if function.is_null() || arg_count < 0 || result_capacity < 0 {
         write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
         return -1;
@@ -219,7 +252,7 @@ pub extern "C" fn wamr_function_call(
 
     unsafe {
         let function_ref = &*(function as *const WamrFunction);
-        
+
         let arg_slice = if arg_count > 0 && !args.is_null() {
             std::slice::from_raw_parts(args, arg_count as usize)
         } else {
@@ -227,8 +260,8 @@ pub extern "C" fn wamr_function_call(
         };
 
         let wasm_args: Vec<WasmValue> = arg_slice.iter().map(|v| wasm_value_from_ffi(v)).collect();
-        
-        match function_call(function_ref, &wasm_args) {
+
+        match function_call(function_ref, function_ref.exec_env, &wasm_args) {
             Ok(wasm_results) => {
                 // Convert results back to FFI format
                 let result_count = std::cmp::min(wasm_results.len(), result_capacity as usize);
@@ -260,38 +293,48 @@ pub extern "C" fn wamr_function_get_signature(
     result_types: *mut c_int,
     result_count: *mut c_int,
 ) -> c_int {
+    clear_last_error();
     if function.is_null() {
         return -1;
     }
 
     unsafe {
         let function_ref = &*(function as *const WamrFunction);
-        match function_get_signature(function_ref) {
-            Ok((params, results)) => {
-                if !param_count.is_null() {
-                    *param_count = params.len() as c_int;
-                }
-                if !result_count.is_null() {
-                    *result_count = results.len() as c_int;
-                }
-                
-                if !param_types.is_null() {
-                    let param_slice = std::slice::from_raw_parts_mut(param_types, params.len());
-                    for (i, param_type) in params.iter().enumerate() {
-                        param_slice[i] = wasm_type_to_ffi(param_type);
-                    }
-                }
-                
-                if !result_types.is_null() {
-                    let result_slice = std::slice::from_raw_parts_mut(result_types, results.len());
-                    for (i, result_type) in results.iter().enumerate() {
-                        result_slice[i] = wasm_type_to_ffi(result_type);
-                    }
-                }
-                
-                0
+
+        if !param_count.is_null() {
+            *param_count = function_ref.param_types.len() as c_int;
+        }
+        if !result_count.is_null() {
+            *result_count = function_ref.result_types.len() as c_int;
+        }
+
+        if !param_types.is_null() {
+            let param_slice = std::slice::from_raw_parts_mut(
+                param_types, function_ref.param_types.len());
+            for (i, param_type) in function_ref.param_types.iter().enumerate() {
+                param_slice[i] = wasm_type_to_ffi(param_type);
             }
-            Err(_) => -1,
+        }
+
+        if !result_types.is_null() {
+            let result_slice = std::slice::from_raw_parts_mut(
+                result_types, function_ref.result_types.len());
+            for (i, result_type) in function_ref.result_types.iter().enumerate() {
+                result_slice[i] = wasm_type_to_ffi(result_type);
+            }
+        }
+
+        0
+    }
+}
+
+/// Destroy a function handle allocated by wamr_function_lookup
+#[no_mangle]
+pub extern "C" fn wamr_function_destroy(function: *mut c_void) {
+    clear_last_error();
+    if !function.is_null() {
+        unsafe {
+            let _function = Box::from_raw(function as *mut WamrFunction);
         }
     }
 }
@@ -303,6 +346,7 @@ pub extern "C" fn wamr_function_get_signature(
 /// Get memory from an instance
 #[no_mangle]
 pub extern "C" fn wamr_memory_get(instance: *mut c_void) -> *mut c_void {
+    clear_last_error();
     if instance.is_null() {
         return ptr::null_mut();
     }
@@ -319,32 +363,35 @@ pub extern "C" fn wamr_memory_get(instance: *mut c_void) -> *mut c_void {
 /// Get memory size in bytes
 #[no_mangle]
 pub extern "C" fn wamr_memory_size(memory: *mut c_void) -> c_long {
+    clear_last_error();
     if memory.is_null() {
         return -1;
     }
 
     unsafe {
         let memory_ref = &*(memory as *const WamrMemory);
-        memory_size(memory_ref) as c_long
+        memory_ref.size as c_long
     }
 }
 
 /// Get memory data pointer
 #[no_mangle]
 pub extern "C" fn wamr_memory_data(memory: *mut c_void) -> *mut c_void {
+    clear_last_error();
     if memory.is_null() {
         return ptr::null_mut();
     }
 
     unsafe {
         let memory_ref = &*(memory as *const WamrMemory);
-        memory_data(memory_ref) as *mut c_void
+        memory_ref.data_ptr as *mut c_void
     }
 }
 
 /// Grow memory by specified pages
 #[no_mangle]
 pub extern "C" fn wamr_memory_grow(memory: *mut c_void, pages: c_long) -> c_int {
+    clear_last_error();
     if memory.is_null() || pages < 0 {
         return -1;
     }
@@ -358,15 +405,792 @@ pub extern "C" fn wamr_memory_grow(memory: *mut c_void, pages: c_long) -> c_int 
     }
 }
 
+/// Get current page count
+#[no_mangle]
+pub extern "C" fn wamr_memory_page_count(memory: *mut c_void) -> c_long {
+    clear_last_error();
+    if memory.is_null() {
+        return -1;
+    }
+    unsafe {
+        let memory_ref = &*(memory as *const WamrMemory);
+        memory_page_count(memory_ref) as c_long
+    }
+}
+
+/// Get maximum page count
+#[no_mangle]
+pub extern "C" fn wamr_memory_max_page_count(memory: *mut c_void) -> c_long {
+    clear_last_error();
+    if memory.is_null() {
+        return -1;
+    }
+    unsafe {
+        let memory_ref = &*(memory as *const WamrMemory);
+        memory_max_page_count(memory_ref) as c_long
+    }
+}
+
+/// Check if memory is shared
+#[no_mangle]
+pub extern "C" fn wamr_memory_is_shared(memory: *mut c_void) -> c_int {
+    clear_last_error();
+    if memory.is_null() {
+        return 0;
+    }
+    unsafe {
+        let memory_ref = &*(memory as *const WamrMemory);
+        if memory_is_shared(memory_ref) { 1 } else { 0 }
+    }
+}
+
+/// Destroy a memory handle allocated by wamr_memory_get
+#[no_mangle]
+pub extern "C" fn wamr_memory_destroy(memory: *mut c_void) {
+    clear_last_error();
+    if !memory.is_null() {
+        unsafe {
+            let _memory = Box::from_raw(memory as *mut WamrMemory);
+        }
+    }
+}
+
+/// Get memory base address (native pointer)
+#[no_mangle]
+pub extern "C" fn wamr_memory_base_address(memory: *mut c_void) -> *mut c_void {
+    clear_last_error();
+    if memory.is_null() {
+        return ptr::null_mut();
+    }
+    unsafe {
+        let memory_ref = &*(memory as *const WamrMemory);
+        memory_base_address(memory_ref)
+    }
+}
+
+/// Get bytes per page for a memory instance
+#[no_mangle]
+pub extern "C" fn wamr_memory_bytes_per_page(memory: *mut c_void) -> c_long {
+    clear_last_error();
+    if memory.is_null() {
+        return -1;
+    }
+    unsafe {
+        let memory_ref = &*(memory as *const WamrMemory);
+        memory_bytes_per_page(memory_ref) as c_long
+    }
+}
+
+/// Enlarge a specific memory instance by pages
+#[no_mangle]
+pub extern "C" fn wamr_memory_enlarge_inst(memory: *mut c_void, inc_pages: c_long) -> c_int {
+    clear_last_error();
+    if memory.is_null() || inc_pages < 0 {
+        return -1;
+    }
+    unsafe {
+        let memory_ref = &mut *(memory as *mut WamrMemory);
+        if memory_enlarge(memory_ref, inc_pages as u64) { 0 } else { -1 }
+    }
+}
+
+/// Allocate memory within the module instance heap
+/// Returns the app offset, or 0 on failure. native_addr_out receives the native pointer.
+#[no_mangle]
+pub extern "C" fn wamr_module_malloc(
+    instance: *mut c_void,
+    size: c_long,
+    native_addr_out: *mut *mut c_void,
+) -> c_long {
+    clear_last_error();
+    if instance.is_null() || size <= 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        match module_malloc(instance_ref, size as u64) {
+            Ok((app_offset, native_ptr)) => {
+                if !native_addr_out.is_null() {
+                    *native_addr_out = native_ptr;
+                }
+                app_offset as c_long
+            }
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Free memory previously allocated by wamr_module_malloc
+#[no_mangle]
+pub extern "C" fn wamr_module_free(instance: *mut c_void, ptr: c_long) {
+    clear_last_error();
+    if instance.is_null() || ptr <= 0 {
+        return;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        module_free(instance_ref, ptr as u64);
+    }
+}
+
+/// Duplicate data into the module instance memory
+/// Returns the app offset, or 0 on failure.
+#[no_mangle]
+pub extern "C" fn wamr_module_dup_data(
+    instance: *mut c_void,
+    data: *const c_uchar,
+    size: c_long,
+) -> c_long {
+    clear_last_error();
+    if instance.is_null() || data.is_null() || size <= 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        let slice = std::slice::from_raw_parts(data, size as usize);
+        match module_dup_data(instance_ref, slice) {
+            Ok(offset) => offset as c_long,
+            Err(_) => 0,
+        }
+    }
+}
+
+/// Validate an application address range
+#[no_mangle]
+pub extern "C" fn wamr_validate_app_addr(
+    instance: *mut c_void,
+    app_offset: c_long,
+    size: c_long,
+) -> c_int {
+    clear_last_error();
+    if instance.is_null() {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        if validate_app_addr(instance_ref, app_offset as u64, size as u64) { 1 } else { 0 }
+    }
+}
+
+/// Validate an application string address
+#[no_mangle]
+pub extern "C" fn wamr_validate_app_str_addr(
+    instance: *mut c_void,
+    app_str_offset: c_long,
+) -> c_int {
+    clear_last_error();
+    if instance.is_null() {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        if validate_app_str_addr(instance_ref, app_str_offset as u64) { 1 } else { 0 }
+    }
+}
+
+/// Validate a native address range
+#[no_mangle]
+pub extern "C" fn wamr_validate_native_addr(
+    instance: *mut c_void,
+    native_ptr: *mut c_void,
+    size: c_long,
+) -> c_int {
+    clear_last_error();
+    if instance.is_null() {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        if validate_native_addr(instance_ref, native_ptr, size as u64) { 1 } else { 0 }
+    }
+}
+
+/// Convert application offset to native pointer
+#[no_mangle]
+pub extern "C" fn wamr_addr_app_to_native(
+    instance: *mut c_void,
+    app_offset: c_long,
+) -> *mut c_void {
+    clear_last_error();
+    if instance.is_null() {
+        return ptr::null_mut();
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        addr_app_to_native(instance_ref, app_offset as u64)
+    }
+}
+
+/// Convert native pointer to application offset
+#[no_mangle]
+pub extern "C" fn wamr_addr_native_to_app(
+    instance: *mut c_void,
+    native_ptr: *mut c_void,
+) -> c_long {
+    clear_last_error();
+    if instance.is_null() {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        addr_native_to_app(instance_ref, native_ptr) as c_long
+    }
+}
+
+/// Get memory instance by index
+#[no_mangle]
+pub extern "C" fn wamr_memory_get_by_index(
+    instance: *mut c_void,
+    index: c_int,
+) -> *mut c_void {
+    clear_last_error();
+    if instance.is_null() || index < 0 {
+        return ptr::null_mut();
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        match memory_get_by_index(instance_ref, index as u32) {
+            Ok(memory) => Box::into_raw(Box::new(memory)) as *mut c_void,
+            Err(_) => ptr::null_mut(),
+        }
+    }
+}
+
+/// Check if an instance has a default memory (without allocating a Box)
+#[no_mangle]
+pub extern "C" fn wamr_instance_has_memory(instance: *mut c_void) -> c_int {
+    clear_last_error();
+    if instance.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        let memory_handle = crate::bindings::wasm_runtime_get_default_memory(instance_ref.handle);
+        if memory_handle.is_null() { 0 } else { 1 }
+    }
+}
+
+// =============================================================================
+// Runtime Configuration
+// =============================================================================
+
+/// Check if a running mode is supported
+#[no_mangle]
+pub extern "C" fn wamr_is_running_mode_supported(mode: c_int) -> c_int {
+    clear_last_error();
+    if is_running_mode_supported(mode as u32) { 1 } else { 0 }
+}
+
+/// Set the default running mode
+#[no_mangle]
+pub extern "C" fn wamr_set_default_running_mode(mode: c_int) -> c_int {
+    clear_last_error();
+    if set_default_running_mode(mode as u32) { 0 } else { -1 }
+}
+
+/// Set the running mode for an instance
+#[no_mangle]
+pub extern "C" fn wamr_set_running_mode(instance: *mut c_void, mode: c_int) -> c_int {
+    clear_last_error();
+    if instance.is_null() {
+        return -1;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        if set_running_mode(instance_ref, mode as u32) { 0 } else { -1 }
+    }
+}
+
+/// Get the running mode for an instance
+#[no_mangle]
+pub extern "C" fn wamr_get_running_mode(instance: *mut c_void) -> c_int {
+    clear_last_error();
+    if instance.is_null() {
+        return -1;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        get_running_mode(instance_ref) as c_int
+    }
+}
+
+/// Set log verbosity level
+#[no_mangle]
+pub extern "C" fn wamr_set_log_level(level: c_int) {
+    clear_last_error();
+    set_log_level(level as i32);
+}
+
+/// Enable or disable bounds checks for an instance
+#[no_mangle]
+pub extern "C" fn wamr_set_bounds_checks(instance: *mut c_void, enable: c_int) -> c_int {
+    clear_last_error();
+    if instance.is_null() {
+        return -1;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        if set_bounds_checks(instance_ref, enable != 0) { 0 } else { -1 }
+    }
+}
+
+/// Check if bounds checks are enabled for an instance
+#[no_mangle]
+pub extern "C" fn wamr_is_bounds_checks_enabled(instance: *mut c_void) -> c_int {
+    clear_last_error();
+    if instance.is_null() {
+        return -1;
+    }
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        if is_bounds_checks_enabled(instance_ref) { 1 } else { 0 }
+    }
+}
+
+// =============================================================================
+// Module Management
+// =============================================================================
+
+/// Set the name of a module
+#[no_mangle]
+pub extern "C" fn wamr_module_set_name(
+    module: *mut c_void,
+    name: *const c_char,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    if module.is_null() || name.is_null() {
+        write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
+        return -1;
+    }
+    let name_str = match unsafe { CStr::from_ptr(name).to_str() } {
+        Ok(s) => s,
+        Err(_) => {
+            write_error_to_buffer("Invalid name encoding", error_buf, error_buf_size);
+            return -1;
+        }
+    };
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        if module_set_name(module_ref, name_str) { 0 } else { -1 }
+    }
+}
+
+/// Get the name of a module (returns pointer to static string, valid until module is destroyed)
+#[no_mangle]
+pub extern "C" fn wamr_module_get_name(
+    module: *mut c_void,
+    name_buf: *mut c_char,
+    name_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    if module.is_null() || name_buf.is_null() || name_buf_size <= 0 {
+        return -1;
+    }
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        match module_get_name(module_ref) {
+            Some(name) => {
+                write_error_to_buffer(&name, name_buf, name_buf_size);
+                0
+            }
+            None => -1,
+        }
+    }
+}
+
+/// Register a module by name for multi-module support
+#[no_mangle]
+pub extern "C" fn wamr_module_register(
+    module: *mut c_void,
+    name: *const c_char,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    if module.is_null() || name.is_null() {
+        write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
+        return -1;
+    }
+    let name_str = match unsafe { CStr::from_ptr(name).to_str() } {
+        Ok(s) => s,
+        Err(_) => {
+            write_error_to_buffer("Invalid name encoding", error_buf, error_buf_size);
+            return -1;
+        }
+    };
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        match module_register(module_ref, name_str) {
+            Ok(()) => 0,
+            Err(_) => {
+                write_error_to_buffer("Module registration failed", error_buf, error_buf_size);
+                -1
+            }
+        }
+    }
+}
+
+/// Get the module hash string
+#[no_mangle]
+pub extern "C" fn wamr_module_get_hash(
+    module: *mut c_void,
+    hash_buf: *mut c_char,
+    hash_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    if module.is_null() || hash_buf.is_null() || hash_buf_size <= 0 {
+        return -1;
+    }
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        match module_get_hash(module_ref) {
+            Some(hash) => {
+                write_error_to_buffer(&hash, hash_buf, hash_buf_size);
+                0
+            }
+            None => -1,
+        }
+    }
+}
+
+/// Get the package type of a bytecode buffer
+#[no_mangle]
+pub extern "C" fn wamr_get_file_package_type(
+    buf: *const c_uchar,
+    size: c_int,
+) -> c_int {
+    clear_last_error();
+    if buf.is_null() || size <= 0 {
+        return crate::bindings::PACKAGE_TYPE_UNKNOWN as c_int;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(buf, size as usize) };
+    get_file_package_type(bytes) as c_int
+}
+
+/// Get the package type of a loaded module
+#[no_mangle]
+pub extern "C" fn wamr_get_module_package_type(module: *mut c_void) -> c_int {
+    clear_last_error();
+    if module.is_null() {
+        return crate::bindings::PACKAGE_TYPE_UNKNOWN as c_int;
+    }
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        get_module_package_type(module_ref) as c_int
+    }
+}
+
+/// Get the package version of a bytecode buffer
+#[no_mangle]
+pub extern "C" fn wamr_get_file_package_version(
+    buf: *const c_uchar,
+    size: c_int,
+) -> c_int {
+    clear_last_error();
+    if buf.is_null() || size <= 0 {
+        return 0;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(buf, size as usize) };
+    get_file_package_version(bytes) as c_int
+}
+
+/// Get the package version of a loaded module
+#[no_mangle]
+pub extern "C" fn wamr_get_module_package_version(module: *mut c_void) -> c_int {
+    clear_last_error();
+    if module.is_null() {
+        return 0;
+    }
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        get_module_package_version(module_ref) as c_int
+    }
+}
+
+/// Get the currently supported version for a package type
+#[no_mangle]
+pub extern "C" fn wamr_get_current_package_version(package_type: c_int) -> c_int {
+    clear_last_error();
+    get_current_package_version(package_type as u32) as c_int
+}
+
+/// Check whether a buffer is an AOT XIP file
+#[no_mangle]
+pub extern "C" fn wamr_is_xip_file(buf: *const c_uchar, size: c_int) -> c_int {
+    clear_last_error();
+    if buf.is_null() || size <= 0 {
+        return 0;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(buf, size as usize) };
+    if is_xip_file(bytes) { 1 } else { 0 }
+}
+
+/// Check if the underlying binary can be freed after loading
+#[no_mangle]
+pub extern "C" fn wamr_is_underlying_binary_freeable(module: *mut c_void) -> c_int {
+    clear_last_error();
+    if module.is_null() {
+        return 0;
+    }
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        if is_underlying_binary_freeable(module_ref) { 1 } else { 0 }
+    }
+}
+
+// =============================================================================
+// Table Operations
+// =============================================================================
+
+/// Get an exported table by name from an instance
+#[no_mangle]
+pub extern "C" fn wamr_table_get(
+    instance: *mut c_void,
+    name: *const c_char,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> *mut c_void {
+    clear_last_error();
+    if instance.is_null() || name.is_null() {
+        write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        let table_name = match CStr::from_ptr(name).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                write_error_to_buffer("Invalid table name encoding", error_buf, error_buf_size);
+                return ptr::null_mut();
+            }
+        };
+
+        match table_get(instance_ref, table_name) {
+            Ok(table) => Box::into_raw(Box::new(table)) as *mut c_void,
+            Err(e) => {
+                let error_msg = format!("Table get failed: {:?}", e);
+                write_error_to_buffer(&error_msg, error_buf, error_buf_size);
+                ptr::null_mut()
+            }
+        }
+    }
+}
+
+/// Destroy a table handle
+#[no_mangle]
+pub extern "C" fn wamr_table_destroy(table: *mut c_void) {
+    clear_last_error();
+    if !table.is_null() {
+        unsafe {
+            let _table = Box::from_raw(table as *mut WamrTable);
+        }
+    }
+}
+
+/// Get table current size
+#[no_mangle]
+pub extern "C" fn wamr_table_size(table: *mut c_void) -> c_int {
+    clear_last_error();
+    if table.is_null() {
+        return -1;
+    }
+    unsafe {
+        let table_ref = &*(table as *const WamrTable);
+        table_ref.table_inst.cur_size as c_int
+    }
+}
+
+/// Get table maximum size
+#[no_mangle]
+pub extern "C" fn wamr_table_max_size(table: *mut c_void) -> c_int {
+    clear_last_error();
+    if table.is_null() {
+        return -1;
+    }
+    unsafe {
+        let table_ref = &*(table as *const WamrTable);
+        table_ref.table_inst.max_size as c_int
+    }
+}
+
+/// Get table element kind (returns WASM_FUNCREF=129, WASM_EXTERNREF=128, or -1 on error)
+#[no_mangle]
+pub extern "C" fn wamr_table_elem_kind(table: *mut c_void) -> c_int {
+    clear_last_error();
+    if table.is_null() {
+        return -1;
+    }
+    unsafe {
+        let table_ref = &*(table as *const WamrTable);
+        table_ref.table_inst.elem_kind as c_int
+    }
+}
+
+/// Get a function from a table at the given index
+#[no_mangle]
+pub extern "C" fn wamr_table_get_function(
+    table: *mut c_void,
+    index: c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> *mut c_void {
+    clear_last_error();
+    if table.is_null() || index < 0 {
+        write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        let table_ref = &*(table as *const WamrTable);
+        match table_get_function(table_ref, index as u32) {
+            Ok(function) => Box::into_raw(Box::new(function)) as *mut c_void,
+            Err(e) => {
+                let error_msg = format!("Table get function failed: {:?}", e);
+                write_error_to_buffer(&error_msg, error_buf, error_buf_size);
+                ptr::null_mut()
+            }
+        }
+    }
+}
+
+/// Call a function indirectly via table index
+#[no_mangle]
+pub extern "C" fn wamr_call_indirect(
+    instance: *mut c_void,
+    element_index: c_int,
+    args: *const WasmValueFFI,
+    arg_count: c_int,
+    results: *mut WasmValueFFI,
+    result_capacity: c_int,
+    result_type_tags: *const c_int,
+    result_type_count: c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    if instance.is_null() || element_index < 0 || arg_count < 0 || result_capacity < 0 {
+        write_error_to_buffer("Invalid arguments", error_buf, error_buf_size);
+        return -1;
+    }
+
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+
+        let arg_slice = if arg_count > 0 && !args.is_null() {
+            std::slice::from_raw_parts(args, arg_count as usize)
+        } else {
+            &[]
+        };
+
+        let wasm_args: Vec<WasmValue> = arg_slice.iter().map(|v| wasm_value_from_ffi(v)).collect();
+
+        // Build result types from the tags
+        let rtypes: Vec<WasmType> = if result_type_count > 0 && !result_type_tags.is_null() {
+            let tags = std::slice::from_raw_parts(result_type_tags, result_type_count as usize);
+            tags.iter().map(|&t| match t {
+                WASM_TYPE_I32 => WasmType::I32,
+                WASM_TYPE_I64 => WasmType::I64,
+                WASM_TYPE_F32 => WasmType::F32,
+                WASM_TYPE_F64 => WasmType::F64,
+                _ => WasmType::I32,
+            }).collect()
+        } else {
+            Vec::new()
+        };
+
+        match call_indirect(instance_ref, element_index as u32, &wasm_args, &rtypes) {
+            Ok(wasm_results) => {
+                let result_count = std::cmp::min(wasm_results.len(), result_capacity as usize);
+                if result_count > 0 && !results.is_null() {
+                    let result_slice = std::slice::from_raw_parts_mut(results, result_count);
+                    for (i, wasm_val) in wasm_results.iter().take(result_count).enumerate() {
+                        result_slice[i] = wasm_value_to_ffi(wasm_val);
+                    }
+                }
+                result_count as c_int
+            }
+            Err(e) => {
+                let error_msg = format!("Indirect call failed: {:?}", e);
+                write_error_to_buffer(&error_msg, error_buf, error_buf_size);
+                -1
+            }
+        }
+    }
+}
+
+/// Get names of all exported tables from an instance
+#[no_mangle]
+pub extern "C" fn wamr_get_table_names(
+    instance: *mut c_void,
+    names_buffer: *mut *mut *mut c_char,
+    count: *mut c_int,
+) -> c_int {
+    clear_last_error();
+    if instance.is_null() || names_buffer.is_null() || count.is_null() {
+        set_last_error("Invalid parameters for get_table_names".to_string());
+        return -1;
+    }
+
+    unsafe {
+        let instance_ref = &*(instance as *const WamrInstance);
+        let names = get_export_names_by_kind(
+            instance_ref.handle, WASM_IMPORT_EXPORT_KIND_TABLE);
+        names_vec_to_c_array(names, names_buffer, count)
+    }
+}
+
 // =============================================================================
 // Utility Functions
 // =============================================================================
 
-/// Get WAMR version string
+/// Get WAMR version string (derived from actual runtime API)
 #[no_mangle]
 pub extern "C" fn wamr_get_version() -> *const c_char {
-    static VERSION: &str = "2.4.4\0";
-    VERSION.as_ptr() as *const c_char
+    // Use a thread-local to cache the formatted version string
+    thread_local! {
+        static VERSION_CSTR: std::cell::RefCell<Option<CString>> = std::cell::RefCell::new(None);
+        static VERSION_PTR: std::cell::Cell<*const c_char> = std::cell::Cell::new(ptr::null());
+    }
+
+    VERSION_CSTR.with(|cell| {
+        let mut borrow = cell.borrow_mut();
+        if borrow.is_none() {
+            let (major, minor, patch) = runtime_get_version();
+            let version = format!("{}.{}.{}", major, minor, patch);
+            if let Ok(cstr) = CString::new(version) {
+                let ptr = cstr.as_ptr();
+                VERSION_PTR.with(|p| p.set(ptr));
+                *borrow = Some(cstr);
+            }
+        }
+        VERSION_PTR.with(|p| p.get())
+    })
+}
+
+/// Get WAMR version as separate major/minor/patch integers
+#[no_mangle]
+pub extern "C" fn wamr_get_version_parts(
+    major_out: *mut c_int,
+    minor_out: *mut c_int,
+    patch_out: *mut c_int,
+) {
+    clear_last_error();
+    let (major, minor, patch) = runtime_get_version();
+    unsafe {
+        if !major_out.is_null() {
+            *major_out = major as c_int;
+        }
+        if !minor_out.is_null() {
+            *minor_out = minor as c_int;
+        }
+        if !patch_out.is_null() {
+            *patch_out = patch as c_int;
+        }
+    }
 }
 
 /// Get last error message
@@ -385,15 +1209,20 @@ pub extern "C" fn wamr_get_last_error(buffer: *mut c_char, buffer_size: c_int) -
             
             let error_bytes = error_cstring.as_bytes_with_nul();
             let copy_len = std::cmp::min(error_bytes.len(), buffer_size as usize);
-            
+
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     error_bytes.as_ptr(),
                     buffer as *mut u8,
                     copy_len,
                 );
+
+                // Ensure null termination when truncated
+                if copy_len > 0 {
+                    *((buffer as *mut u8).add(copy_len - 1)) = 0;
+                }
             }
-            
+
             copy_len as c_int
         }
         None => 0,
@@ -411,6 +1240,7 @@ pub extern "C" fn wamr_get_function_names(
     names_buffer: *mut *mut *mut c_char,
     count: *mut c_int,
 ) -> c_int {
+    clear_last_error();
     if instance.is_null() || names_buffer.is_null() || count.is_null() {
         set_last_error("Invalid parameters for get_function_names".to_string());
         return -1;
@@ -418,61 +1248,9 @@ pub extern "C" fn wamr_get_function_names(
 
     unsafe {
         let instance_ref = &*(instance as *const WamrInstance);
-        let module_inst = instance_ref.handle as *mut WasmModuleInstT;
-        let module = wasm_runtime_get_module(module_inst);
-
-        if module.is_null() {
-            set_last_error("Failed to get module from instance".to_string());
-            return -1;
-        }
-
-        let export_count = wasm_runtime_get_export_count(module);
-        let mut function_names: Vec<*mut c_char> = Vec::new();
-
-        for i in 0..export_count {
-            let mut export_info: wasm_export_t = std::mem::zeroed();
-            if wasm_runtime_get_export_type(module, i as i32, &mut export_info) {
-                if export_info.kind == WASM_IMPORT_EXPORT_KIND_FUNC {
-                    if !export_info.name.is_null() {
-                        // Allocate and copy the name
-                        let name_len = libc::strlen(export_info.name);
-                        let name_copy = libc::malloc(name_len + 1) as *mut c_char;
-                        if !name_copy.is_null() {
-                            libc::strcpy(name_copy, export_info.name);
-                            function_names.push(name_copy);
-                        }
-                    }
-                }
-            }
-        }
-
-        *count = function_names.len() as c_int;
-
-        if function_names.is_empty() {
-            *names_buffer = std::ptr::null_mut();
-            return 0;
-        }
-
-        // Allocate array for pointers
-        let array_size = function_names.len() * std::mem::size_of::<*mut c_char>();
-        let array = libc::malloc(array_size) as *mut *mut c_char;
-
-        if array.is_null() {
-            // Clean up allocated names
-            for name in function_names {
-                libc::free(name as *mut c_void);
-            }
-            set_last_error("Failed to allocate memory for function names array".to_string());
-            return -1;
-        }
-
-        // Copy pointers to array
-        for (i, name) in function_names.iter().enumerate() {
-            *array.add(i) = *name;
-        }
-
-        *names_buffer = array;
-        0
+        let names = get_export_names_by_kind(
+            instance_ref.handle, WASM_IMPORT_EXPORT_KIND_FUNC);
+        names_vec_to_c_array(names, names_buffer, count)
     }
 }
 
@@ -483,6 +1261,7 @@ pub extern "C" fn wamr_get_global_names(
     names_buffer: *mut *mut *mut c_char,
     count: *mut c_int,
 ) -> c_int {
+    clear_last_error();
     if instance.is_null() || names_buffer.is_null() || count.is_null() {
         set_last_error("Invalid parameters for get_global_names".to_string());
         return -1;
@@ -490,61 +1269,105 @@ pub extern "C" fn wamr_get_global_names(
 
     unsafe {
         let instance_ref = &*(instance as *const WamrInstance);
-        let module_inst = instance_ref.handle as *mut WasmModuleInstT;
-        let module = wasm_runtime_get_module(module_inst);
+        let names = get_export_names_by_kind(
+            instance_ref.handle, WASM_IMPORT_EXPORT_KIND_GLOBAL);
+        names_vec_to_c_array(names, names_buffer, count)
+    }
+}
 
-        if module.is_null() {
-            set_last_error("Failed to get module from instance".to_string());
+/// Get names of all exports from a compiled module (no instance needed)
+#[no_mangle]
+pub extern "C" fn wamr_module_get_export_names(
+    module: *mut c_void,
+    names_buffer: *mut *mut *mut c_char,
+    count: *mut c_int,
+) -> c_int {
+    clear_last_error();
+    if module.is_null() || names_buffer.is_null() || count.is_null() {
+        set_last_error("Invalid parameters for module_get_export_names".to_string());
+        return -1;
+    }
+
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        let names = module_get_export_names(module_ref.handle);
+        names_vec_to_c_array(names, names_buffer, count)
+    }
+}
+
+/// Get names of all imports from a compiled module (no instance needed)
+#[no_mangle]
+pub extern "C" fn wamr_module_get_import_names(
+    module: *mut c_void,
+    names_buffer: *mut *mut *mut c_char,
+    count: *mut c_int,
+) -> c_int {
+    clear_last_error();
+    if module.is_null() || names_buffer.is_null() || count.is_null() {
+        set_last_error("Invalid parameters for module_get_import_names".to_string());
+        return -1;
+    }
+
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        let names = module_get_import_names(module_ref.handle);
+        names_vec_to_c_array(names, names_buffer, count)
+    }
+}
+
+/// Get function signature for a named export from a compiled module (no instance needed)
+#[no_mangle]
+pub extern "C" fn wamr_module_get_export_function_signature(
+    module: *mut c_void,
+    name: *const c_char,
+    param_types: *mut c_int,
+    param_count: *mut c_int,
+    result_types: *mut c_int,
+    result_count: *mut c_int,
+) -> c_int {
+    clear_last_error();
+    if module.is_null() || name.is_null() {
+        set_last_error("Invalid parameters for module_get_export_function_signature".to_string());
+        return -1;
+    }
+
+    let func_name = match unsafe { CStr::from_ptr(name).to_str() } {
+        Ok(s) => s,
+        Err(_) => {
+            set_last_error("Invalid function name encoding".to_string());
             return -1;
         }
+    };
 
-        let export_count = wasm_runtime_get_export_count(module);
-        let mut global_names: Vec<*mut c_char> = Vec::new();
-
-        for i in 0..export_count {
-            let mut export_info: wasm_export_t = std::mem::zeroed();
-            if wasm_runtime_get_export_type(module, i as i32, &mut export_info) {
-                if export_info.kind == WASM_IMPORT_EXPORT_KIND_GLOBAL {
-                    if !export_info.name.is_null() {
-                        // Allocate and copy the name
-                        let name_len = libc::strlen(export_info.name);
-                        let name_copy = libc::malloc(name_len + 1) as *mut c_char;
-                        if !name_copy.is_null() {
-                            libc::strcpy(name_copy, export_info.name);
-                            global_names.push(name_copy);
-                        }
+    unsafe {
+        let module_ref = &*(module as *const WamrModule);
+        match module_get_export_function_signature(module_ref.handle, func_name) {
+            Some((params, results)) => {
+                if !param_count.is_null() {
+                    *param_count = params.len() as c_int;
+                }
+                if !result_count.is_null() {
+                    *result_count = results.len() as c_int;
+                }
+                if !param_types.is_null() {
+                    let slice = std::slice::from_raw_parts_mut(param_types, params.len());
+                    for (i, pt) in params.iter().enumerate() {
+                        slice[i] = wasm_type_to_ffi(pt);
                     }
                 }
+                if !result_types.is_null() {
+                    let slice = std::slice::from_raw_parts_mut(result_types, results.len());
+                    for (i, rt) in results.iter().enumerate() {
+                        slice[i] = wasm_type_to_ffi(rt);
+                    }
+                }
+                0
+            }
+            None => {
+                set_last_error(format!("Function '{}' not found in module exports", func_name));
+                -1
             }
         }
-
-        *count = global_names.len() as c_int;
-
-        if global_names.is_empty() {
-            *names_buffer = std::ptr::null_mut();
-            return 0;
-        }
-
-        // Allocate array for pointers
-        let array_size = global_names.len() * std::mem::size_of::<*mut c_char>();
-        let array = libc::malloc(array_size) as *mut *mut c_char;
-
-        if array.is_null() {
-            // Clean up allocated names
-            for name in global_names {
-                libc::free(name as *mut c_void);
-            }
-            set_last_error("Failed to allocate memory for global names array".to_string());
-            return -1;
-        }
-
-        // Copy pointers to array
-        for (i, name) in global_names.iter().enumerate() {
-            *array.add(i) = *name;
-        }
-
-        *names_buffer = array;
-        0
     }
 }
 
@@ -568,6 +1391,16 @@ pub extern "C" fn wamr_free_names(names: *mut *mut c_char, count: c_int) {
     }
 }
 
+/// Free a string allocated by Rust's CString::into_raw (e.g., from wamr_instance_get_exception).
+#[no_mangle]
+pub extern "C" fn wamr_free_string(s: *mut c_char) {
+    if !s.is_null() {
+        unsafe {
+            let _ = CString::from_raw(s);
+        }
+    }
+}
+
 /// Get a global variable value
 #[no_mangle]
 pub extern "C" fn wamr_get_global(
@@ -577,6 +1410,7 @@ pub extern "C" fn wamr_get_global(
     value: *mut c_void,
     value_size: c_int,
 ) -> c_int {
+    clear_last_error();
     if instance.is_null() || name.is_null() || value_type.is_null() || value.is_null() {
         set_last_error("Invalid parameters for get_global".to_string());
         return -1;
@@ -584,44 +1418,34 @@ pub extern "C" fn wamr_get_global(
 
     unsafe {
         let instance_ref = &*(instance as *const WamrInstance);
-        let module_inst = instance_ref.handle as *mut WasmModuleInstT;
-        let mut global_inst: wasm_global_inst_t = std::mem::zeroed();
+        match global_get(instance_ref.handle, name) {
+            Ok(wasm_val) => {
+                let (kind, copy_size): (c_int, c_int) = match &wasm_val {
+                    WasmValue::I32(_) => (WASM_TYPE_I32, 4),
+                    WasmValue::I64(_) => (WASM_TYPE_I64, 8),
+                    WasmValue::F32(_) => (WASM_TYPE_F32, 4),
+                    WasmValue::F64(_) => (WASM_TYPE_F64, 8),
+                };
 
-        if !wasm_runtime_get_export_global_inst(module_inst, name, &mut global_inst) {
-            set_last_error("Global variable not found".to_string());
-            return -1;
-        }
+                if value_size < copy_size {
+                    set_last_error("Value buffer too small".to_string());
+                    return -1;
+                }
 
-        // Set the type
-        *value_type = global_inst.kind as c_int;
-
-        // Copy the value based on type
-        let copy_size = match global_inst.kind as u32 {
-            WASM_I32 | WASM_F32 => 4,
-            WASM_I64 | WASM_F64 => 8,
-            _ => {
-                set_last_error("Unsupported global type".to_string());
-                return -1;
+                *value_type = kind;
+                match wasm_val {
+                    WasmValue::I32(v) => *(value as *mut i32) = v,
+                    WasmValue::I64(v) => *(value as *mut i64) = v,
+                    WasmValue::F32(v) => *(value as *mut f32) = v,
+                    WasmValue::F64(v) => *(value as *mut f64) = v,
+                }
+                0
             }
-        };
-
-        if value_size < copy_size {
-            set_last_error("Value buffer too small".to_string());
-            return -1;
+            Err(e) => {
+                set_last_error(format!("{}", e));
+                -1
+            }
         }
-
-        if global_inst.global_data.is_null() {
-            set_last_error("Global data is null".to_string());
-            return -1;
-        }
-
-        std::ptr::copy_nonoverlapping(
-            global_inst.global_data as *const u8,
-            value as *mut u8,
-            copy_size as usize,
-        );
-
-        0
     }
 }
 
@@ -633,6 +1457,7 @@ pub extern "C" fn wamr_set_global(
     value_type: c_int,
     value: *const c_void,
 ) -> c_int {
+    clear_last_error();
     if instance.is_null() || name.is_null() || value.is_null() {
         set_last_error("Invalid parameters for set_global".to_string());
         return -1;
@@ -640,49 +1465,627 @@ pub extern "C" fn wamr_set_global(
 
     unsafe {
         let instance_ref = &*(instance as *const WamrInstance);
-        let module_inst = instance_ref.handle as *mut WasmModuleInstT;
-        let mut global_inst: wasm_global_inst_t = std::mem::zeroed();
-
-        if !wasm_runtime_get_export_global_inst(module_inst, name, &mut global_inst) {
-            set_last_error("Global variable not found".to_string());
-            return -1;
-        }
-
-        // Check if mutable
-        if !global_inst.is_mutable {
-            set_last_error("Global variable is immutable".to_string());
-            return -1;
-        }
-
-        // Verify type matches
-        if global_inst.kind as c_int != value_type {
-            set_last_error("Type mismatch for global variable".to_string());
-            return -1;
-        }
-
-        // Copy the value based on type
-        let copy_size = match value_type as u32 {
-            WASM_I32 | WASM_F32 => 4,
-            WASM_I64 | WASM_F64 => 8,
+        let wasm_val = match value_type {
+            WASM_TYPE_I32 => WasmValue::I32(*(value as *const i32)),
+            WASM_TYPE_I64 => WasmValue::I64(*(value as *const i64)),
+            WASM_TYPE_F32 => WasmValue::F32(*(value as *const f32)),
+            WASM_TYPE_F64 => WasmValue::F64(*(value as *const f64)),
             _ => {
                 set_last_error("Unsupported global type".to_string());
                 return -1;
             }
         };
 
-        if global_inst.global_data.is_null() {
-            set_last_error("Global data is null".to_string());
-            return -1;
+        match global_set(instance_ref.handle, name, &wasm_val) {
+            Ok(()) => 0,
+            Err(e) => {
+                set_last_error(format!("{}", e));
+                -1
+            }
         }
-
-        std::ptr::copy_nonoverlapping(
-            value as *const u8,
-            global_inst.global_data as *mut u8,
-            copy_size as usize,
-        );
-
-        0
     }
 }
 
-// FFI value types are defined in utils.rs to avoid duplication
+/// Convert a Vec<String> to a C-allocated array of C strings
+unsafe fn names_vec_to_c_array(
+    names: Vec<String>,
+    names_buffer: *mut *mut *mut c_char,
+    count: *mut c_int,
+) -> c_int {
+    *count = names.len() as c_int;
+
+    if names.is_empty() {
+        *names_buffer = std::ptr::null_mut();
+        return 0;
+    }
+
+    let array = libc::malloc(names.len() * std::mem::size_of::<*mut c_char>()) as *mut *mut c_char;
+    if array.is_null() {
+        set_last_error("Failed to allocate memory for names array".to_string());
+        return -1;
+    }
+
+    for (i, name) in names.iter().enumerate() {
+        let c_name = libc::malloc(name.len() + 1) as *mut c_char;
+        if !c_name.is_null() {
+            std::ptr::copy_nonoverlapping(name.as_ptr(), c_name as *mut u8, name.len());
+            *(c_name as *mut u8).add(name.len()) = 0;
+            *array.add(i) = c_name;
+        } else {
+            *array.add(i) = std::ptr::null_mut();
+        }
+    }
+
+    *names_buffer = array;
+    0
+}
+
+// =============================================================================
+// Host Function Registration (Panama FFI)
+// =============================================================================
+
+/// Register a batch of host functions for a given module name.
+///
+/// Parameters:
+/// - module_name: the WASM import module name (e.g. "env")
+/// - func_names: array of function name C strings
+/// - param_type_arrays: flattened param types (each func's params concatenated)
+/// - param_counts: array of per-function param counts
+/// - result_type_arrays: flattened result types
+/// - result_counts: array of per-function result counts
+/// - callback_fn: the callback function pointer (same for all functions)
+/// - user_data_array: array of per-function opaque user_data pointers
+/// - num_functions: number of functions to register
+///
+/// Returns: opaque registration handle (freed with wamr_unregister_host_functions), or null on error
+#[no_mangle]
+pub extern "C" fn wamr_register_host_functions(
+    module_name: *const c_char,
+    func_names: *const *const c_char,
+    param_type_arrays: *const u8,
+    param_counts: *const u32,
+    result_type_arrays: *const u8,
+    result_counts: *const u32,
+    callback_fn: HostCallbackFn,
+    user_data_array: *const *mut c_void,
+    num_functions: u32,
+) -> *mut c_void {
+    clear_last_error();
+
+    if module_name.is_null() || func_names.is_null() || num_functions == 0 {
+        set_last_error("Invalid parameters for register_host_functions".to_string());
+        return std::ptr::null_mut();
+    }
+
+    let mod_name = match unsafe { CStr::from_ptr(module_name).to_str() } {
+        Ok(s) => s,
+        Err(_) => {
+            set_last_error("Invalid module name encoding".to_string());
+            return std::ptr::null_mut();
+        }
+    };
+
+    let mut functions = Vec::with_capacity(num_functions as usize);
+    let mut param_offset: usize = 0;
+    let mut result_offset: usize = 0;
+
+    for i in 0..num_functions as usize {
+        let name = match unsafe { CStr::from_ptr(*func_names.add(i)).to_str() } {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                set_last_error(format!("Invalid function name at index {}", i));
+                return std::ptr::null_mut();
+            }
+        };
+
+        let pc = unsafe { *param_counts.add(i) } as usize;
+        let rc = unsafe { *result_counts.add(i) } as usize;
+
+        let params: Vec<u8> = (0..pc)
+            .map(|j| unsafe { *param_type_arrays.add(param_offset + j) })
+            .collect();
+        let results: Vec<u8> = (0..rc)
+            .map(|j| unsafe { *result_type_arrays.add(result_offset + j) })
+            .collect();
+
+        let ud = unsafe { *user_data_array.add(i) };
+
+        functions.push((name, params, results, callback_fn, ud));
+        param_offset += pc;
+        result_offset += rc;
+    }
+
+    match register_host_functions(mod_name, functions) {
+        Ok(reg) => Box::into_raw(Box::new(reg)) as *mut c_void,
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Destroy a host function registration, unregistering all functions.
+#[no_mangle]
+pub extern "C" fn wamr_destroy_host_function_registration(registration: *mut c_void) {
+    if !registration.is_null() {
+        unsafe {
+            let _ = Box::from_raw(registration as *mut NativeRegistration);
+        }
+    }
+}
+
+// =============================================================================
+// Exception & Execution Control
+// =============================================================================
+
+/// Get the current exception on an instance. Returns null if no exception.
+/// The returned string is allocated with malloc and must be freed by the caller.
+#[no_mangle]
+pub extern "C" fn wamr_instance_get_exception(instance: *mut c_void) -> *mut c_char {
+    if instance.is_null() {
+        return ptr::null_mut();
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    match instance_get_exception(instance_ref) {
+        Some(msg) => {
+            match CString::new(msg) {
+                Ok(c) => c.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+/// Set a custom exception on an instance. Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub extern "C" fn wamr_instance_set_exception(instance: *mut c_void, exception: *const c_char) -> c_int {
+    if instance.is_null() || exception.is_null() {
+        return -1;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    let exception_str = match unsafe { CStr::from_ptr(exception).to_str() } {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+    match instance_set_exception(instance_ref, exception_str) {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+/// Clear the current exception on an instance.
+#[no_mangle]
+pub extern "C" fn wamr_instance_clear_exception(instance: *mut c_void) {
+    if instance.is_null() {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    instance_clear_exception(instance_ref);
+}
+
+/// Terminate execution of an instance.
+#[no_mangle]
+pub extern "C" fn wamr_instance_terminate(instance: *mut c_void) {
+    if instance.is_null() {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    instance_terminate(instance_ref);
+}
+
+/// Set the instruction count limit for an instance's execution environment.
+/// Pass -1 to remove the limit.
+#[no_mangle]
+pub extern "C" fn wamr_instance_set_instruction_count_limit(instance: *mut c_void, limit: c_int) {
+    if instance.is_null() {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    set_instruction_count_limit(instance_ref, limit);
+}
+
+// =============================================================================
+// WASI Support
+// =============================================================================
+
+/// Configure WASI arguments on a module.
+/// String arrays are passed as null-terminated C strings with counts.
+#[no_mangle]
+pub extern "C" fn wamr_module_set_wasi_args(
+    module: *mut c_void,
+    dir_list: *const *const c_char,
+    dir_count: c_int,
+    map_dir_list: *const *const c_char,
+    map_dir_count: c_int,
+    env_vars: *const *const c_char,
+    env_count: c_int,
+    argv: *const *const c_char,
+    argc: c_int,
+) -> c_int {
+    if module.is_null() {
+        return -1;
+    }
+
+    let module_ref = unsafe { &*(module as *const crate::types::WamrModule) };
+
+    let dirs = read_string_array(dir_list, dir_count);
+    let map_dirs = read_string_array(map_dir_list, map_dir_count);
+    let envs = read_string_array(env_vars, env_count);
+    let args = read_string_array(argv, argc);
+
+    let dir_refs: Vec<&str> = dirs.iter().map(|s| s.as_str()).collect();
+    let map_dir_refs: Vec<&str> = map_dirs.iter().map(|s| s.as_str()).collect();
+    let env_refs: Vec<&str> = envs.iter().map(|s| s.as_str()).collect();
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    match module_set_wasi_args(module_ref, &dir_refs, &map_dir_refs, &env_refs, &arg_refs) {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+/// Configure WASI address pool on a module.
+#[no_mangle]
+pub extern "C" fn wamr_module_set_wasi_addr_pool(
+    module: *mut c_void,
+    addr_pool: *const *const c_char,
+    addr_pool_size: c_int,
+) -> c_int {
+    if module.is_null() {
+        return -1;
+    }
+
+    let module_ref = unsafe { &*(module as *const crate::types::WamrModule) };
+    let addrs = read_string_array(addr_pool, addr_pool_size);
+    let addr_refs: Vec<&str> = addrs.iter().map(|s| s.as_str()).collect();
+
+    match module_set_wasi_addr_pool(module_ref, &addr_refs) {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+/// Configure WASI NS lookup pool on a module.
+#[no_mangle]
+pub extern "C" fn wamr_module_set_wasi_ns_lookup_pool(
+    module: *mut c_void,
+    ns_lookup_pool: *const *const c_char,
+    ns_lookup_pool_size: c_int,
+) -> c_int {
+    if module.is_null() {
+        return -1;
+    }
+
+    let module_ref = unsafe { &*(module as *const crate::types::WamrModule) };
+    let ns = read_string_array(ns_lookup_pool, ns_lookup_pool_size);
+    let ns_refs: Vec<&str> = ns.iter().map(|s| s.as_str()).collect();
+
+    match module_set_wasi_ns_lookup_pool(module_ref, &ns_refs) {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+/// Check if a module instance is in WASI mode.
+#[no_mangle]
+pub extern "C" fn wamr_instance_is_wasi_mode(instance: *mut c_void) -> c_int {
+    if instance.is_null() {
+        return 0;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    if instance_is_wasi_mode(instance_ref) { 1 } else { 0 }
+}
+
+/// Get the WASI exit code from a module instance.
+#[no_mangle]
+pub extern "C" fn wamr_instance_get_wasi_exit_code(instance: *mut c_void) -> c_int {
+    if instance.is_null() {
+        return 0;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    instance_get_wasi_exit_code(instance_ref) as c_int
+}
+
+/// Check if WASI _start function exists in the module instance.
+#[no_mangle]
+pub extern "C" fn wamr_instance_has_wasi_start_function(instance: *mut c_void) -> c_int {
+    if instance.is_null() {
+        return 0;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    let func = instance_lookup_wasi_start_function(instance_ref);
+    if func.is_null() { 0 } else { 1 }
+}
+
+/// Execute the WASI _start function.
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub extern "C" fn wamr_instance_execute_main(
+    instance: *mut c_void,
+    argv: *const *const c_char,
+    argc: c_int,
+) -> c_int {
+    if instance.is_null() {
+        return -1;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    let args = read_string_array(argv, argc);
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    match instance_execute_main(instance_ref, &arg_refs) {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+/// Execute a named function with string arguments (WASI-style).
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub extern "C" fn wamr_instance_execute_func(
+    instance: *mut c_void,
+    name: *const c_char,
+    argv: *const *const c_char,
+    argc: c_int,
+) -> c_int {
+    if instance.is_null() || name.is_null() {
+        return -1;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    let func_name = match unsafe { CStr::from_ptr(name).to_str() } {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+    let args = read_string_array(argv, argc);
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    match instance_execute_func(instance_ref, func_name, &arg_refs) {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+/// Helper: read a C string array into a Vec<String>.
+// =============================================================================
+// Custom Data (Panama FFI)
+// =============================================================================
+
+/// Set custom data on a module instance.
+#[no_mangle]
+pub extern "C" fn wamr_instance_set_custom_data(instance: *mut c_void, custom_data: u64) {
+    if instance.is_null() {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    instance_set_custom_data(instance_ref, custom_data);
+}
+
+/// Get custom data from a module instance.
+#[no_mangle]
+pub extern "C" fn wamr_instance_get_custom_data(instance: *mut c_void) -> u64 {
+    if instance.is_null() {
+        return 0;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    instance_get_custom_data(instance_ref)
+}
+
+// =============================================================================
+// Debugging & Profiling
+// =============================================================================
+
+/// Get the call stack as a malloc'd C string. Caller must free with wamr_free_string.
+/// Returns null if unavailable.
+#[no_mangle]
+pub extern "C" fn wamr_instance_get_call_stack(instance: *mut c_void) -> *mut c_char {
+    if instance.is_null() {
+        return std::ptr::null_mut();
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    let stack = instance_get_call_stack(instance_ref);
+    if stack.is_empty() {
+        return std::ptr::null_mut();
+    }
+    match std::ffi::CString::new(stack) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Dump call stack to stdout.
+#[no_mangle]
+pub extern "C" fn wamr_instance_dump_call_stack(instance: *mut c_void) {
+    if instance.is_null() {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    instance_dump_call_stack(instance_ref);
+}
+
+/// Dump performance profiling data to stdout.
+#[no_mangle]
+pub extern "C" fn wamr_instance_dump_perf_profiling(instance: *mut c_void) {
+    if instance.is_null() {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    instance_dump_perf_profiling(instance_ref);
+}
+
+/// Get total WASM execution time in milliseconds.
+#[no_mangle]
+pub extern "C" fn wamr_instance_sum_exec_time(instance: *mut c_void) -> f64 {
+    if instance.is_null() {
+        return 0.0;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    instance_sum_wasm_exec_time(instance_ref)
+}
+
+/// Get execution time for a specific function in milliseconds.
+#[no_mangle]
+pub extern "C" fn wamr_instance_get_func_exec_time(
+    instance: *mut c_void,
+    func_name: *const c_char,
+) -> f64 {
+    if instance.is_null() || func_name.is_null() {
+        return 0.0;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    let name = unsafe { std::ffi::CStr::from_ptr(func_name) };
+    let name_str = match name.to_str() {
+        Ok(s) => s,
+        Err(_) => return 0.0,
+    };
+    instance_get_wasm_func_exec_time(instance_ref, name_str)
+}
+
+/// Dump memory consumption to stdout.
+#[no_mangle]
+pub extern "C" fn wamr_instance_dump_mem_consumption(instance: *mut c_void) {
+    if instance.is_null() {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    instance_dump_mem_consumption(instance_ref);
+}
+
+// =============================================================================
+// Threading
+// =============================================================================
+
+/// Initialize the thread environment for the current native thread.
+#[no_mangle]
+pub extern "C" fn wamr_init_thread_env() -> c_int {
+    if init_thread_env() { 0 } else { -1 }
+}
+
+/// Destroy the thread environment for the current native thread.
+#[no_mangle]
+pub extern "C" fn wamr_destroy_thread_env() {
+    destroy_thread_env();
+}
+
+/// Check if the thread environment has been initialized.
+#[no_mangle]
+pub extern "C" fn wamr_is_thread_env_inited() -> c_int {
+    if is_thread_env_inited() { 1 } else { 0 }
+}
+
+/// Set the maximum number of threads.
+#[no_mangle]
+pub extern "C" fn wamr_set_max_thread_num(num: c_int) {
+    if num >= 0 {
+        set_max_thread_num(num as u32);
+    }
+}
+
+// =============================================================================
+// Advanced Instantiation & Miscellaneous
+// =============================================================================
+
+/// Instantiate a module with extended arguments.
+#[no_mangle]
+pub extern "C" fn wamr_instance_create_ex(
+    module: *mut c_void,
+    default_stack_size: c_int,
+    host_managed_heap_size: c_int,
+    max_memory_pages: c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> *mut c_void {
+    if module.is_null() {
+        write_error_to_buffer("Module handle is null", error_buf, error_buf_size);
+        return std::ptr::null_mut();
+    }
+    let module_ref = unsafe { &*(module as *const crate::types::WamrModule) };
+    match instance_create_ex(
+        module_ref,
+        default_stack_size as u32,
+        host_managed_heap_size as u32,
+        max_memory_pages as u32,
+    ) {
+        Ok(instance) => Box::into_raw(instance) as *mut c_void,
+        Err(e) => {
+            let msg = format!("{}", e);
+            write_error_to_buffer(&msg, error_buf, error_buf_size);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Get a custom section from a module. Returns a malloc'd copy of the section data.
+/// The caller must free the returned buffer with wamr_free_string.
+/// Returns null if the section doesn't exist. Sets *out_len to the length.
+#[no_mangle]
+pub extern "C" fn wamr_module_get_custom_section(
+    module: *mut c_void,
+    name: *const c_char,
+    out_len: *mut c_int,
+) -> *mut u8 {
+    if module.is_null() || name.is_null() {
+        if !out_len.is_null() {
+            unsafe { *out_len = 0; }
+        }
+        return std::ptr::null_mut();
+    }
+    let name_str = unsafe { std::ffi::CStr::from_ptr(name) };
+    let name_str = match name_str.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            if !out_len.is_null() {
+                unsafe { *out_len = 0; }
+            }
+            return std::ptr::null_mut();
+        }
+    };
+    let module_ref = unsafe { &*(module as *const crate::types::WamrModule) };
+    let data = module_get_custom_section(module_ref, name_str);
+    if data.is_empty() {
+        if !out_len.is_null() {
+            unsafe { *out_len = 0; }
+        }
+        return std::ptr::null_mut();
+    }
+    // Allocate and copy data for caller to own (using WAMR's allocator)
+    let len = data.len();
+    let buf = unsafe { crate::bindings::wasm_runtime_malloc(len as u32) as *mut u8 };
+    if buf.is_null() {
+        if !out_len.is_null() {
+            unsafe { *out_len = 0; }
+        }
+        return std::ptr::null_mut();
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(data.as_ptr(), buf, len);
+        if !out_len.is_null() {
+            *out_len = len as c_int;
+        }
+    }
+    buf
+}
+
+/// Free a buffer that was allocated with wasm_runtime_malloc (used by get_custom_section).
+#[no_mangle]
+pub extern "C" fn wamr_free_native_buffer(ptr: *mut u8) {
+    if !ptr.is_null() {
+        unsafe { crate::bindings::wasm_runtime_free(ptr as *mut c_void); }
+    }
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+fn read_string_array(arr: *const *const c_char, count: c_int) -> Vec<String> {
+    if arr.is_null() || count <= 0 {
+        return Vec::new();
+    }
+    (0..count as usize)
+        .filter_map(|i| {
+            let ptr = unsafe { *arr.add(i) };
+            if ptr.is_null() {
+                None
+            } else {
+                unsafe { CStr::from_ptr(ptr).to_str().ok().map(|s| s.to_string()) }
+            }
+        })
+        .collect()
+}

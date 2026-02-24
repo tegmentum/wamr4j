@@ -106,6 +106,107 @@ public interface WebAssemblyModule extends AutoCloseable {
     FunctionSignature getExportFunctionSignature(String functionName);
 
     /**
+     * Sets a name for this module.
+     *
+     * <p>Module names are used for identification in multi-module scenarios
+     * and debugging.
+     *
+     * @param name the module name, must not be null
+     * @return true if the name was set successfully, false otherwise
+     * @throws IllegalArgumentException if name is null
+     * @throws IllegalStateException if the module has been closed
+     */
+    boolean setName(String name);
+
+    /**
+     * Returns the name of this module, if one has been set.
+     *
+     * @return the module name, or an empty string if no name has been set
+     * @throws IllegalStateException if the module has been closed
+     */
+    String getName();
+
+    /**
+     * Returns the package type of this module.
+     *
+     * @return the package type (WASM, AOT, or UNKNOWN)
+     * @throws IllegalStateException if the module has been closed
+     */
+    PackageType getPackageType();
+
+    /**
+     * Returns the package version of this module.
+     *
+     * @return the package version number
+     * @throws IllegalStateException if the module has been closed
+     */
+    int getPackageVersion();
+
+    /**
+     * Returns the hash string for this module.
+     *
+     * @return the module hash string, or an empty string if unavailable
+     * @throws IllegalStateException if the module has been closed
+     */
+    String getHash();
+
+    /**
+     * Checks if the underlying binary data can be freed after loading.
+     *
+     * <p>Some module formats allow the original bytecode buffer to be freed
+     * after loading, while others require it to remain valid.
+     *
+     * @return true if the underlying binary can be freed, false otherwise
+     * @throws IllegalStateException if the module has been closed
+     */
+    boolean isUnderlyingBinaryFreeable();
+
+    /**
+     * Configures WASI parameters on this module before instantiation.
+     *
+     * <p>This must be called before {@link #instantiate()} for WASI modules.
+     * The configuration includes command-line arguments, environment variables,
+     * preopened directories, and network access controls.
+     *
+     * @param config the WASI configuration, must not be null
+     * @throws IllegalArgumentException if config is null
+     * @throws IllegalStateException if the module has been closed
+     */
+    void configureWasi(WasiConfiguration config);
+
+    /**
+     * Creates a new instance of this WebAssembly module with extended configuration.
+     *
+     * <p>This method allows specifying custom stack size, heap size, and maximum
+     * memory pages for the instance. Use this when the default values are not
+     * suitable for your workload.
+     *
+     * @param defaultStackSize the default execution stack size in bytes
+     * @param hostManagedHeapSize the host-managed heap size in bytes
+     * @param maxMemoryPages the maximum number of memory pages (64KB each)
+     * @return a new WebAssembly instance
+     * @throws WasmRuntimeException if instantiation fails
+     * @throws IllegalStateException if the module has been closed
+     * @throws IllegalArgumentException if any parameter is negative
+     */
+    WebAssemblyInstance instantiateEx(int defaultStackSize, int hostManagedHeapSize,
+            int maxMemoryPages) throws WasmRuntimeException;
+
+    /**
+     * Returns the raw bytes of a custom section by name.
+     *
+     * <p>Custom sections are named sections in the WebAssembly binary that contain
+     * arbitrary data. They are used for debugging information, metadata, and
+     * other purposes.
+     *
+     * @param name the name of the custom section
+     * @return the section data as a byte array, or null if the section does not exist
+     * @throws IllegalArgumentException if name is null
+     * @throws IllegalStateException if the module has been closed
+     */
+    byte[] getCustomSection(String name);
+
+    /**
      * Checks if the module has been closed.
      *
      * @return true if the module has been closed, false otherwise

@@ -943,234 +943,81 @@ public final class WasmModuleBuilder {
     public static final byte F64_REINTERPRET_I64 = (byte) 0xbf;
 
     /**
-     * Creates a simple i32 add module: (module (func (export "add") (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)).
+     * Creates a module with a single binary operation: (T, T) -> T.
      *
+     * @param exportName the exported function name
+     * @param opcode the WASM binary opcode
+     * @param valueType the WASM value type for both parameters and result
      * @return the module bytecode
      */
-    public static byte[] createI32AddModule() {
+    public static byte[] createBinaryOpModule(final String exportName, final byte opcode,
+                                              final byte valueType) {
         final WasmModuleBuilder builder = new WasmModuleBuilder();
-
-        // Add type: (i32, i32) -> i32
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-
-        // Add function with this type
+        final int typeIndex = builder.addType(new byte[]{valueType, valueType}, new byte[]{valueType});
         final int funcIndex = builder.addFunction(typeIndex);
-
-        // Export function as "add"
-        builder.addExport("add", funcIndex);
-
-        // Add code: local.get 0, local.get 1, i32.add
-        builder.addCode(
-            new byte[]{}, // no locals
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_ADD}
-        );
-
+        builder.addExport(exportName, funcIndex);
+        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, opcode});
         return builder.build();
     }
 
     /**
-     * Creates a simple i32 sub module.
+     * Creates a module with a single unary operation: (T) -> T.
      *
+     * @param exportName the exported function name
+     * @param opcode the WASM unary opcode
+     * @param valueType the WASM value type for the parameter and result
      * @return the module bytecode
      */
-    public static byte[] createI32SubModule() {
+    public static byte[] createUnaryOpModule(final String exportName, final byte opcode,
+                                             final byte valueType) {
         final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
+        final int typeIndex = builder.addType(new byte[]{valueType}, new byte[]{valueType});
         final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("sub", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_SUB}
-        );
+        builder.addExport(exportName, funcIndex);
+        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, opcode});
         return builder.build();
     }
 
-    /**
-     * Creates a simple i32 mul module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32MulModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("mul", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_MUL}
-        );
-        return builder.build();
-    }
+    // --- i32 binary operation modules ---
 
-    /**
-     * Creates a simple i32 signed division module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32DivSModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("div_s", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_DIV_S}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "add" */
+    public static byte[] createI32AddModule() { return createBinaryOpModule("add", I32_ADD, I32); }
 
-    /**
-     * Creates a simple i32 unsigned division module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32DivUModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("div_u", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_DIV_U}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "sub" */
+    public static byte[] createI32SubModule() { return createBinaryOpModule("sub", I32_SUB, I32); }
 
-    /**
-     * Creates a simple i32 signed remainder module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32RemSModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("rem_s", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_REM_S}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "mul" */
+    public static byte[] createI32MulModule() { return createBinaryOpModule("mul", I32_MUL, I32); }
 
-    /**
-     * Creates a simple i32 unsigned remainder module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32RemUModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("rem_u", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_REM_U}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "div_s" */
+    public static byte[] createI32DivSModule() { return createBinaryOpModule("div_s", I32_DIV_S, I32); }
 
-    /**
-     * Creates a simple i32 AND module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32AndModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("and", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_AND}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "div_u" */
+    public static byte[] createI32DivUModule() { return createBinaryOpModule("div_u", I32_DIV_U, I32); }
 
-    /**
-     * Creates a simple i32 OR module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32OrModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("or", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_OR}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "rem_s" */
+    public static byte[] createI32RemSModule() { return createBinaryOpModule("rem_s", I32_REM_S, I32); }
 
-    /**
-     * Creates a simple i32 XOR module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32XorModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("xor", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_XOR}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "rem_u" */
+    public static byte[] createI32RemUModule() { return createBinaryOpModule("rem_u", I32_REM_U, I32); }
 
-    /**
-     * Creates a simple i32 left shift module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32ShlModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("shl", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_SHL}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "and" */
+    public static byte[] createI32AndModule() { return createBinaryOpModule("and", I32_AND, I32); }
 
-    /**
-     * Creates a simple i32 signed right shift module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32ShrSModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("shr_s", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_SHR_S}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "or" */
+    public static byte[] createI32OrModule() { return createBinaryOpModule("or", I32_OR, I32); }
 
-    /**
-     * Creates a simple i32 unsigned right shift module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI32ShrUModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("shr_u", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_SHR_U}
-        );
-        return builder.build();
-    }
+    /** @return module: (i32, i32) -> i32 exporting "xor" */
+    public static byte[] createI32XorModule() { return createBinaryOpModule("xor", I32_XOR, I32); }
+
+    /** @return module: (i32, i32) -> i32 exporting "shl" */
+    public static byte[] createI32ShlModule() { return createBinaryOpModule("shl", I32_SHL, I32); }
+
+    /** @return module: (i32, i32) -> i32 exporting "shr_s" */
+    public static byte[] createI32ShrSModule() { return createBinaryOpModule("shr_s", I32_SHR_S, I32); }
+
+    /** @return module: (i32, i32) -> i32 exporting "shr_u" */
+    public static byte[] createI32ShrUModule() { return createBinaryOpModule("shr_u", I32_SHR_U, I32); }
 
     /**
      * Creates a module with multiple i32 operations exported.
@@ -1180,667 +1027,130 @@ public final class WasmModuleBuilder {
     public static byte[] createI32AllOpsModule() {
         final WasmModuleBuilder builder = new WasmModuleBuilder();
         final int typeIndex = builder.addType(new byte[]{I32, I32}, new byte[]{I32});
-
-        // Add function
-        builder.addFunction(typeIndex);
-        builder.addExport("add", 0);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_ADD});
-
-        // Sub function
-        builder.addFunction(typeIndex);
-        builder.addExport("sub", 1);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_SUB});
-
-        // Mul function
-        builder.addFunction(typeIndex);
-        builder.addExport("mul", 2);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_MUL});
-
-        // Div_s function
-        builder.addFunction(typeIndex);
-        builder.addExport("div_s", 3);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_DIV_S});
-
-        // Div_u function
-        builder.addFunction(typeIndex);
-        builder.addExport("div_u", 4);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_DIV_U});
-
-        // Rem_s function
-        builder.addFunction(typeIndex);
-        builder.addExport("rem_s", 5);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_REM_S});
-
-        // Rem_u function
-        builder.addFunction(typeIndex);
-        builder.addExport("rem_u", 6);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_REM_U});
-
-        // Bitwise AND
-        builder.addFunction(typeIndex);
-        builder.addExport("and", 7);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_AND});
-
-        // Bitwise OR
-        builder.addFunction(typeIndex);
-        builder.addExport("or", 8);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_OR});
-
-        // Bitwise XOR
-        builder.addFunction(typeIndex);
-        builder.addExport("xor", 9);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_XOR});
-
-        // Left shift
-        builder.addFunction(typeIndex);
-        builder.addExport("shl", 10);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_SHL});
-
-        // Signed right shift
-        builder.addFunction(typeIndex);
-        builder.addExport("shr_s", 11);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_SHR_S});
-
-        // Unsigned right shift
-        builder.addFunction(typeIndex);
-        builder.addExport("shr_u", 12);
-        builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I32_SHR_U});
-
+        final String[] names = {"add", "sub", "mul", "div_s", "div_u", "rem_s", "rem_u",
+            "and", "or", "xor", "shl", "shr_s", "shr_u"};
+        final byte[] opcodes = {I32_ADD, I32_SUB, I32_MUL, I32_DIV_S, I32_DIV_U, I32_REM_S,
+            I32_REM_U, I32_AND, I32_OR, I32_XOR, I32_SHL, I32_SHR_S, I32_SHR_U};
+        for (int i = 0; i < names.length; i++) {
+            builder.addFunction(typeIndex);
+            builder.addExport(names[i], i);
+            builder.addCode(new byte[]{}, new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, opcodes[i]});
+        }
         return builder.build();
     }
 
-    /**
-     * Creates a simple i64 add module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64AddModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("add", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_ADD}
-        );
-        return builder.build();
-    }
+    // --- i64 binary operation modules ---
 
-    /**
-     * Creates a simple i64 sub module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64SubModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("sub", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_SUB}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "add" */
+    public static byte[] createI64AddModule() { return createBinaryOpModule("add", I64_ADD, I64); }
 
-    /**
-     * Creates a simple i64 mul module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64MulModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("mul", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_MUL}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "sub" */
+    public static byte[] createI64SubModule() { return createBinaryOpModule("sub", I64_SUB, I64); }
 
-    /**
-     * Creates a simple i64 signed division module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64DivSModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("div_s", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_DIV_S}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "mul" */
+    public static byte[] createI64MulModule() { return createBinaryOpModule("mul", I64_MUL, I64); }
 
-    /**
-     * Creates a simple i64 unsigned division module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64DivUModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("div_u", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_DIV_U}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "div_s" */
+    public static byte[] createI64DivSModule() { return createBinaryOpModule("div_s", I64_DIV_S, I64); }
 
-    /**
-     * Creates a simple i64 signed remainder module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64RemSModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("rem_s", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_REM_S}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "div_u" */
+    public static byte[] createI64DivUModule() { return createBinaryOpModule("div_u", I64_DIV_U, I64); }
 
-    /**
-     * Creates a simple i64 unsigned remainder module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64RemUModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("rem_u", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_REM_U}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "rem_s" */
+    public static byte[] createI64RemSModule() { return createBinaryOpModule("rem_s", I64_REM_S, I64); }
 
-    /**
-     * Creates a simple i64 bitwise AND module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64AndModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("and", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_AND}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "rem_u" */
+    public static byte[] createI64RemUModule() { return createBinaryOpModule("rem_u", I64_REM_U, I64); }
 
-    /**
-     * Creates a simple i64 bitwise OR module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64OrModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("or", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_OR}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "and" */
+    public static byte[] createI64AndModule() { return createBinaryOpModule("and", I64_AND, I64); }
 
-    /**
-     * Creates a simple i64 bitwise XOR module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64XorModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("xor", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_XOR}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "or" */
+    public static byte[] createI64OrModule() { return createBinaryOpModule("or", I64_OR, I64); }
 
-    /**
-     * Creates a simple i64 left shift module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64ShlModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("shl", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_SHL}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "xor" */
+    public static byte[] createI64XorModule() { return createBinaryOpModule("xor", I64_XOR, I64); }
 
-    /**
-     * Creates a simple i64 signed right shift module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64ShrSModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("shr_s", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_SHR_S}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "shl" */
+    public static byte[] createI64ShlModule() { return createBinaryOpModule("shl", I64_SHL, I64); }
 
-    /**
-     * Creates a simple i64 unsigned right shift module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createI64ShrUModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{I64, I64}, new byte[]{I64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("shr_u", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, I64_SHR_U}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "shr_s" */
+    public static byte[] createI64ShrSModule() { return createBinaryOpModule("shr_s", I64_SHR_S, I64); }
 
-    /**
-     * Creates a simple f32 add module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32AddModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32, F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("add", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F32_ADD}
-        );
-        return builder.build();
-    }
+    /** @return module: (i64, i64) -> i64 exporting "shr_u" */
+    public static byte[] createI64ShrUModule() { return createBinaryOpModule("shr_u", I64_SHR_U, I64); }
 
-    /**
-     * Creates a simple f32 sub module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32SubModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32, F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("sub", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F32_SUB}
-        );
-        return builder.build();
-    }
+    // --- f32 binary operation modules ---
 
-    /**
-     * Creates a simple f32 mul module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32MulModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32, F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("mul", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F32_MUL}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32, f32) -> f32 exporting "add" */
+    public static byte[] createF32AddModule() { return createBinaryOpModule("add", F32_ADD, F32); }
 
-    /**
-     * Creates a simple f32 div module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32DivModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32, F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("div", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F32_DIV}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32, f32) -> f32 exporting "sub" */
+    public static byte[] createF32SubModule() { return createBinaryOpModule("sub", F32_SUB, F32); }
 
-    /**
-     * Creates a simple f32 min module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32MinModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32, F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("min", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F32_MIN}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32, f32) -> f32 exporting "mul" */
+    public static byte[] createF32MulModule() { return createBinaryOpModule("mul", F32_MUL, F32); }
 
-    /**
-     * Creates a simple f32 max module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32MaxModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32, F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("max", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F32_MAX}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32, f32) -> f32 exporting "div" */
+    public static byte[] createF32DivModule() { return createBinaryOpModule("div", F32_DIV, F32); }
 
-    /**
-     * Creates a simple f32 sqrt module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32SqrtModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("sqrt", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F32_SQRT}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32, f32) -> f32 exporting "min" */
+    public static byte[] createF32MinModule() { return createBinaryOpModule("min", F32_MIN, F32); }
 
-    /**
-     * Creates a simple f32 abs module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32AbsModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("abs", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F32_ABS}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32, f32) -> f32 exporting "max" */
+    public static byte[] createF32MaxModule() { return createBinaryOpModule("max", F32_MAX, F32); }
 
-    /**
-     * Creates a simple f32 neg module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32NegModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("neg", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F32_NEG}
-        );
-        return builder.build();
-    }
+    // --- f32 unary operation modules ---
 
-    /**
-     * Creates a simple f32 ceil module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32CeilModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("ceil", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F32_CEIL}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32) -> f32 exporting "sqrt" */
+    public static byte[] createF32SqrtModule() { return createUnaryOpModule("sqrt", F32_SQRT, F32); }
 
-    /**
-     * Creates a simple f32 floor module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF32FloorModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F32}, new byte[]{F32});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("floor", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F32_FLOOR}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32) -> f32 exporting "abs" */
+    public static byte[] createF32AbsModule() { return createUnaryOpModule("abs", F32_ABS, F32); }
 
-    /**
-     * Creates a simple f64 add module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64AddModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64, F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("add", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F64_ADD}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32) -> f32 exporting "neg" */
+    public static byte[] createF32NegModule() { return createUnaryOpModule("neg", F32_NEG, F32); }
 
-    /**
-     * Creates a simple f64 sub module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64SubModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64, F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("sub", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F64_SUB}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32) -> f32 exporting "ceil" */
+    public static byte[] createF32CeilModule() { return createUnaryOpModule("ceil", F32_CEIL, F32); }
 
-    /**
-     * Creates a simple f64 mul module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64MulModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64, F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("mul", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F64_MUL}
-        );
-        return builder.build();
-    }
+    /** @return module: (f32) -> f32 exporting "floor" */
+    public static byte[] createF32FloorModule() { return createUnaryOpModule("floor", F32_FLOOR, F32); }
 
-    /**
-     * Creates a simple f64 div module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64DivModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64, F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("div", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F64_DIV}
-        );
-        return builder.build();
-    }
+    // --- f64 binary operation modules ---
 
-    /**
-     * Creates a simple f64 min module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64MinModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64, F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("min", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F64_MIN}
-        );
-        return builder.build();
-    }
+    /** @return module: (f64, f64) -> f64 exporting "add" */
+    public static byte[] createF64AddModule() { return createBinaryOpModule("add", F64_ADD, F64); }
 
-    /**
-     * Creates a simple f64 max module.
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64MaxModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64, F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("max", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, LOCAL_GET, 0x01, F64_MAX}
-        );
-        return builder.build();
-    }
+    /** @return module: (f64, f64) -> f64 exporting "sub" */
+    public static byte[] createF64SubModule() { return createBinaryOpModule("sub", F64_SUB, F64); }
 
-    /**
-     * Creates a simple f64 sqrt module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64SqrtModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("sqrt", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F64_SQRT}
-        );
-        return builder.build();
-    }
+    /** @return module: (f64, f64) -> f64 exporting "mul" */
+    public static byte[] createF64MulModule() { return createBinaryOpModule("mul", F64_MUL, F64); }
 
-    /**
-     * Creates a simple f64 abs module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64AbsModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("abs", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F64_ABS}
-        );
-        return builder.build();
-    }
+    /** @return module: (f64, f64) -> f64 exporting "div" */
+    public static byte[] createF64DivModule() { return createBinaryOpModule("div", F64_DIV, F64); }
 
-    /**
-     * Creates a simple f64 neg module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64NegModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("neg", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F64_NEG}
-        );
-        return builder.build();
-    }
+    /** @return module: (f64, f64) -> f64 exporting "min" */
+    public static byte[] createF64MinModule() { return createBinaryOpModule("min", F64_MIN, F64); }
 
-    /**
-     * Creates a simple f64 ceil module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64CeilModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("ceil", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F64_CEIL}
-        );
-        return builder.build();
-    }
+    /** @return module: (f64, f64) -> f64 exporting "max" */
+    public static byte[] createF64MaxModule() { return createBinaryOpModule("max", F64_MAX, F64); }
 
-    /**
-     * Creates a simple f64 floor module (unary operation).
-     *
-     * @return the module bytecode
-     */
-    public static byte[] createF64FloorModule() {
-        final WasmModuleBuilder builder = new WasmModuleBuilder();
-        final int typeIndex = builder.addType(new byte[]{F64}, new byte[]{F64});
-        final int funcIndex = builder.addFunction(typeIndex);
-        builder.addExport("floor", funcIndex);
-        builder.addCode(
-            new byte[]{},
-            new byte[]{LOCAL_GET, 0x00, F64_FLOOR}
-        );
-        return builder.build();
-    }
+    // --- f64 unary operation modules ---
+
+    /** @return module: (f64) -> f64 exporting "sqrt" */
+    public static byte[] createF64SqrtModule() { return createUnaryOpModule("sqrt", F64_SQRT, F64); }
+
+    /** @return module: (f64) -> f64 exporting "abs" */
+    public static byte[] createF64AbsModule() { return createUnaryOpModule("abs", F64_ABS, F64); }
+
+    /** @return module: (f64) -> f64 exporting "neg" */
+    public static byte[] createF64NegModule() { return createUnaryOpModule("neg", F64_NEG, F64); }
+
+    /** @return module: (f64) -> f64 exporting "ceil" */
+    public static byte[] createF64CeilModule() { return createUnaryOpModule("ceil", F64_CEIL, F64); }
+
+    /** @return module: (f64) -> f64 exporting "floor" */
+    public static byte[] createF64FloorModule() { return createUnaryOpModule("floor", F64_FLOOR, F64); }
 }

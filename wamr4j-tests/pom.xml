@@ -33,14 +33,12 @@
             <artifactId>wamr4j-jni</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- Panama module disabled due to compilation errors - needs API sync
         <dependency>
             <groupId>ai.tegmentum.wamr4j</groupId>
             <artifactId>wamr4j-panama</artifactId>
             <version>${project.version}</version>
             <optional>true</optional>
         </dependency>
-        -->
 
         <!-- Native Library Dependency -->
         <dependency>
@@ -61,30 +59,12 @@
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-
         <!-- API Test Support -->
         <dependency>
             <groupId>ai.tegmentum.wamr4j</groupId>
             <artifactId>wamr4j</artifactId>
             <version>${project.version}</version>
             <type>test-jar</type>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- Logging for Test Support -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-jdk14</artifactId>
             <scope>test</scope>
         </dependency>
 

@@ -89,9 +89,120 @@ public interface WebAssemblyRuntime extends AutoCloseable {
     /**
      * Returns the version of the underlying WAMR runtime.
      *
-     * @return the WAMR version string
+     * @return the WAMR version string (e.g., "2.4.4")
      */
     String getVersion();
+
+    /**
+     * Returns the major version number of the underlying WAMR runtime.
+     *
+     * @return the major version number
+     */
+    int getMajorVersion();
+
+    /**
+     * Returns the minor version number of the underlying WAMR runtime.
+     *
+     * @return the minor version number
+     */
+    int getMinorVersion();
+
+    /**
+     * Returns the patch version number of the underlying WAMR runtime.
+     *
+     * @return the patch version number
+     */
+    int getPatchVersion();
+
+    /**
+     * Checks if the specified running mode is supported by this WAMR build.
+     *
+     * @param mode the running mode to check, must not be null
+     * @return true if the mode is supported, false otherwise
+     * @throws IllegalArgumentException if mode is null
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    boolean isRunningModeSupported(RunningMode mode);
+
+    /**
+     * Sets the default running mode for newly created module instances.
+     *
+     * @param mode the running mode to set as default, must not be null
+     * @return true if the mode was set successfully, false otherwise
+     * @throws IllegalArgumentException if mode is null
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    boolean setDefaultRunningMode(RunningMode mode);
+
+    /**
+     * Sets the WAMR log verbosity level.
+     *
+     * <p>Level values range from 0 (no logging) to 5 (most verbose).
+     *
+     * @param level the log verbosity level (0-5)
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    void setLogLevel(int level);
+
+    /**
+     * Determines the package type of a WebAssembly binary buffer.
+     *
+     * @param wasmBytes the binary data to inspect, must not be null
+     * @return the detected package type (WASM, AOT, or UNKNOWN)
+     * @throws IllegalArgumentException if wasmBytes is null
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    PackageType getFilePackageType(byte[] wasmBytes);
+
+    /**
+     * Returns the current supported package version for a given package type.
+     *
+     * @param packageType the package type to query, must not be null
+     * @return the current supported version number
+     * @throws IllegalArgumentException if packageType is null
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    int getCurrentPackageVersion(PackageType packageType);
+
+    /**
+     * Initializes the thread environment for the current native thread.
+     *
+     * <p>This must be called from any non-main thread that wants to interact with WAMR.
+     * The main thread's environment is initialized automatically when the runtime is created.
+     *
+     * @return true if initialization succeeded, false otherwise
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    boolean initThreadEnv();
+
+    /**
+     * Destroys the thread environment for the current native thread.
+     *
+     * <p>Call this when a thread that called {@link #initThreadEnv()} is about to exit.
+     *
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    void destroyThreadEnv();
+
+    /**
+     * Checks if the thread environment has been initialized for the current thread.
+     *
+     * @return true if the thread environment is initialized, false otherwise
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    boolean isThreadEnvInited();
+
+    /**
+     * Sets the maximum number of threads for WASM thread management.
+     *
+     * <p>This controls the maximum number of threads that can be created by WASM modules
+     * using the threading proposal (e.g., via lib-pthread).
+     *
+     * @param num the maximum number of threads, must be non-negative
+     * @throws IllegalArgumentException if num is negative
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    void setMaxThreadNum(int num);
 
     /**
      * Checks if the runtime has been closed.

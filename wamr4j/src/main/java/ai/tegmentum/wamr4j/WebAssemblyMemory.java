@@ -196,6 +196,27 @@ public interface WebAssemblyMemory {
     int pageCount();
 
     /**
+     * Returns the maximum size of memory in WebAssembly pages.
+     *
+     * <p>This is the upper bound on the number of pages the memory can grow to.
+     *
+     * @return the maximum memory size in pages
+     * @throws IllegalStateException if the parent instance has been closed
+     */
+    int maxPageCount();
+
+    /**
+     * Returns whether this memory is shared.
+     *
+     * <p>Shared memories can be accessed concurrently by multiple threads using
+     * atomic operations.
+     *
+     * @return true if the memory is shared, false otherwise
+     * @throws IllegalStateException if the parent instance has been closed
+     */
+    boolean isShared();
+
+    /**
      * Attempts to grow memory by the specified number of pages.
      *
      * <p>Memory growth may fail if there is insufficient system memory or if the maximum memory
@@ -221,6 +242,32 @@ public interface WebAssemblyMemory {
      * @throws IllegalStateException if the parent instance has been closed
      */
     ByteBuffer asByteBuffer();
+
+    /**
+     * Returns the base address of this memory as a native pointer value.
+     *
+     * <p>The returned value is the host-side address of the first byte of the WebAssembly linear
+     * memory. This is primarily useful for advanced interop scenarios where native code needs a
+     * direct pointer to the memory region.
+     *
+     * <p>The address may change after memory growth operations. Callers should not cache this
+     * value across grow calls.
+     *
+     * @return the base address as a long, or 0 if the address cannot be determined
+     * @throws IllegalStateException if the parent instance has been closed
+     */
+    long getBaseAddress();
+
+    /**
+     * Returns the number of bytes per WebAssembly page for this memory.
+     *
+     * <p>The standard WebAssembly page size is 65536 bytes (64KB), but WAMR may report this
+     * value from the underlying implementation.
+     *
+     * @return the number of bytes per page
+     * @throws IllegalStateException if the parent instance has been closed
+     */
+    long getBytesPerPage();
 
     /**
      * Checks if the parent instance has been closed.
