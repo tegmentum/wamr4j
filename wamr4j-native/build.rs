@@ -87,6 +87,7 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
         .define("WAMR_BUILD_CUSTOM_NAME_SECTION", "1")
         .define("WAMR_BUILD_LOAD_CUSTOM_SECTION", "1")
         .define("WAMR_BUILD_INSTRUCTION_METERING", "1")
+        .define("WAMR_BUILD_COPY_CALL_STACK", "1")
         .define("WAMR_CONFIGURABLE_BOUNDS_CHECKS", "1")
         // HW memory bounds check stays enabled (required by module loader).
         // Stack HW bounds check disabled — its sigaltstack setup conflicts with JVM.
@@ -652,6 +653,76 @@ const unsigned char* wasm_runtime_get_custom_section(const void* module, const c
 void* wasm_runtime_malloc(unsigned int size) { return malloc(size); }
 void* wasm_runtime_realloc(void* ptr, unsigned int size) { return realloc(ptr, size); }
 void wasm_runtime_free(void* ptr) { free(ptr); }
+
+// === Phase 14: Type Introspection ===
+unsigned char wasm_global_type_get_valkind(const void* gt) { (void)gt; return 0; }
+bool wasm_global_type_get_mutable(const void* gt) { (void)gt; return false; }
+bool wasm_memory_type_get_shared(const void* mt) { (void)mt; return false; }
+unsigned int wasm_memory_type_get_init_page_count(const void* mt) { (void)mt; return 0; }
+unsigned int wasm_memory_type_get_max_page_count(const void* mt) { (void)mt; return 0; }
+
+// === Phase 15: Import Link Checking ===
+bool wasm_runtime_is_import_func_linked(const char* mn, const char* fn_name) { (void)mn; (void)fn_name; return false; }
+bool wasm_runtime_is_import_global_linked(const char* mn, const char* gn) { (void)mn; (void)gn; return false; }
+
+// === Phase 16: Exec Env & Memory Lookup ===
+void wasm_runtime_set_module_inst(void* ee, const void* mi) { (void)ee; (void)mi; }
+void wasm_runtime_set_native_stack_boundary(void* ee, void* b) { (void)ee; (void)b; }
+void* wasm_runtime_lookup_memory(const void* mi, const char* name) { (void)mi; (void)name; return NULL; }
+
+// === Phase 17: Blocking Ops & Stack Overflow ===
+bool wasm_runtime_begin_blocking_op(void* ee) { (void)ee; return true; }
+void wasm_runtime_end_blocking_op(void* ee) { (void)ee; }
+bool wasm_runtime_detect_native_stack_overflow(void* ee) { (void)ee; return false; }
+bool wasm_runtime_detect_native_stack_overflow_size(void* ee, unsigned int sz) { (void)ee; (void)sz; return false; }
+
+// === Phase 18: Runtime Init & Mem Info ===
+typedef struct { unsigned int mem_alloc_type; char pad[512]; } RuntimeInitArgs;
+bool wasm_runtime_full_init(RuntimeInitArgs* args) { (void)args; return true; }
+typedef struct { unsigned int total_size; unsigned int total_free_size; unsigned int highmark_size; } MemAllocInfoT;
+bool wasm_runtime_get_mem_alloc_info(MemAllocInfoT* info) { if(info){info->total_size=0;info->total_free_size=0;info->highmark_size=0;} return true; }
+
+// === Phase 20: Register Natives (non-raw) ===
+bool wasm_runtime_register_natives(const char* mn, void* ns, int c) { (void)mn; (void)ns; (void)c; return false; }
+
+// === Phase 21: Externref ===
+bool wasm_externref_obj2ref(const void* mi, void* obj, unsigned int* idx) { (void)mi; (void)obj; if(idx)*idx=0; return false; }
+bool wasm_externref_objdel(const void* mi, void* obj) { (void)mi; (void)obj; return false; }
+bool wasm_externref_set_cleanup(const void* mi, void* obj, void(*cb)(void*)) { (void)mi; (void)obj; (void)cb; return false; }
+bool wasm_externref_ref2obj(unsigned int idx, void** obj) { (void)idx; if(obj)*obj=NULL; return false; }
+bool wasm_externref_retain(unsigned int idx) { (void)idx; return false; }
+
+// === Phase 22: Context Keys ===
+void* wasm_runtime_create_context_key(void(*dtor)(const void*,void*)) { (void)dtor; return NULL; }
+void wasm_runtime_destroy_context_key(void* key) { (void)key; }
+void wasm_runtime_set_context(const void* mi, void* key, void* ctx) { (void)mi; (void)key; (void)ctx; }
+void wasm_runtime_set_context_spread(const void* mi, void* key, void* ctx) { (void)mi; (void)key; (void)ctx; }
+void* wasm_runtime_get_context(const void* mi, void* key) { (void)mi; (void)key; return NULL; }
+
+// === Phase 23: Thread Spawning ===
+void* wasm_runtime_spawn_exec_env(void* ee) { (void)ee; return NULL; }
+void wasm_runtime_destroy_spawned_exec_env(void* ee) { (void)ee; }
+
+// === Phase 24: Shared Heap ===
+typedef struct { unsigned int size; } SharedHeapInitArgsT;
+void* wasm_runtime_create_shared_heap(SharedHeapInitArgsT* args) { (void)args; return NULL; }
+bool wasm_runtime_attach_shared_heap(const void* mi, void* sh) { (void)mi; (void)sh; return false; }
+void wasm_runtime_detach_shared_heap(const void* mi) { (void)mi; }
+uint64_t wasm_runtime_shared_heap_malloc(const void* mi, uint64_t sz, void** pa) { (void)mi; (void)sz; if(pa)*pa=NULL; return 0; }
+void wasm_runtime_shared_heap_free(const void* mi, uint64_t ptr) { (void)mi; (void)ptr; }
+
+// === Phase 25: InstantiationArgs2 ===
+bool wasm_runtime_instantiation_args_create(void** p) { if(p)*p=malloc(64); return p&&*p; }
+void wasm_runtime_instantiation_args_destroy(void* p) { free(p); }
+void wasm_runtime_instantiation_args_set_default_stack_size(void* p, unsigned int v) { (void)p; (void)v; }
+void wasm_runtime_instantiation_args_set_host_managed_heap_size(void* p, unsigned int v) { (void)p; (void)v; }
+void wasm_runtime_instantiation_args_set_max_memory_pages(void* p, unsigned int v) { (void)p; (void)v; }
+void* wasm_runtime_instantiate_ex2(const void* m, const void* a, char* e, unsigned int es) { (void)a; return wasm_runtime_instantiate(m,16384,16384*1024,e,es); }
+
+// === Phase 26: Mem Error Callback & Callstack ===
+void wasm_runtime_set_enlarge_mem_error_callback(void(*cb)(uint64_t,uint64_t,void*), void* ud) { (void)cb; (void)ud; }
+typedef struct { void* instance; unsigned int module_offset; unsigned int func_index; unsigned int func_offset; const char* func_name_wp; } WASMCApiFrameT;
+unsigned int wasm_copy_callstack(const void* ee, WASMCApiFrameT* buf, unsigned int len, unsigned int skip, char* eb, unsigned int ebs) { (void)ee; (void)buf; (void)len; (void)skip; (void)eb; (void)ebs; return 0; }
 
 // === Has Memory Check (no Box allocation) ===
 // wamr_instance_has_memory is implemented in Rust FFI, not here

@@ -217,6 +217,50 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
     }
 }
 
+/// Check if an import function is linked.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeIsImportFuncLinked<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_name: JString<'local>,
+    func_name: JString<'local>,
+) -> jboolean {
+    if module_name.is_null() || func_name.is_null() {
+        return 0;
+    }
+    let mod_str: String = match env.get_string(&module_name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    let func_str: String = match env.get_string(&func_name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    if runtime::is_import_func_linked(&mod_str, &func_str) { 1 } else { 0 }
+}
+
+/// Check if an import global is linked.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeIsImportGlobalLinked<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_name: JString<'local>,
+    global_name: JString<'local>,
+) -> jboolean {
+    if module_name.is_null() || global_name.is_null() {
+        return 0;
+    }
+    let mod_str: String = match env.get_string(&module_name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    let global_str: String = match env.get_string(&global_name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    if runtime::is_import_global_linked(&mod_str, &global_str) { 1 } else { 0 }
+}
+
 // =============================================================================
 // JniWebAssemblyModule
 // =============================================================================
@@ -1541,6 +1585,80 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
 }
 
 // =============================================================================
+// Phase 14: Type Introspection (JniWebAssemblyModule)
+// =============================================================================
+
+/// Get global type info for an exported global.
+/// Returns an int array [valkind, is_mutable] or null if not found.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetExportGlobalTypeInfo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    name: JString<'local>,
+) -> jobject {
+    if module_handle == 0 || name.is_null() {
+        return ptr::null_mut();
+    }
+    let name_str: String = match env.get_string(&name) {
+        Ok(s) => s.into(),
+        Err(_) => return ptr::null_mut(),
+    };
+    let module_ref = unsafe { &*(module_handle as *const WamrModule) };
+    match runtime::get_export_global_type_info(module_ref, &name_str) {
+        Some((valkind, is_mutable)) => {
+            let arr = match env.new_int_array(2) {
+                Ok(a) => a,
+                Err(_) => return ptr::null_mut(),
+            };
+            let values = [valkind as jint, if is_mutable { 1 } else { 0 }];
+            if env.set_int_array_region(&arr, 0, &values).is_err() {
+                return ptr::null_mut();
+            }
+            arr.into_raw()
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+/// Get memory type info for an exported memory.
+/// Returns an int array [is_shared, init_page_count, max_page_count] or null if not found.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetExportMemoryTypeInfo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    name: JString<'local>,
+) -> jobject {
+    if module_handle == 0 || name.is_null() {
+        return ptr::null_mut();
+    }
+    let name_str: String = match env.get_string(&name) {
+        Ok(s) => s.into(),
+        Err(_) => return ptr::null_mut(),
+    };
+    let module_ref = unsafe { &*(module_handle as *const WamrModule) };
+    match runtime::get_export_memory_type_info(module_ref, &name_str) {
+        Some((is_shared, init_pages, max_pages)) => {
+            let arr = match env.new_int_array(3) {
+                Ok(a) => a,
+                Err(_) => return ptr::null_mut(),
+            };
+            let values = [
+                if is_shared { 1 } else { 0 },
+                init_pages as jint,
+                max_pages as jint,
+            ];
+            if env.set_int_array_region(&arr, 0, &values).is_err() {
+                return ptr::null_mut();
+            }
+            arr.into_raw()
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+// =============================================================================
 // WASI Support (JniWebAssemblyInstance)
 // =============================================================================
 
@@ -1803,6 +1921,218 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     }
     let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
     runtime::instance_dump_mem_consumption(instance_ref);
+}
+
+// =============================================================================
+// Phase 16: Memory Lookup (JniWebAssemblyInstance)
+// =============================================================================
+
+/// Lookup a memory instance by export name. Returns true if found.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeLookupMemory<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    name: JString<'local>,
+) -> jboolean {
+    if instance_handle == 0 || name.is_null() {
+        return 0;
+    }
+    let name_str: String = match env.get_string(&name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    let result = runtime::instance_lookup_memory(instance_ref, &name_str);
+    if result.is_null() { 0 } else { 1 }
+}
+
+// =============================================================================
+// Phase 17: Blocking Ops & Stack Overflow (JniWebAssemblyInstance)
+// =============================================================================
+
+/// Begin a blocking operation.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeBeginBlockingOp<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    if runtime::instance_begin_blocking_op(instance_ref) { 1 } else { 0 }
+}
+
+/// End a blocking operation.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeEndBlockingOp<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::instance_end_blocking_op(instance_ref);
+}
+
+/// Detect native stack overflow.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDetectNativeStackOverflow<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 1;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    if runtime::instance_detect_native_stack_overflow(instance_ref) { 1 } else { 0 }
+}
+
+/// Detect native stack overflow with required size.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDetectNativeStackOverflowSize<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    required_size: jint,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 1;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    if runtime::instance_detect_native_stack_overflow_size(instance_ref, required_size as u32) { 1 } else { 0 }
+}
+
+// =============================================================================
+// Phase 18: Runtime Mem Info (JniWebAssemblyRuntime)
+// =============================================================================
+
+/// Get memory allocation info.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetMemAllocInfo<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jobject {
+    match runtime::get_mem_alloc_info() {
+        Some((total, free, highmark)) => {
+            let arr = match env.new_int_array(3) {
+                Ok(a) => a,
+                Err(_) => return ptr::null_mut(),
+            };
+            let values = [total as jint, free as jint, highmark as jint];
+            if env.set_int_array_region(&arr, 0, &values).is_err() {
+                return ptr::null_mut();
+            }
+            arr.into_raw()
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+// =============================================================================
+// Phase 22: Context Keys (JniWebAssemblyRuntime)
+// =============================================================================
+
+/// Create a context key.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeCreateContextKey<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jlong {
+    runtime::create_context_key() as jlong
+}
+
+/// Destroy a context key.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeDestroyContextKey<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    key: jlong,
+) {
+    if key != 0 {
+        runtime::destroy_context_key(key as *mut std::os::raw::c_void);
+    }
+}
+
+// =============================================================================
+// Phase 22: Context (JniWebAssemblyInstance)
+// =============================================================================
+
+/// Set context on an instance.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetContext<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    key: jlong,
+    ctx: jlong,
+) {
+    if instance_handle == 0 || key == 0 {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::set_context(
+        instance_ref,
+        key as *mut std::os::raw::c_void,
+        ctx as *mut std::os::raw::c_void,
+    );
+}
+
+/// Get context from an instance.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetContext<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    key: jlong,
+) -> jlong {
+    if instance_handle == 0 || key == 0 {
+        return 0;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::get_context(instance_ref, key as *mut std::os::raw::c_void) as jlong
+}
+
+// =============================================================================
+// Phase 25: InstantiationArgs2 (JniWebAssemblyModule)
+// =============================================================================
+
+/// Instantiate a module using InstantiationArgs2.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeInstantiateEx2<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    default_stack_size: jint,
+    host_managed_heap_size: jint,
+    max_memory_pages: jint,
+) -> jlong {
+    if module_handle == 0 {
+        let _ = env.throw_new("ai/tegmentum/wamr4j/exception/WasmRuntimeException",
+            "Module handle is null");
+        return 0;
+    }
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        match runtime::instance_create_ex2(
+            module_ref,
+            default_stack_size as u32,
+            host_managed_heap_size as u32,
+            max_memory_pages as u32,
+        ) {
+            Ok(instance) => Box::into_raw(instance) as jlong,
+            Err(e) => {
+                let msg = format!("{}", e);
+                let _ = env.throw_new("ai/tegmentum/wamr4j/exception/WasmRuntimeException", &msg);
+                0
+            }
+        }
+    }
 }
 
 // =============================================================================

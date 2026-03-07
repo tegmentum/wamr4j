@@ -305,6 +305,39 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
     }
 
     @Override
+    public WebAssemblyInstance instantiateEx2(final int defaultStackSize,
+            final int hostManagedHeapSize, final int maxMemoryPages) throws WasmRuntimeException {
+        ensureNotClosed();
+        if (defaultStackSize < 0 || hostManagedHeapSize < 0 || maxMemoryPages < 0) {
+            throw new IllegalArgumentException("Parameters must be non-negative");
+        }
+        final long instanceHandle = nativeInstantiateEx2(nativeHandle,
+            defaultStackSize, hostManagedHeapSize, maxMemoryPages);
+        if (instanceHandle == 0) {
+            throw new WasmRuntimeException("Failed to instantiate module with ex2 API");
+        }
+        return new JniWebAssemblyInstance(instanceHandle, 0L);
+    }
+
+    @Override
+    public int[] getExportGlobalTypeInfo(final String name) {
+        ensureNotClosed();
+        if (name == null) {
+            return null;
+        }
+        return nativeGetExportGlobalTypeInfo(nativeHandle, name);
+    }
+
+    @Override
+    public int[] getExportMemoryTypeInfo(final String name) {
+        ensureNotClosed();
+        if (name == null) {
+            return null;
+        }
+        return nativeGetExportMemoryTypeInfo(nativeHandle, name);
+    }
+
+    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -314,7 +347,7 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
         if (closed.compareAndSet(false, true)) {
             final long handle = nativeHandle;
             nativeHandle = 0L;
-            
+
             if (handle != 0L) {
                 try {
                     nativeDestroyModule(handle);
@@ -483,5 +516,37 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
      * @return the section data, or null if not found
      */
     private static native byte[] nativeGetCustomSection(long moduleHandle, String name);
+
+    /**
+     * Gets global type info for an exported global.
+     *
+     * @param moduleHandle the native module handle
+     * @param name the export name
+     * @return int array [valkind, is_mutable] or null
+     */
+    private static native int[] nativeGetExportGlobalTypeInfo(long moduleHandle, String name);
+
+    /**
+     * Gets memory type info for an exported memory.
+     *
+     * @param moduleHandle the native module handle
+     * @param name the export name
+     * @return int array [is_shared, init_page_count, max_page_count] or null
+     */
+    private static native int[] nativeGetExportMemoryTypeInfo(long moduleHandle, String name);
+
+    /**
+     * Instantiates a module using the opaque InstantiationArgs2 API.
+     *
+     * @param moduleHandle the native module handle
+     * @param defaultStackSize the default stack size in bytes
+     * @param hostManagedHeapSize the host-managed heap size in bytes
+     * @param maxMemoryPages the maximum number of memory pages
+     * @return the native instance handle, or 0 on failure
+     * @throws WasmRuntimeException if instantiation fails
+     */
+    private static native long nativeInstantiateEx2(long moduleHandle,
+        int defaultStackSize, int hostManagedHeapSize, int maxMemoryPages)
+        throws WasmRuntimeException;
 
 }

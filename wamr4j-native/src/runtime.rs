@@ -2073,6 +2073,183 @@ pub fn module_get_custom_section(module: &WamrModule, name: &str) -> Vec<u8> {
     unsafe { std::slice::from_raw_parts(ptr, len as usize).to_vec() }
 }
 
+// =============================================================================
+// Phase 14: Type Introspection (Global/Memory types)
+// =============================================================================
+
+/// Get the value kind of an exported global by name.
+/// Returns (valkind, is_mutable) or None if not found.
+pub fn get_export_global_type_info(
+    module: &WamrModule,
+    name: &str,
+) -> Option<(u8, bool)> {
+    if module.handle.is_null() {
+        return None;
+    }
+    let module_handle = module.handle as *const bindings::WasmModuleT;
+    let export_count = unsafe { bindings::wasm_runtime_get_export_count(module_handle) };
+    let c_name = CString::new(name).ok()?;
+    let name_cstr = c_name.as_c_str();
+
+    for i in 0..export_count {
+        let mut export_info: bindings::wasm_export_t = unsafe { std::mem::zeroed() };
+        unsafe { bindings::wasm_runtime_get_export_type(module_handle, i as i32, &mut export_info) };
+        if export_info.kind != bindings::WASM_IMPORT_EXPORT_KIND_GLOBAL {
+            continue;
+        }
+        if export_info.name.is_null() {
+            continue;
+        }
+        let export_name = unsafe { CStr::from_ptr(export_info.name) };
+        if export_name != name_cstr {
+            continue;
+        }
+        let global_type = export_info.type_ptr as *const bindings::WasmGlobalTypeT;
+        if global_type.is_null() {
+            return None;
+        }
+        let valkind = unsafe { bindings::wasm_global_type_get_valkind(global_type) };
+        let is_mutable = unsafe { bindings::wasm_global_type_get_mutable(global_type) };
+        return Some((valkind, is_mutable));
+    }
+    None
+}
+
+/// Get memory type info for an exported memory by name.
+/// Returns (is_shared, init_page_count, max_page_count) or None if not found.
+pub fn get_export_memory_type_info(
+    module: &WamrModule,
+    name: &str,
+) -> Option<(bool, u32, u32)> {
+    if module.handle.is_null() {
+        return None;
+    }
+    let module_handle = module.handle as *const bindings::WasmModuleT;
+    let export_count = unsafe { bindings::wasm_runtime_get_export_count(module_handle) };
+    let c_name = CString::new(name).ok()?;
+    let name_cstr = c_name.as_c_str();
+
+    for i in 0..export_count {
+        let mut export_info: bindings::wasm_export_t = unsafe { std::mem::zeroed() };
+        unsafe { bindings::wasm_runtime_get_export_type(module_handle, i as i32, &mut export_info) };
+        if export_info.kind != bindings::WASM_IMPORT_EXPORT_KIND_MEMORY {
+            continue;
+        }
+        if export_info.name.is_null() {
+            continue;
+        }
+        let export_name = unsafe { CStr::from_ptr(export_info.name) };
+        if export_name != name_cstr {
+            continue;
+        }
+        let memory_type = export_info.type_ptr as *const bindings::WasmMemoryTypeT;
+        if memory_type.is_null() {
+            return None;
+        }
+        let is_shared = unsafe { bindings::wasm_memory_type_get_shared(memory_type) };
+        let init_pages = unsafe { bindings::wasm_memory_type_get_init_page_count(memory_type) };
+        let max_pages = unsafe { bindings::wasm_memory_type_get_max_page_count(memory_type) };
+        return Some((is_shared, init_pages, max_pages));
+    }
+    None
+}
+
+// =============================================================================
+// Phase 15: Import Link Checking
+// =============================================================================
+
+/// Check if an import function is linked.
+pub fn is_import_func_linked(module_name: &str, func_name: &str) -> bool {
+    let c_module = match CString::new(module_name) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let c_func = match CString::new(func_name) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    unsafe {
+        bindings::wasm_runtime_is_import_func_linked(c_module.as_ptr(), c_func.as_ptr())
+    }
+}
+
+/// Check if an import global is linked.
+pub fn is_import_global_linked(module_name: &str, global_name: &str) -> bool {
+    let c_module = match CString::new(module_name) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let c_global = match CString::new(global_name) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    unsafe {
+        bindings::wasm_runtime_is_import_global_linked(c_module.as_ptr(), c_global.as_ptr())
+    }
+}
+
+// =============================================================================
+// Phase 16: Exec Env & Memory Lookup
+// =============================================================================
+
+/// Lookup a memory instance by export name.
+pub fn instance_lookup_memory(
+    instance: &WamrInstance,
+    name: &str,
+) -> *mut bindings::WasmMemoryInstT {
+    if instance.handle.is_null() {
+        return std::ptr::null_mut();
+    }
+    let c_name = match CString::new(name) {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    unsafe {
+        bindings::wasm_runtime_lookup_memory(instance.handle as *const _, c_name.as_ptr())
+    }
+}
+
+// =============================================================================
+// Phase 17: Blocking Operations & Stack Overflow Detection
+// =============================================================================
+
+/// Begin a blocking operation.
+pub fn instance_begin_blocking_op(instance: &WamrInstance) -> bool {
+    if instance.exec_env.is_null() {
+        return false;
+    }
+    unsafe { bindings::wasm_runtime_begin_blocking_op(instance.exec_env) }
+}
+
+/// End a blocking operation.
+pub fn instance_end_blocking_op(instance: &WamrInstance) {
+    if instance.exec_env.is_null() {
+        return;
+    }
+    unsafe { bindings::wasm_runtime_end_blocking_op(instance.exec_env) }
+}
+
+/// Detect native stack overflow.
+pub fn instance_detect_native_stack_overflow(instance: &WamrInstance) -> bool {
+    if instance.exec_env.is_null() {
+        return true; // Defensive: report overflow if no env
+    }
+    unsafe { bindings::wasm_runtime_detect_native_stack_overflow(instance.exec_env) }
+}
+
+/// Detect native stack overflow with required size.
+pub fn instance_detect_native_stack_overflow_size(
+    instance: &WamrInstance,
+    required_size: u32,
+) -> bool {
+    if instance.exec_env.is_null() {
+        return true;
+    }
+    unsafe {
+        bindings::wasm_runtime_detect_native_stack_overflow_size(instance.exec_env, required_size)
+    }
+}
+
 /// Check if WebAssembly header is valid
 fn is_valid_wasm_header(bytes: &[u8]) -> bool {
     if bytes.len() < 8 {
@@ -2088,7 +2265,250 @@ fn is_valid_wasm_header(bytes: &[u8]) -> bool {
     if &bytes[4..8] != &[0x01, 0x00, 0x00, 0x00] {
         return false;
     }
-    
+
     true
+}
+
+// =============================================================================
+// Phase 18: Runtime Init & Mem Info
+// =============================================================================
+
+/// Get memory allocation info from the runtime.
+pub fn get_mem_alloc_info() -> Option<(u32, u32, u32)> {
+    let mut info: bindings::MemAllocInfo = Default::default();
+    let ok = unsafe { bindings::wasm_runtime_get_mem_alloc_info(&mut info) };
+    if ok {
+        Some((info.total_size, info.total_free_size, info.highmark_size))
+    } else {
+        None
+    }
+}
+
+// =============================================================================
+// Phase 21: Externref
+// =============================================================================
+
+/// Map an external object to an externref index.
+pub fn externref_obj2ref(
+    instance: &WamrInstance,
+    extern_obj: *mut std::os::raw::c_void,
+) -> Option<u32> {
+    if instance.handle.is_null() {
+        return None;
+    }
+    let mut idx: u32 = 0;
+    let ok = unsafe {
+        bindings::wasm_externref_obj2ref(instance.handle as *const _, extern_obj, &mut idx)
+    };
+    if ok { Some(idx) } else { None }
+}
+
+/// Delete an externref mapping.
+pub fn externref_objdel(
+    instance: &WamrInstance,
+    extern_obj: *mut std::os::raw::c_void,
+) -> bool {
+    if instance.handle.is_null() {
+        return false;
+    }
+    unsafe { bindings::wasm_externref_objdel(instance.handle as *const _, extern_obj) }
+}
+
+/// Get the external object from an externref index.
+pub fn externref_ref2obj(externref_idx: u32) -> Option<*mut std::os::raw::c_void> {
+    let mut obj: *mut std::os::raw::c_void = std::ptr::null_mut();
+    let ok = unsafe { bindings::wasm_externref_ref2obj(externref_idx, &mut obj) };
+    if ok { Some(obj) } else { None }
+}
+
+/// Retain an externref to prevent cleanup.
+pub fn externref_retain(externref_idx: u32) -> bool {
+    unsafe { bindings::wasm_externref_retain(externref_idx) }
+}
+
+// =============================================================================
+// Phase 22: Module Instance Context
+// =============================================================================
+
+/// Create a context key (without destructor).
+pub fn create_context_key() -> *mut std::os::raw::c_void {
+    unsafe { bindings::wasm_runtime_create_context_key(None) }
+}
+
+/// Destroy a context key.
+pub fn destroy_context_key(key: *mut std::os::raw::c_void) {
+    if !key.is_null() {
+        unsafe { bindings::wasm_runtime_destroy_context_key(key) }
+    }
+}
+
+/// Set context on an instance.
+pub fn set_context(
+    instance: &WamrInstance,
+    key: *mut std::os::raw::c_void,
+    ctx: *mut std::os::raw::c_void,
+) {
+    if !instance.handle.is_null() && !key.is_null() {
+        unsafe {
+            bindings::wasm_runtime_set_context(instance.handle as *const _, key, ctx)
+        }
+    }
+}
+
+/// Set context and spread to spawned threads.
+pub fn set_context_spread(
+    instance: &WamrInstance,
+    key: *mut std::os::raw::c_void,
+    ctx: *mut std::os::raw::c_void,
+) {
+    if !instance.handle.is_null() && !key.is_null() {
+        unsafe {
+            bindings::wasm_runtime_set_context_spread(instance.handle as *const _, key, ctx)
+        }
+    }
+}
+
+/// Get context from an instance.
+pub fn get_context(
+    instance: &WamrInstance,
+    key: *mut std::os::raw::c_void,
+) -> *mut std::os::raw::c_void {
+    if instance.handle.is_null() || key.is_null() {
+        return std::ptr::null_mut();
+    }
+    unsafe { bindings::wasm_runtime_get_context(instance.handle as *const _, key) }
+}
+
+// =============================================================================
+// Phase 23: Thread Spawning
+// =============================================================================
+
+/// Spawn a new exec_env for parallel execution.
+pub fn spawn_exec_env(instance: &WamrInstance) -> *mut bindings::WasmExecEnvT {
+    if instance.exec_env.is_null() {
+        return std::ptr::null_mut();
+    }
+    unsafe { bindings::wasm_runtime_spawn_exec_env(instance.exec_env) }
+}
+
+/// Destroy a spawned exec_env.
+pub fn destroy_spawned_exec_env(exec_env: *mut bindings::WasmExecEnvT) {
+    if !exec_env.is_null() {
+        unsafe { bindings::wasm_runtime_destroy_spawned_exec_env(exec_env) }
+    }
+}
+
+// =============================================================================
+// Phase 25: InstantiationArgs2 API
+// =============================================================================
+
+/// Create and instantiate using the opaque InstantiationArgs2 API.
+pub fn instance_create_ex2(
+    module: &WamrModule,
+    default_stack_size: u32,
+    host_managed_heap_size: u32,
+    max_memory_pages: u32,
+) -> Result<Box<WamrInstance>, WamrError> {
+    if module.handle.is_null() {
+        return Err(WamrError::CompilationFailed);
+    }
+
+    let mut args: *mut bindings::InstantiationArgs2 = std::ptr::null_mut();
+    let created = unsafe { bindings::wasm_runtime_instantiation_args_create(&mut args) };
+    if !created || args.is_null() {
+        set_last_error("Failed to create InstantiationArgs2".to_string());
+        return Err(WamrError::InstantiationFailed);
+    }
+
+    unsafe {
+        bindings::wasm_runtime_instantiation_args_set_default_stack_size(args, default_stack_size);
+        bindings::wasm_runtime_instantiation_args_set_host_managed_heap_size(args, host_managed_heap_size);
+        bindings::wasm_runtime_instantiation_args_set_max_memory_pages(args, max_memory_pages);
+    }
+
+    let mut error_buf = [0i8; ERROR_BUF_SIZE];
+    let module_inst = unsafe {
+        bindings::wasm_runtime_instantiate_ex2(
+            module.handle as *const _,
+            args as *const _,
+            error_buf.as_mut_ptr(),
+            ERROR_BUF_SIZE as u32,
+        )
+    };
+
+    unsafe { bindings::wasm_runtime_instantiation_args_destroy(args) };
+
+    if module_inst.is_null() {
+        let error_msg = unsafe { CStr::from_ptr(error_buf.as_ptr()) }
+            .to_str()
+            .unwrap_or("Unknown error")
+            .to_string();
+        set_last_error(error_msg);
+        return Err(WamrError::InstantiationFailed);
+    }
+
+    let exec_env = unsafe {
+        bindings::wasm_runtime_create_exec_env(
+            module_inst,
+            default_stack_size,
+        )
+    };
+
+    if exec_env.is_null() {
+        unsafe { bindings::wasm_runtime_deinstantiate(module_inst) };
+        set_last_error("Failed to create exec env for ex2 instance".to_string());
+        return Err(WamrError::InstantiationFailed);
+    }
+
+    Ok(Box::new(WamrInstance {
+        handle: module_inst as *mut std::os::raw::c_void,
+        exec_env,
+        stack_size: default_stack_size as usize,
+        heap_size: host_managed_heap_size as usize,
+    }))
+}
+
+// =============================================================================
+// Phase 26: Callstack Frames
+// =============================================================================
+
+/// Copy structured callstack frames.
+pub fn copy_callstack(
+    instance: &WamrInstance,
+    skip: u32,
+) -> Vec<(u32, u32, u32, String)> {
+    if instance.exec_env.is_null() {
+        return Vec::new();
+    }
+    // Allocate space for up to 32 frames
+    let mut frames: Vec<bindings::WasmCApiFrame> = Vec::with_capacity(32);
+    for _ in 0..32 {
+        frames.push(unsafe { std::mem::zeroed() });
+    }
+    let mut error_buf = [0i8; ERROR_BUF_SIZE];
+    let count = unsafe {
+        bindings::wasm_copy_callstack(
+            instance.exec_env as *const _,
+            frames.as_mut_ptr(),
+            32,
+            skip,
+            error_buf.as_mut_ptr(),
+            ERROR_BUF_SIZE as u32,
+        )
+    };
+    let mut result = Vec::new();
+    for i in 0..count as usize {
+        let frame = &frames[i];
+        let name = if frame.func_name_wp.is_null() {
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(frame.func_name_wp) }
+                .to_str()
+                .unwrap_or("")
+                .to_string()
+        };
+        result.push((frame.module_offset, frame.func_index, frame.func_offset, name));
+    }
+    result
 }
 

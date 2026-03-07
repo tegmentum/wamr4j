@@ -420,6 +420,70 @@ public interface WebAssemblyInstance extends AutoCloseable {
     void dumpMemConsumption();
 
     /**
+     * Looks up a memory instance by export name.
+     *
+     * @param name the export name of the memory
+     * @return true if the memory was found, false otherwise
+     * @throws IllegalStateException if the instance has been closed
+     */
+    boolean lookupMemory(String name);
+
+    /**
+     * Begins a blocking operation on this instance's execution environment.
+     *
+     * <p>This allows {@link #terminate()} to interrupt long-running host calls.
+     * Must be paired with {@link #endBlockingOp()}.
+     *
+     * @return true if the blocking operation was started successfully
+     * @throws IllegalStateException if the instance has been closed
+     */
+    boolean beginBlockingOp();
+
+    /**
+     * Ends a blocking operation on this instance's execution environment.
+     *
+     * <p>Must be called after {@link #beginBlockingOp()}.
+     *
+     * @throws IllegalStateException if the instance has been closed
+     */
+    void endBlockingOp();
+
+    /**
+     * Detects if a native stack overflow would occur.
+     *
+     * @return true if stack overflow is detected, false if safe
+     * @throws IllegalStateException if the instance has been closed
+     */
+    boolean detectNativeStackOverflow();
+
+    /**
+     * Detects if a native stack overflow would occur given a required stack size.
+     *
+     * @param requiredSize the required stack size in bytes
+     * @return true if stack overflow is detected, false if safe
+     * @throws IllegalStateException if the instance has been closed
+     */
+    boolean detectNativeStackOverflowSize(int requiredSize);
+
+    /**
+     * Sets a context value on this instance for the given key.
+     *
+     * @param key the context key handle (from {@link WebAssemblyRuntime#createContextKey()})
+     * @param ctx the context value (as a long/pointer)
+     * @throws IllegalStateException if the instance has been closed
+     */
+    void setContext(long key, long ctx);
+
+    /**
+     * Gets the context value from this instance for the given key.
+     *
+     * @param key the context key handle
+     * @return the context value, or 0 if not set
+     * @throws IllegalStateException if the instance has been closed
+     */
+    long getContext(long key);
+
+    /**
      * Checks if the instance has been closed.
      *
      * @return true if the instance has been closed, false otherwise

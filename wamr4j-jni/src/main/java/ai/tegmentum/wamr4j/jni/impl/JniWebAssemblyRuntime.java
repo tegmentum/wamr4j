@@ -253,6 +253,44 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
     }
 
     @Override
+    public boolean isImportFuncLinked(final String moduleName, final String funcName) {
+        ensureNotClosed();
+        if (moduleName == null || funcName == null) {
+            return false;
+        }
+        return nativeIsImportFuncLinked(moduleName, funcName);
+    }
+
+    @Override
+    public boolean isImportGlobalLinked(final String moduleName, final String globalName) {
+        ensureNotClosed();
+        if (moduleName == null || globalName == null) {
+            return false;
+        }
+        return nativeIsImportGlobalLinked(moduleName, globalName);
+    }
+
+    @Override
+    public int[] getMemAllocInfo() {
+        ensureNotClosed();
+        return nativeGetMemAllocInfo();
+    }
+
+    @Override
+    public long createContextKey() {
+        ensureNotClosed();
+        return nativeCreateContextKey();
+    }
+
+    @Override
+    public void destroyContextKey(final long key) {
+        ensureNotClosed();
+        if (key != 0) {
+            nativeDestroyContextKey(key);
+        }
+    }
+
+    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -262,7 +300,7 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
         if (closed.compareAndSet(false, true)) {
             final long handle = nativeHandle;
             nativeHandle = 0L;
-            
+
             if (handle != 0L) {
                 try {
                     nativeDestroyRuntime(handle);
@@ -400,4 +438,43 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
      * @return the current supported version number
      */
     private static native int nativeGetCurrentPackageVersion(int packageType);
+
+    /**
+     * Check if an import function is linked.
+     *
+     * @param moduleName the import module name
+     * @param funcName the import function name
+     * @return true if linked
+     */
+    private static native boolean nativeIsImportFuncLinked(String moduleName, String funcName);
+
+    /**
+     * Check if an import global is linked.
+     *
+     * @param moduleName the import module name
+     * @param globalName the import global name
+     * @return true if linked
+     */
+    private static native boolean nativeIsImportGlobalLinked(String moduleName, String globalName);
+
+    /**
+     * Get memory allocation info.
+     *
+     * @return int array [total_size, total_free_size, highmark_size] or null
+     */
+    private static native int[] nativeGetMemAllocInfo();
+
+    /**
+     * Create a context key.
+     *
+     * @return native context key handle
+     */
+    private static native long nativeCreateContextKey();
+
+    /**
+     * Destroy a context key.
+     *
+     * @param key the context key handle
+     */
+    private static native void nativeDestroyContextKey(long key);
 }
