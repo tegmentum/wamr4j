@@ -75,6 +75,13 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
         static final MethodHandle GET_MEM_ALLOC_INFO;
         static final MethodHandle CREATE_CONTEXT_KEY;
         static final MethodHandle DESTROY_CONTEXT_KEY;
+        static final MethodHandle GET_LAST_ERROR;
+        static final MethodHandle IS_XIP_FILE;
+        static final MethodHandle GET_FILE_PACKAGE_VERSION;
+        static final MethodHandle EXTERNREF_REF2OBJ;
+        static final MethodHandle EXTERNREF_RETAIN;
+        static final MethodHandle SHARED_HEAP_CREATE;
+        static final MethodHandle SHARED_HEAP_CHAIN;
 
         static {
             final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
@@ -143,6 +150,34 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
             DESTROY_CONTEXT_KEY = resolveOptional(lookup, linker,
                 "wamr_destroy_context_key",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            GET_LAST_ERROR = resolveOptional(lookup, linker,
+                "wamr_get_last_error",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            IS_XIP_FILE = resolveOptional(lookup, linker,
+                "wamr_is_xip_file",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            GET_FILE_PACKAGE_VERSION = resolveOptional(lookup, linker,
+                "wamr_get_file_package_version",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            EXTERNREF_REF2OBJ = resolveOptional(lookup, linker,
+                "wamr_externref_ref2obj",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+            EXTERNREF_RETAIN = resolveOptional(lookup, linker,
+                "wamr_externref_retain",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT));
+            SHARED_HEAP_CREATE = resolveOptional(lookup, linker,
+                "wamr_shared_heap_create",
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT));
+            SHARED_HEAP_CHAIN = resolveOptional(lookup, linker,
+                "wamr_shared_heap_chain",
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         }
 
         private static MethodHandle resolveOptional(final SymbolLookup lookup, final Linker linker,
@@ -509,6 +544,152 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
             Handles.DESTROY_CONTEXT_KEY.invoke(MemorySegment.ofAddress(key));
         } catch (final Throwable e) {
             LOGGER.warning("Failed to destroy context key: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public String getLastError() {
+        ensureNotClosed();
+
+        if (Handles.GET_LAST_ERROR == null) {
+            return null;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment buffer = arena.allocate(1024);
+            final int count = (int) Handles.GET_LAST_ERROR.invoke(buffer, 1024);
+            if (count > 0) {
+                return buffer.getString(0);
+            }
+            return null;
+        } catch (final Throwable t) {
+            LOGGER.warning("Failed to get last error: " + t.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public boolean isXipFile(final byte[] buf) {
+        if (buf == null) {
+            throw new IllegalArgumentException("Buffer cannot be null");
+        }
+        ensureNotClosed();
+
+        if (Handles.IS_XIP_FILE == null) {
+            return false;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment nativeBuf = arena.allocate(buf.length);
+            MemorySegment.copy(buf, 0, nativeBuf, ValueLayout.JAVA_BYTE, 0, buf.length);
+            final int result = (int) Handles.IS_XIP_FILE.invoke(nativeBuf, buf.length);
+            return result != 0;
+        } catch (final Throwable t) {
+            LOGGER.warning("Failed to check XIP file: " + t.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public int getFilePackageVersion(final byte[] buf) {
+        if (buf == null) {
+            throw new IllegalArgumentException("Buffer cannot be null");
+        }
+        ensureNotClosed();
+
+        if (Handles.GET_FILE_PACKAGE_VERSION == null) {
+            return 0;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment nativeBuf = arena.allocate(buf.length);
+            MemorySegment.copy(buf, 0, nativeBuf, ValueLayout.JAVA_BYTE, 0, buf.length);
+            return (int) Handles.GET_FILE_PACKAGE_VERSION.invoke(nativeBuf, buf.length);
+        } catch (final Throwable t) {
+            LOGGER.warning("Failed to get file package version: " + t.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public long externrefRef2Obj(final int externrefIdx) {
+        ensureNotClosed();
+
+        if (Handles.EXTERNREF_REF2OBJ == null) {
+            return 0;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment pObj = arena.allocate(ValueLayout.ADDRESS);
+            final int result = (int) Handles.EXTERNREF_REF2OBJ.invoke(externrefIdx, pObj);
+            if (result != 0) {
+                return pObj.get(ValueLayout.ADDRESS, 0).address();
+            }
+            return 0;
+        } catch (final Throwable t) {
+            LOGGER.warning("Failed to convert externref to object: " + t.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public boolean externrefRetain(final int externrefIdx) {
+        ensureNotClosed();
+
+        if (Handles.EXTERNREF_RETAIN == null) {
+            return false;
+        }
+
+        try {
+            final int result = (int) Handles.EXTERNREF_RETAIN.invoke(externrefIdx);
+            return result != 0;
+        } catch (final Throwable t) {
+            LOGGER.warning("Failed to retain externref: " + t.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public long createSharedHeap(final int size) {
+        if (size <= 0) {
+            throw new IllegalArgumentException("Shared heap size must be positive: " + size);
+        }
+        ensureNotClosed();
+
+        if (Handles.SHARED_HEAP_CREATE == null) {
+            return 0;
+        }
+
+        try {
+            final MemorySegment heap = (MemorySegment) Handles.SHARED_HEAP_CREATE.invoke(size);
+            if (heap.equals(MemorySegment.NULL)) {
+                return 0;
+            }
+            return heap.address();
+        } catch (final Throwable t) {
+            LOGGER.warning("Failed to create shared heap: " + t.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public long chainSharedHeaps(final long head, final long body) {
+        ensureNotClosed();
+
+        if (Handles.SHARED_HEAP_CHAIN == null) {
+            return 0;
+        }
+
+        try {
+            final MemorySegment result = (MemorySegment) Handles.SHARED_HEAP_CHAIN.invoke(
+                MemorySegment.ofAddress(head), MemorySegment.ofAddress(body));
+            if (result.equals(MemorySegment.NULL)) {
+                return 0;
+            }
+            return result.address();
+        } catch (final Throwable t) {
+            LOGGER.warning("Failed to chain shared heaps: " + t.getMessage());
+            return 0;
         }
     }
 

@@ -270,6 +270,20 @@ public interface WebAssemblyMemory {
     long getBytesPerPage();
 
     /**
+     * Enlarges this memory by the specified number of pages.
+     *
+     * <p>This is an alternative to {@link #grow(int)} that uses a different
+     * WAMR internal code path. It operates directly on the memory instance
+     * rather than through the module instance.
+     *
+     * @param incPages the number of pages to add, must be non-negative
+     * @return true if the enlargement succeeded, false otherwise
+     * @throws IllegalArgumentException if incPages is negative
+     * @throws IllegalStateException if the parent instance has been closed
+     */
+    boolean enlarge(long incPages);
+
+    /**
      * Checks if the parent instance has been closed.
      *
      * <p>Memory objects become invalid when their parent instance is closed. This method can be

@@ -291,6 +291,72 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
     }
 
     @Override
+    public String getLastError() {
+        ensureNotClosed();
+        try {
+            return nativeGetLastError();
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get last error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public boolean isXipFile(final byte[] wasmBytes) {
+        if (wasmBytes == null) {
+            throw new IllegalArgumentException("WebAssembly bytes cannot be null");
+        }
+        ensureNotClosed();
+        try {
+            return nativeIsXipFile(wasmBytes);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to check XIP file: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public int getFilePackageVersion(final byte[] wasmBytes) {
+        if (wasmBytes == null) {
+            throw new IllegalArgumentException("WebAssembly bytes cannot be null");
+        }
+        ensureNotClosed();
+        try {
+            return nativeGetFilePackageVersion(wasmBytes);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to get file package version: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public long externrefRef2Obj(final int externrefIdx) {
+        ensureNotClosed();
+        return nativeExternrefRef2Obj(externrefIdx);
+    }
+
+    @Override
+    public boolean externrefRetain(final int externrefIdx) {
+        ensureNotClosed();
+        return nativeExternrefRetain(externrefIdx);
+    }
+
+    @Override
+    public long createSharedHeap(final int size) {
+        if (size <= 0) {
+            throw new IllegalArgumentException("Shared heap size must be positive: " + size);
+        }
+        ensureNotClosed();
+        return nativeCreateSharedHeap(size);
+    }
+
+    @Override
+    public long chainSharedHeaps(final long head, final long body) {
+        ensureNotClosed();
+        return nativeChainSharedHeaps(head, body);
+    }
+
+    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -477,4 +543,60 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
      * @param key the context key handle
      */
     private static native void nativeDestroyContextKey(long key);
+
+    /**
+     * Gets the last error message from the runtime.
+     *
+     * @return the last error message, or null if no error
+     */
+    private static native String nativeGetLastError();
+
+    /**
+     * Checks if the given bytes represent an XIP (eXecute In Place) file.
+     *
+     * @param wasmBytes the binary data to inspect
+     * @return true if the bytes are an XIP file
+     */
+    private static native boolean nativeIsXipFile(byte[] wasmBytes);
+
+    /**
+     * Gets the package version from a WebAssembly binary buffer.
+     *
+     * @param wasmBytes the binary data to inspect
+     * @return the file package version number
+     */
+    private static native int nativeGetFilePackageVersion(byte[] wasmBytes);
+
+    /**
+     * Converts an externref index to a native object pointer.
+     *
+     * @param externrefIdx the externref index
+     * @return the native object pointer
+     */
+    private static native long nativeExternrefRef2Obj(int externrefIdx);
+
+    /**
+     * Retains an externref, preventing its garbage collection.
+     *
+     * @param externrefIdx the externref index
+     * @return true if retained successfully
+     */
+    private static native boolean nativeExternrefRetain(int externrefIdx);
+
+    /**
+     * Creates a shared heap with the specified size.
+     *
+     * @param size the size of the shared heap in bytes
+     * @return the shared heap handle, or 0 on failure
+     */
+    private static native long nativeCreateSharedHeap(int size);
+
+    /**
+     * Chains two shared heaps together.
+     *
+     * @param head the head shared heap handle
+     * @param body the body shared heap handle
+     * @return the chained shared heap handle, or 0 on failure
+     */
+    private static native long nativeChainSharedHeaps(long head, long body);
 }

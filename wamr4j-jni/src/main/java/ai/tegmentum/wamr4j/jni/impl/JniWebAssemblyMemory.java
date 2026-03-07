@@ -344,6 +344,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
     }
 
     @Override
+    public boolean enlarge(final long incPages) {
+        if (incPages < 0) {
+            throw new IllegalArgumentException("Pages cannot be negative: " + incPages);
+        }
+        ensureValid();
+        return nativeEnlarge(nativeHandle, incPages);
+    }
+
+    @Override
     public boolean isValid() {
         return nativeHandle != 0L && parentInstance.isValid();
     }
@@ -544,4 +553,13 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * @param memoryHandle the native memory handle
      */
     private static native void nativeDestroyMemory(long memoryHandle);
+
+    /**
+     * Enlarges the memory by the specified number of pages.
+     *
+     * @param memoryHandle the native memory handle
+     * @param incPages the number of pages to add
+     * @return true if the enlargement succeeded
+     */
+    private static native boolean nativeEnlarge(long memoryHandle, long incPages);
 }
