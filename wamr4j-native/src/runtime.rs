@@ -2512,3 +2512,103 @@ pub fn copy_callstack(
     result
 }
 
+// =============================================================================
+// Shared Heap Operations
+// =============================================================================
+
+/// Creates a shared heap with the given initial size.
+pub fn shared_heap_create(size: u32) -> *mut std::os::raw::c_void {
+    let mut args: bindings::SharedHeapInitArgs = unsafe { std::mem::zeroed() };
+    args.size = size;
+    unsafe { bindings::wasm_runtime_create_shared_heap(&mut args) }
+}
+
+/// Attaches a shared heap to a module instance.
+pub fn shared_heap_attach(instance: &WamrInstance, heap: *mut std::os::raw::c_void) -> bool {
+    unsafe {
+        bindings::wasm_runtime_attach_shared_heap(instance.handle, heap)
+    }
+}
+
+/// Detaches the shared heap from a module instance.
+pub fn shared_heap_detach(instance: &WamrInstance) {
+    unsafe {
+        bindings::wasm_runtime_detach_shared_heap(instance.handle);
+    }
+}
+
+/// Chain two shared heaps together.
+pub fn shared_heap_chain(head: *mut std::os::raw::c_void, body: *mut std::os::raw::c_void) -> *mut std::os::raw::c_void {
+    unsafe { bindings::wasm_runtime_chain_shared_heaps(head, body) }
+}
+
+/// Allocates memory from a shared heap.
+pub fn shared_heap_malloc(instance: &WamrInstance, size: u64) -> u64 {
+    unsafe {
+        bindings::wasm_runtime_shared_heap_malloc(
+            instance.handle,
+            size,
+            std::ptr::null_mut(),
+        )
+    }
+}
+
+/// Frees memory from a shared heap.
+pub fn shared_heap_free(instance: &WamrInstance, ptr: u64) {
+    unsafe {
+        bindings::wasm_runtime_shared_heap_free(instance.handle, ptr);
+    }
+}
+
+// =============================================================================
+// Extended WASI
+// =============================================================================
+
+/// Sets WASI args with explicit stdio file descriptors.
+pub fn module_set_wasi_args_ex(
+    module: *mut bindings::WasmModuleT,
+    dir_list: &[*const std::os::raw::c_char],
+    map_dir_list: &[*const std::os::raw::c_char],
+    env: &[*const std::os::raw::c_char],
+    argv: &[*const std::os::raw::c_char],
+    stdinfd: i64,
+    stdoutfd: i64,
+    stderrfd: i64,
+) {
+    unsafe {
+        bindings::wasm_runtime_set_wasi_args_ex(
+            module,
+            dir_list.as_ptr(),
+            dir_list.len() as u32,
+            map_dir_list.as_ptr(),
+            map_dir_list.len() as u32,
+            env.as_ptr(),
+            env.len() as u32,
+            argv.as_ptr(),
+            argv.len() as i32,
+            stdinfd,
+            stdoutfd,
+            stderrfd,
+        );
+    }
+}
+
+/// Gets the native address range for a pointer.
+pub fn get_native_addr_range(
+    instance: &WamrInstance,
+    native_ptr: *mut u8,
+) -> Option<(*mut u8, *mut u8)> {
+    let mut start: *mut u8 = std::ptr::null_mut();
+    let mut end: *mut u8 = std::ptr::null_mut();
+    let ok = unsafe {
+        bindings::wasm_runtime_get_native_addr_range(
+            instance.handle,
+            native_ptr,
+            &mut start,
+            &mut end,
+        )
+    };
+    if ok { Some((start, end)) } else { None }
+}
+
+

@@ -1400,4 +1400,72 @@ extern "C" {
         error_buf: *mut c_char,
         error_buf_size: c_uint,
     ) -> c_uint;
+
+    // =================================================================
+    // Phase 27: Missing API Functions
+    // =================================================================
+
+    /// Chain shared heaps together.
+    pub fn wasm_runtime_chain_shared_heaps(
+        head: *mut c_void,
+        body: *mut c_void,
+    ) -> *mut c_void;
+
+    /// Spawn a new thread in the WASM runtime.
+    pub fn wasm_runtime_spawn_thread(
+        exec_env: *mut WasmExecEnvT,
+        tid: *mut usize,
+        callback: Option<unsafe extern "C" fn(*mut WasmExecEnvT, *mut c_void) -> *mut c_void>,
+        arg: *mut c_void,
+    ) -> i32;
+
+    /// Join a spawned WASM thread.
+    pub fn wasm_runtime_join_thread(
+        tid: usize,
+        retval: *mut *mut c_void,
+    ) -> i32;
+
+    /// Load a module from pre-parsed sections.
+    pub fn wasm_runtime_load_from_sections(
+        section_list: *mut WasmSectionT,
+        is_aot: bool,
+        error_buf: *mut c_char,
+        error_buf_size: c_uint,
+    ) -> *mut WasmModuleT;
+
+    // =========================================================================
+    // Module Reader
+    // =========================================================================
+
+    /// Set the module reader and destroyer callbacks for multi-module loading.
+    pub fn wasm_runtime_set_module_reader(
+        reader: Option<
+            unsafe extern "C" fn(
+                module_name: *const c_char,
+                p_buffer: *mut *mut u8,
+                p_size: *mut u32,
+            ) -> bool,
+        >,
+        destroyer: Option<unsafe extern "C" fn(buffer: *mut u8, size: u32)>,
+    );
+
+    // Note: The following WAMR API functions are excluded because they require
+    // build features not enabled in the default configuration:
+    //
+    // - wasm_runtime_start_debug_instance (requires WASM_ENABLE_DEBUG_INTERP)
+    // - wasm_runtime_start_debug_instance_with_port (requires WASM_ENABLE_DEBUG_INTERP)
+    // - wasm_runtime_get_pgo_prof_data_size (requires WASM_ENABLE_STATIC_PGO / LLVM JIT)
+    // - wasm_runtime_dump_pgo_prof_data_to_buf (requires WASM_ENABLE_STATIC_PGO / LLVM JIT)
+    // - wasm_runtime_call_wasm_v (C varargs, cannot be called from Rust/Java)
+    // - wasm_runtime_get_module_hash (SGX-only)
+
+}
+
+/// WAMR section list node for load_from_sections.
+#[repr(C)]
+pub struct WasmSectionT {
+    pub next: *mut WasmSectionT,
+    pub section_type: c_int,
+    pub section_body: *mut u8,
+    pub section_body_size: c_uint,
 }

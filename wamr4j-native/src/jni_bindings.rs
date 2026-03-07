@@ -2015,7 +2015,7 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
 /// Get memory allocation info.
 #[no_mangle]
 pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetMemAllocInfo<'local>(
-    mut env: JNIEnv<'local>,
+    env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jobject {
     match runtime::get_mem_alloc_info() {

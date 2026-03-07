@@ -72,6 +72,8 @@ use crate::runtime::{
     spawn_exec_env, destroy_spawned_exec_env,
     instance_create_ex2,
     copy_callstack,
+    shared_heap_create, shared_heap_attach, shared_heap_detach,
+    shared_heap_chain, shared_heap_malloc, shared_heap_free,
 };
 use crate::utils::{
     write_error_to_buffer, get_last_error, set_last_error, clear_last_error,
@@ -2535,6 +2537,56 @@ pub extern "C" fn wamr_copy_callstack(
 // Helpers
 // =============================================================================
 
+// =============================================================================
+// Shared Heap FFI
+// =============================================================================
+
+#[no_mangle]
+pub extern "C" fn wamr_shared_heap_create(size: u32) -> *mut c_void {
+    shared_heap_create(size)
+}
+
+#[no_mangle]
+pub extern "C" fn wamr_shared_heap_attach(instance: *mut c_void, heap: *mut c_void) -> c_int {
+    if instance.is_null() || heap.is_null() {
+        return -1;
+    }
+    let inst = unsafe { &*(instance as *const WamrInstance) };
+    if shared_heap_attach(inst, heap) { 0 } else { -1 }
+}
+
+#[no_mangle]
+pub extern "C" fn wamr_shared_heap_detach(instance: *mut c_void) {
+    if instance.is_null() {
+        return;
+    }
+    let inst = unsafe { &*(instance as *const WamrInstance) };
+    shared_heap_detach(inst);
+}
+
+#[no_mangle]
+pub extern "C" fn wamr_shared_heap_chain(head: *mut c_void, body: *mut c_void) -> *mut c_void {
+    shared_heap_chain(head, body)
+}
+
+#[no_mangle]
+pub extern "C" fn wamr_shared_heap_malloc(instance: *mut c_void, size: u64) -> u64 {
+    if instance.is_null() {
+        return 0;
+    }
+    let inst = unsafe { &*(instance as *const WamrInstance) };
+    shared_heap_malloc(inst, size)
+}
+
+#[no_mangle]
+pub extern "C" fn wamr_shared_heap_free(instance: *mut c_void, ptr: u64) {
+    if instance.is_null() {
+        return;
+    }
+    let inst = unsafe { &*(instance as *const WamrInstance) };
+    shared_heap_free(inst, ptr);
+}
+
 fn read_string_array(arr: *const *const c_char, count: c_int) -> Vec<String> {
     if arr.is_null() || count <= 0 {
         return Vec::new();
@@ -2550,3 +2602,4 @@ fn read_string_array(arr: *const *const c_char, count: c_int) -> Vec<String> {
         })
         .collect()
 }
+

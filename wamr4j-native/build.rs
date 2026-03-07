@@ -88,6 +88,7 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
         .define("WAMR_BUILD_LOAD_CUSTOM_SECTION", "1")
         .define("WAMR_BUILD_INSTRUCTION_METERING", "1")
         .define("WAMR_BUILD_COPY_CALL_STACK", "1")
+        .define("WAMR_BUILD_SHARED_HEAP", "1")
         .define("WAMR_CONFIGURABLE_BOUNDS_CHECKS", "1")
         // HW memory bounds check stays enabled (required by module loader).
         // Stack HW bounds check disabled — its sigaltstack setup conflicts with JVM.
@@ -723,6 +724,16 @@ void* wasm_runtime_instantiate_ex2(const void* m, const void* a, char* e, unsign
 void wasm_runtime_set_enlarge_mem_error_callback(void(*cb)(uint64_t,uint64_t,void*), void* ud) { (void)cb; (void)ud; }
 typedef struct { void* instance; unsigned int module_offset; unsigned int func_index; unsigned int func_offset; const char* func_name_wp; } WASMCApiFrameT;
 unsigned int wasm_copy_callstack(const void* ee, WASMCApiFrameT* buf, unsigned int len, unsigned int skip, char* eb, unsigned int ebs) { (void)ee; (void)buf; (void)len; (void)skip; (void)eb; (void)ebs; return 0; }
+
+// === Phase 27: Missing API stubs ===
+void* wasm_runtime_chain_shared_heaps(void* h, void* b) { (void)h; (void)b; return 0; }
+int wasm_runtime_spawn_thread(void* ee, size_t* tid, void* cb, void* arg) { (void)ee; (void)tid; (void)cb; (void)arg; return -1; }
+int wasm_runtime_join_thread(size_t tid, void** rv) { (void)tid; (void)rv; return -1; }
+void* wasm_runtime_load_from_sections(void* sl, int is_aot, char* eb, unsigned int ebs) { (void)sl; (void)is_aot; (void)eb; (void)ebs; return 0; }
+void wasm_runtime_set_wasi_args_ex(const void* m, const char** dl, unsigned int dc, const char** ml, unsigned int mc, const char** el, unsigned int ec, const char** av, int ac, int si, int so, int se) { (void)m; (void)dl; (void)dc; (void)ml; (void)mc; (void)el; (void)ec; (void)av; (void)ac; (void)si; (void)so; (void)se; }
+void wasm_runtime_set_user_data(void* ee, void* ud) { (void)ee; (void)ud; }
+void* wasm_runtime_get_user_data(void* ee) { (void)ee; return 0; }
+int wasm_runtime_get_native_addr_range(const void* mi, unsigned char* np, unsigned char** s, unsigned char** e) { (void)mi; (void)np; (void)s; (void)e; return 0; }
 
 // === Has Memory Check (no Box allocation) ===
 // wamr_instance_has_memory is implemented in Rust FFI, not here
