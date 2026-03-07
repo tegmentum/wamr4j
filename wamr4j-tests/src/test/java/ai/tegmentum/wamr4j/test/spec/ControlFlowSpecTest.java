@@ -203,20 +203,28 @@ class ControlFlowSpecTest extends AbstractComparisonTest {
         final int func = builder.addFunction(type);
         builder.addExport("first_positive", func);
         builder.addCode(new byte[]{}, new byte[]{
-            WasmModuleBuilder.BLOCK, WasmModuleBuilder.I32,
-                WasmModuleBuilder.LOCAL_GET, 0x00,
-                WasmModuleBuilder.I32_CONST, 0x00,
-                WasmModuleBuilder.I32_GT_S,
-                WasmModuleBuilder.BR_IF, 0x00,
-                WasmModuleBuilder.DROP,
-
-                WasmModuleBuilder.LOCAL_GET, 0x01,
-                WasmModuleBuilder.I32_CONST, 0x00,
-                WasmModuleBuilder.I32_GT_S,
-                WasmModuleBuilder.BR_IF, 0x00,
-                WasmModuleBuilder.DROP,
-
-                WasmModuleBuilder.LOCAL_GET, 0x02,
+            // Strategy: use nested blocks. Each block tests one parameter.
+            // If positive, return it; otherwise fall through to the next.
+            WasmModuleBuilder.BLOCK, WasmModuleBuilder.I32,       // outer block -> i32 result
+                WasmModuleBuilder.BLOCK, WasmModuleBuilder.VOID_TYPE,  // inner block 1
+                    WasmModuleBuilder.LOCAL_GET, 0x00,
+                    WasmModuleBuilder.I32_CONST, 0x00,
+                    WasmModuleBuilder.I32_GT_S,
+                    WasmModuleBuilder.I32_EQZ,
+                    WasmModuleBuilder.BR_IF, 0x00,       // skip if NOT positive
+                    WasmModuleBuilder.LOCAL_GET, 0x00,
+                    WasmModuleBuilder.BR, 0x01,           // return param0
+                WasmModuleBuilder.END,
+                WasmModuleBuilder.BLOCK, WasmModuleBuilder.VOID_TYPE,  // inner block 2
+                    WasmModuleBuilder.LOCAL_GET, 0x01,
+                    WasmModuleBuilder.I32_CONST, 0x00,
+                    WasmModuleBuilder.I32_GT_S,
+                    WasmModuleBuilder.I32_EQZ,
+                    WasmModuleBuilder.BR_IF, 0x00,       // skip if NOT positive
+                    WasmModuleBuilder.LOCAL_GET, 0x01,
+                    WasmModuleBuilder.BR, 0x01,           // return param1
+                WasmModuleBuilder.END,
+                WasmModuleBuilder.LOCAL_GET, 0x02,        // fallback: return param2
             WasmModuleBuilder.END,
         });
 

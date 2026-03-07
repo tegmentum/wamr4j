@@ -207,7 +207,7 @@ class MVPIntegrationTest extends AbstractComparisonTest {
             WasmModuleBuilder.GLOBAL_GET, 0x02,
             WasmModuleBuilder.I32_EQZ,
             WasmModuleBuilder.IF, WasmModuleBuilder.I32,
-                WasmModuleBuilder.I32_CONST, (byte) 0xFF,  // Return -1 (empty)
+                WasmModuleBuilder.I32_CONST, 0x7F,  // Return -1 (empty)
             WasmModuleBuilder.ELSE,
                 // Load value from read position
                 WasmModuleBuilder.GLOBAL_GET, 0x01,  // read_pos
