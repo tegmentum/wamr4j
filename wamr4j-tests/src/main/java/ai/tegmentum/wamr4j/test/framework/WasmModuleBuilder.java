@@ -171,6 +171,20 @@ public final class WasmModuleBuilder {
     }
 
     /**
+     * Adds a declarative element segment to declare functions for use with ref.func.
+     *
+     * <p>A declarative element segment does not place functions in a table; it merely
+     * declares them so that {@code ref.func} can reference them.
+     *
+     * @param functionIndices the function indices to declare
+     * @return this builder for method chaining
+     */
+    public WasmModuleBuilder addDeclarativeElement(final int... functionIndices) {
+        this.elements.add(new Element(functionIndices));
+        return this;
+    }
+
+    /**
      * Adds a data segment to initialize memory with binary data.
      *
      * <p>Data segments are active by default and initialize memory at instantiation time.
@@ -255,13 +269,24 @@ public final class WasmModuleBuilder {
     public WasmModuleBuilder addCode(final byte[] locals, final byte[] body) {
         final ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
-            // Write locals count (simplified: assume no locals or single local group)
+            // Write locals as groups of consecutive identical types
             if (locals.length == 0) {
                 baos.write(0x00); // 0 local groups
             } else {
-                baos.write(0x01); // 1 local group
-                writeUnsignedLEB128(baos, locals.length);
-                baos.write(locals);
+                // Count distinct groups of consecutive identical types
+                final java.util.List<int[]> groups = new java.util.ArrayList<>();
+                int runStart = 0;
+                for (int i = 1; i <= locals.length; i++) {
+                    if (i == locals.length || locals[i] != locals[runStart]) {
+                        groups.add(new int[]{i - runStart, locals[runStart] & 0xFF});
+                        runStart = i;
+                    }
+                }
+                writeUnsignedLEB128(baos, groups.size()); // number of local groups
+                for (final int[] group : groups) {
+                    writeUnsignedLEB128(baos, group[0]); // count
+                    baos.write(group[1]);                 // type
+                }
             }
 
             // Write body
@@ -507,17 +532,30 @@ public final class WasmModuleBuilder {
         writeUnsignedLEB128(content, elements.size());
 
         for (final Element element : elements) {
-            writeUnsignedLEB128(content, element.tableIndex);
+            if (element.declarative) {
+                // Declarative element segment (flags=0x03):
+                // declares functions for ref.func without placing in a table
+                content.write(0x03);           // segment flags: declarative
+                content.write(0x00);           // element kind: funcref
+                writeUnsignedLEB128(content, element.functionIndices.length);
+                for (final int funcIndex : element.functionIndices) {
+                    writeUnsignedLEB128(content, funcIndex);
+                }
+            } else {
+                // Active element segment (flags=0x00):
+                // places functions in a table at a given offset
+                writeUnsignedLEB128(content, element.tableIndex);
 
-            // Write offset expression (i32.const offset, end)
-            content.write(WasmModuleBuilder.I32_CONST);
-            writeSignedLEB128(content, element.offset);
-            content.write(WasmModuleBuilder.END);
+                // Write offset expression (i32.const offset, end)
+                content.write(WasmModuleBuilder.I32_CONST);
+                writeSignedLEB128(content, element.offset);
+                content.write(WasmModuleBuilder.END);
 
-            // Write function indices
-            writeUnsignedLEB128(content, element.functionIndices.length);
-            for (final int funcIndex : element.functionIndices) {
-                writeUnsignedLEB128(content, funcIndex);
+                // Write function indices
+                writeUnsignedLEB128(content, element.functionIndices.length);
+                for (final int funcIndex : element.functionIndices) {
+                    writeUnsignedLEB128(content, funcIndex);
+                }
             }
         }
 
@@ -663,11 +701,20 @@ public final class WasmModuleBuilder {
         final int tableIndex;
         final int offset;
         final int[] functionIndices;
+        final boolean declarative;
 
         Element(final int tableIndex, final int offset, final int[] functionIndices) {
             this.tableIndex = tableIndex;
             this.offset = offset;
             this.functionIndices = functionIndices;
+            this.declarative = false;
+        }
+
+        Element(final int[] functionIndices) {
+            this.tableIndex = 0;
+            this.offset = 0;
+            this.functionIndices = functionIndices;
+            this.declarative = true;
         }
     }
 

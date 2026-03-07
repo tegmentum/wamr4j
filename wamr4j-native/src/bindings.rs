@@ -557,13 +557,13 @@ extern "C" {
 // =============================================================================
 
 /// Running mode: interpreter
-pub const RUNNING_MODE_INTERP: u32 = 0;
+pub const RUNNING_MODE_INTERP: u32 = 1;
 /// Running mode: fast JIT
-pub const RUNNING_MODE_FAST_JIT: u32 = 1;
+pub const RUNNING_MODE_FAST_JIT: u32 = 2;
 /// Running mode: LLVM JIT
-pub const RUNNING_MODE_LLVM_JIT: u32 = 2;
+pub const RUNNING_MODE_LLVM_JIT: u32 = 3;
 /// Running mode: multi-tier JIT
-pub const RUNNING_MODE_MULTI_TIER_JIT: u32 = 3;
+pub const RUNNING_MODE_MULTI_TIER_JIT: u32 = 4;
 
 // =============================================================================
 // WAMR C API Function Bindings — Runtime Configuration

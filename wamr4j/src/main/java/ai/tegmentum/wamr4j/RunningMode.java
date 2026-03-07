@@ -26,16 +26,16 @@ package ai.tegmentum.wamr4j;
 public enum RunningMode {
 
     /** Classic interpreter mode. Always available. */
-    INTERP(0),
+    INTERP(1),
 
     /** Fast JIT compilation mode. May not be available in all builds. */
-    FAST_JIT(1),
+    FAST_JIT(2),
 
     /** LLVM-based JIT compilation mode. May not be available in all builds. */
-    LLVM_JIT(2),
+    LLVM_JIT(3),
 
     /** Multi-tier JIT mode combining fast JIT and LLVM JIT. May not be available in all builds. */
-    MULTI_TIER_JIT(3);
+    MULTI_TIER_JIT(4);
 
     private final int nativeValue;
 

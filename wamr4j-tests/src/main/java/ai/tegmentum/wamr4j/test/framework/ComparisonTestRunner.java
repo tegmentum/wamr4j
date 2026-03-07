@@ -151,11 +151,7 @@ public final class ComparisonTestRunner {
         final Map<String, List<TestResult>> allResults = new HashMap<>();
 
         // Run on JNI
-        try {
-            allResults.put("JNI", runOn("jni"));
-        } catch (final Exception e) {
-            LOGGER.warning("JNI tests failed: " + e.getMessage());
-        }
+        allResults.put("JNI", runOn("jni"));
 
         // Run on Panama (if Java 23+)
         try {

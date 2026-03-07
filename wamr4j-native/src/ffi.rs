@@ -289,7 +289,7 @@ pub extern "C" fn wamr_function_call(
                 result_count as c_int
             }
             Err(e) => {
-                let error_msg = format!("Function call failed: {:?}", e);
+                let error_msg = format!("{}", e);
                 write_error_to_buffer(&error_msg, error_buf, error_buf_size);
                 -1
             }

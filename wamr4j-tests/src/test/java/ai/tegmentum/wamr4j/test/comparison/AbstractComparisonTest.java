@@ -67,7 +67,9 @@ public abstract class AbstractComparisonTest {
      * @param imports the imports to provide to the module
      */
     protected void runAndCompare(final byte[] moduleBytes, final Map<String, Map<String, Object>> imports) {
-        runner = new ComparisonTestRunner(moduleBytes, imports);
+        if (runner == null) {
+            runner = new ComparisonTestRunner(moduleBytes, imports);
+        }
 
         final Map<String, List<TestResult>> allResults = runner.runOnBoth();
 

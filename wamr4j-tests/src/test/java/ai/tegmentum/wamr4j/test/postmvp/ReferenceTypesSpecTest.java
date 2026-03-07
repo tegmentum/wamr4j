@@ -72,6 +72,9 @@ class ReferenceTypesSpecTest extends AbstractComparisonTest {
             REF_FUNC, 0x00, // ref.func 0
         });
 
+        // Declare function 0 for ref.func usage
+        builder.addDeclarativeElement(0);
+
         final byte[] module = builder.build();
         runner = new ComparisonTestRunner(module);
 
@@ -145,6 +148,9 @@ class ReferenceTypesSpecTest extends AbstractComparisonTest {
             REF_FUNC, 0x01, // ref.func 1 (non-null reference)
             REF_IS_NULL, // ref.is_null
         });
+
+        // Declare function 1 for ref.func usage
+        builder.addDeclarativeElement(1);
 
         final byte[] module = builder.build();
         runner = new ComparisonTestRunner(module);

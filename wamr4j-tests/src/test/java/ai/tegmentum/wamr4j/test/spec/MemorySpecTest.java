@@ -183,7 +183,7 @@ class MemorySpecTest extends AbstractComparisonTest {
         final int func = builder.addFunction(type);
         builder.addExport("size_test", func);
         builder.addCode(new byte[]{}, new byte[]{
-            WasmModuleBuilder.MEMORY_SIZE,
+            WasmModuleBuilder.MEMORY_SIZE, 0x00,
         });
 
         final byte[] module = builder.build();
@@ -253,10 +253,9 @@ class MemorySpecTest extends AbstractComparisonTest {
         final int func = builder.addFunction(type);
         builder.addExport("out_of_bounds", func);
         builder.addCode(new byte[]{}, new byte[]{
-            WasmModuleBuilder.I32_CONST, (byte) 0xFF,  // Load from 65536 (out of bounds)
-            WasmModuleBuilder.I32_CONST, (byte) 0xFF,
-            WasmModuleBuilder.I32_CONST, 0x01,
-            WasmModuleBuilder.I32_SHL,  // 65535 << 1 = out of bounds
+            // i32.const 65536 (0x10000) — beyond 1 page of memory
+            WasmModuleBuilder.I32_CONST, (byte) 0x80, (byte) 0x80, 0x04,
+            // i32.load align=2 offset=0
             WasmModuleBuilder.I32_LOAD, 0x02, 0x00,
         });
 
