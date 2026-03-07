@@ -43,6 +43,9 @@ public final class WasiConfiguration {
     private String[] mappedDirs = new String[0];
     private String[] addrPool = new String[0];
     private String[] nsLookupPool = new String[0];
+    private long stdinFd = -1;
+    private long stdoutFd = -1;
+    private long stderrFd = -1;
 
     /**
      * Sets the command-line arguments for the WASI module.
@@ -172,5 +175,80 @@ public final class WasiConfiguration {
      */
     public String[] getNsLookupPool() {
         return nsLookupPool.clone();
+    }
+
+    /**
+     * Sets the file descriptor to use for WASI stdin.
+     *
+     * <p>A value of -1 (the default) uses the host process stdin.
+     *
+     * @param fd the file descriptor for stdin, or -1 for default
+     * @return this configuration for chaining
+     */
+    public WasiConfiguration setStdinFd(final long fd) {
+        this.stdinFd = fd;
+        return this;
+    }
+
+    /**
+     * Sets the file descriptor to use for WASI stdout.
+     *
+     * <p>A value of -1 (the default) uses the host process stdout.
+     *
+     * @param fd the file descriptor for stdout, or -1 for default
+     * @return this configuration for chaining
+     */
+    public WasiConfiguration setStdoutFd(final long fd) {
+        this.stdoutFd = fd;
+        return this;
+    }
+
+    /**
+     * Sets the file descriptor to use for WASI stderr.
+     *
+     * <p>A value of -1 (the default) uses the host process stderr.
+     *
+     * @param fd the file descriptor for stderr, or -1 for default
+     * @return this configuration for chaining
+     */
+    public WasiConfiguration setStderrFd(final long fd) {
+        this.stderrFd = fd;
+        return this;
+    }
+
+    /**
+     * Returns the stdin file descriptor.
+     *
+     * @return the stdin fd, or -1 if using default
+     */
+    public long getStdinFd() {
+        return stdinFd;
+    }
+
+    /**
+     * Returns the stdout file descriptor.
+     *
+     * @return the stdout fd, or -1 if using default
+     */
+    public long getStdoutFd() {
+        return stdoutFd;
+    }
+
+    /**
+     * Returns the stderr file descriptor.
+     *
+     * @return the stderr fd, or -1 if using default
+     */
+    public long getStderrFd() {
+        return stderrFd;
+    }
+
+    /**
+     * Returns whether any custom stdio file descriptors have been set.
+     *
+     * @return true if any of stdin, stdout, or stderr FDs are non-default
+     */
+    public boolean hasCustomStdio() {
+        return stdinFd != -1 || stdoutFd != -1 || stderrFd != -1;
     }
 }

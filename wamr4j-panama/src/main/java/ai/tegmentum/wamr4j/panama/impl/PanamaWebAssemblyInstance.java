@@ -120,6 +120,7 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
         static final MethodHandle SHARED_HEAP_DETACH;
         static final MethodHandle SHARED_HEAP_MALLOC;
         static final MethodHandle SHARED_HEAP_FREE;
+        static final MethodHandle GET_NATIVE_ADDR_RANGE;
 
         private static final FunctionDescriptor NAMES_DESC = FunctionDescriptor.of(
             ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -321,6 +322,13 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
                 "wamr_shared_heap_free",
                 FunctionDescriptor.ofVoid(
                     ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+            GET_NATIVE_ADDR_RANGE = resolveOptional(lookup, linker,
+                "wamr_get_native_addr_range",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,      // instance
+                    ValueLayout.JAVA_LONG,    // native_ptr
+                    ValueLayout.ADDRESS,      // start_out
+                    ValueLayout.ADDRESS));    // end_out
         }
 
         private static MethodHandle resolveOptional(final SymbolLookup lookup, final Linker linker,
@@ -1564,6 +1572,33 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
             Handles.SHARED_HEAP_FREE.invoke(nativeHandle, ptr);
         } catch (final Throwable e) {
             LOGGER.warning("Failed to free shared heap memory: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public long[] getNativeAddrRange(final long nativePtr) {
+        ensureNotClosed();
+
+        if (Handles.GET_NATIVE_ADDR_RANGE == null) {
+            LOGGER.warning("wamr_get_native_addr_range not available");
+            return null;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment startOut = arena.allocate(ValueLayout.JAVA_LONG);
+            final MemorySegment endOut = arena.allocate(ValueLayout.JAVA_LONG);
+            final int result = (int) Handles.GET_NATIVE_ADDR_RANGE.invoke(
+                nativeHandle, nativePtr, startOut, endOut);
+            if (result == 0) {
+                return new long[]{
+                    startOut.get(ValueLayout.JAVA_LONG, 0),
+                    endOut.get(ValueLayout.JAVA_LONG, 0)
+                };
+            }
+            return null;
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to get native addr range: " + e.getMessage());
+            return null;
         }
     }
 

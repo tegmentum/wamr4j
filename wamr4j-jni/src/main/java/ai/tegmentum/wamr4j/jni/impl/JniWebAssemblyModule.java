@@ -239,11 +239,22 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
         ensureNotClosed();
 
         try {
-            nativeSetWasiArgs(nativeHandle,
-                config.getPreopens(),
-                config.getMappedDirs(),
-                config.getEnvVars(),
-                config.getArgs());
+            if (config.hasCustomStdio()) {
+                nativeSetWasiArgsEx(nativeHandle,
+                    config.getPreopens(),
+                    config.getMappedDirs(),
+                    config.getEnvVars(),
+                    config.getArgs(),
+                    config.getStdinFd(),
+                    config.getStdoutFd(),
+                    config.getStderrFd());
+            } else {
+                nativeSetWasiArgs(nativeHandle,
+                    config.getPreopens(),
+                    config.getMappedDirs(),
+                    config.getEnvVars(),
+                    config.getArgs());
+            }
 
             final String[] addrPool = config.getAddrPool();
             if (addrPool.length > 0) {
@@ -491,6 +502,22 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
      */
     private static native void nativeSetWasiArgs(long moduleHandle,
         String[] dirList, String[] mapDirList, String[] envVars, String[] argv);
+
+    /**
+     * Sets WASI args with explicit stdio file descriptors.
+     *
+     * @param moduleHandle the native module handle
+     * @param dirList the preopened directories
+     * @param mapDirList the mapped directories
+     * @param envVars the environment variables
+     * @param argv the command-line arguments
+     * @param stdinFd the stdin file descriptor (-1 for default)
+     * @param stdoutFd the stdout file descriptor (-1 for default)
+     * @param stderrFd the stderr file descriptor (-1 for default)
+     */
+    private static native void nativeSetWasiArgsEx(long moduleHandle,
+        String[] dirList, String[] mapDirList, String[] envVars, String[] argv,
+        long stdinFd, long stdoutFd, long stderrFd);
 
     /**
      * Sets WASI address pool on the module.

@@ -732,6 +732,12 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
     }
 
     @Override
+    public long[] getNativeAddrRange(final long nativePtr) {
+        ensureNotClosed();
+        return nativeGetNativeAddrRange(nativeHandle, nativePtr);
+    }
+
+    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -1311,6 +1317,15 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
      * @param ptr the address to free
      */
     private static native void nativeSharedHeapFree(long instanceHandle, long ptr);
+
+    /**
+     * Gets the native address range containing a pointer.
+     *
+     * @param instanceHandle the native instance handle
+     * @param nativePtr the native pointer to query
+     * @return a two-element long array [start, end], or null if not found
+     */
+    private static native long[] nativeGetNativeAddrRange(long instanceHandle, long nativePtr);
 
     /**
      * Static helper for destroying a registration handle from JniWebAssemblyModule
