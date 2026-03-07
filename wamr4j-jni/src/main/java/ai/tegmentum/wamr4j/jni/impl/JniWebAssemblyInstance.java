@@ -587,6 +587,56 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
     }
 
     @Override
+    public void setContext(final long key, final long ctx) {
+        ensureNotClosed();
+        if (key != 0) {
+            nativeSetContext(nativeHandle, key, ctx);
+        }
+    }
+
+    @Override
+    public long getContext(final long key) {
+        ensureNotClosed();
+        if (key == 0) {
+            return 0;
+        }
+        return nativeGetContext(nativeHandle, key);
+    }
+
+    @Override
+    public boolean lookupMemory(final String name) {
+        ensureNotClosed();
+        if (name == null) {
+            return false;
+        }
+        return nativeLookupMemory(nativeHandle, name);
+    }
+
+    @Override
+    public boolean beginBlockingOp() {
+        ensureNotClosed();
+        return nativeBeginBlockingOp(nativeHandle);
+    }
+
+    @Override
+    public void endBlockingOp() {
+        ensureNotClosed();
+        nativeEndBlockingOp(nativeHandle);
+    }
+
+    @Override
+    public boolean detectNativeStackOverflow() {
+        ensureNotClosed();
+        return nativeDetectNativeStackOverflow(nativeHandle);
+    }
+
+    @Override
+    public boolean detectNativeStackOverflowSize(final int requiredSize) {
+        ensureNotClosed();
+        return nativeDetectNativeStackOverflowSize(nativeHandle, requiredSize);
+    }
+
+    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -995,6 +1045,65 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
      * @param registrationHandle the native registration handle
      */
     static native void nativeDestroyRegistration(long registrationHandle);
+
+    /**
+     * Lookup a memory instance by export name.
+     *
+     * @param instanceHandle the native instance handle
+     * @param name the export name
+     * @return true if found
+     */
+    private static native boolean nativeLookupMemory(long instanceHandle, String name);
+
+    /**
+     * Begin a blocking operation.
+     *
+     * @param instanceHandle the native instance handle
+     * @return true on success
+     */
+    private static native boolean nativeBeginBlockingOp(long instanceHandle);
+
+    /**
+     * End a blocking operation.
+     *
+     * @param instanceHandle the native instance handle
+     */
+    private static native void nativeEndBlockingOp(long instanceHandle);
+
+    /**
+     * Detect native stack overflow.
+     *
+     * @param instanceHandle the native instance handle
+     * @return true if overflow detected
+     */
+    private static native boolean nativeDetectNativeStackOverflow(long instanceHandle);
+
+    /**
+     * Detect native stack overflow with required size.
+     *
+     * @param instanceHandle the native instance handle
+     * @param requiredSize the required stack size
+     * @return true if overflow detected
+     */
+    private static native boolean nativeDetectNativeStackOverflowSize(long instanceHandle, int requiredSize);
+
+    /**
+     * Set context on an instance.
+     *
+     * @param instanceHandle the native instance handle
+     * @param key the context key handle
+     * @param ctx the context value
+     */
+    private static native void nativeSetContext(long instanceHandle, long key, long ctx);
+
+    /**
+     * Get context from an instance.
+     *
+     * @param instanceHandle the native instance handle
+     * @param key the context key handle
+     * @return the context value
+     */
+    private static native long nativeGetContext(long instanceHandle, long key);
 
     /**
      * Static helper for destroying a registration handle from JniWebAssemblyModule

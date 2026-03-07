@@ -50,6 +50,12 @@ pub type WasmFuncTypeT = c_void;
 /// Opaque handle to WASM table type (for introspection via export/import type)
 pub type WasmTableTypeT = c_void;
 
+/// Opaque handle to WASM global type (for introspection via export/import type)
+pub type WasmGlobalTypeT = c_void;
+
+/// Opaque handle to WASM memory type (for introspection via export/import type)
+pub type WasmMemoryTypeT = c_void;
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -1021,6 +1027,70 @@ pub struct InstantiationArgs {
     pub max_memory_pages: c_uint,
 }
 
+/// Opaque InstantiationArgs2 (ABI-stable).
+pub type InstantiationArgs2 = c_void;
+
+/// Memory allocation info returned by wasm_runtime_get_mem_alloc_info.
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct MemAllocInfo {
+    pub total_size: c_uint,
+    pub total_free_size: c_uint,
+    pub highmark_size: c_uint,
+}
+
+/// RuntimeInitArgs for wasm_runtime_full_init.
+/// This is a simplified version — only the fields we actually set.
+/// The full struct is much larger but we zero-init unused fields.
+#[repr(C)]
+pub struct RuntimeInitArgs {
+    pub mem_alloc_type: c_uint,
+    pub mem_alloc_option: MemAllocOption,
+    pub native_module_name: *const c_char,
+    pub n_native_symbols: c_int,
+    pub native_symbols: *mut NativeSymbol,
+    pub max_thread_num: c_uint,
+    pub ip_addr: [c_char; 128],
+    pub instance_port: c_int,
+    pub platform_port: c_int,
+    pub fast_jit_code_cache_size: c_uint,
+    pub running_mode: c_uint,
+    pub llvm_jit_opt_level: c_uint,
+    pub llvm_jit_size_level: c_uint,
+    pub segue_flags: c_uint,
+    pub enable_linux_perf: bool,
+}
+
+/// Memory allocation option union (simplified as struct of pointers).
+#[repr(C)]
+pub struct MemAllocOption {
+    pub pool: MemAllocPool,
+}
+
+/// Pool-based memory allocation.
+#[repr(C)]
+pub struct MemAllocPool {
+    pub heap_buf: *mut c_void,
+    pub heap_size: c_uint,
+}
+
+/// Shared heap initialization arguments.
+#[repr(C)]
+pub struct SharedHeapInitArgs {
+    pub size: c_uint,
+}
+
+/// Structured callstack frame.
+#[repr(C)]
+#[derive(Debug)]
+pub struct WasmCApiFrame {
+    pub instance: *mut c_void,
+    pub module_offset: c_uint,
+    pub func_index: c_uint,
+    pub func_offset: c_uint,
+    pub func_name_wp: *const c_char,
+}
+
 extern "C" {
     /// Instantiate a module with extended arguments.
     pub fn wasm_runtime_instantiate_ex(
@@ -1037,6 +1107,98 @@ extern "C" {
         len: *mut c_uint,
     ) -> *const u8;
 
+    // =================================================================
+    // Type Introspection (Global/Memory types)
+    // =================================================================
+
+    /// Get the value kind from a global type.
+    pub fn wasm_global_type_get_valkind(
+        global_type: *const WasmGlobalTypeT,
+    ) -> u8;
+
+    /// Get whether a global type is mutable.
+    pub fn wasm_global_type_get_mutable(
+        global_type: *const WasmGlobalTypeT,
+    ) -> bool;
+
+    /// Get whether a memory type is shared.
+    pub fn wasm_memory_type_get_shared(
+        memory_type: *const WasmMemoryTypeT,
+    ) -> bool;
+
+    /// Get the initial page count from a memory type.
+    pub fn wasm_memory_type_get_init_page_count(
+        memory_type: *const WasmMemoryTypeT,
+    ) -> c_uint;
+
+    /// Get the maximum page count from a memory type.
+    pub fn wasm_memory_type_get_max_page_count(
+        memory_type: *const WasmMemoryTypeT,
+    ) -> c_uint;
+
+    // =================================================================
+    // Import Link Checking
+    // =================================================================
+
+    /// Check if an import function is linked.
+    pub fn wasm_runtime_is_import_func_linked(
+        module_name: *const c_char,
+        func_name: *const c_char,
+    ) -> bool;
+
+    /// Check if an import global is linked.
+    pub fn wasm_runtime_is_import_global_linked(
+        module_name: *const c_char,
+        global_name: *const c_char,
+    ) -> bool;
+
+    // =================================================================
+    // Exec Env & Memory Lookup
+    // =================================================================
+
+    /// Rebind an exec_env to a different module instance.
+    pub fn wasm_runtime_set_module_inst(
+        exec_env: *mut WasmExecEnvT,
+        module_inst: *const WasmModuleInstT,
+    );
+
+    /// Set the native stack boundary for an exec_env.
+    pub fn wasm_runtime_set_native_stack_boundary(
+        exec_env: *mut WasmExecEnvT,
+        native_stack_boundary: *mut u8,
+    );
+
+    /// Lookup a memory instance by name.
+    pub fn wasm_runtime_lookup_memory(
+        module_inst: *const WasmModuleInstT,
+        name: *const c_char,
+    ) -> *mut WasmMemoryInstT;
+
+    // =================================================================
+    // Blocking Operations & Stack Overflow Detection
+    // =================================================================
+
+    /// Begin a blocking operation (allows terminate to interrupt).
+    pub fn wasm_runtime_begin_blocking_op(
+        exec_env: *mut WasmExecEnvT,
+    ) -> bool;
+
+    /// End a blocking operation.
+    pub fn wasm_runtime_end_blocking_op(
+        exec_env: *mut WasmExecEnvT,
+    );
+
+    /// Detect native stack overflow.
+    pub fn wasm_runtime_detect_native_stack_overflow(
+        exec_env: *mut WasmExecEnvT,
+    ) -> bool;
+
+    /// Detect native stack overflow with a required size.
+    pub fn wasm_runtime_detect_native_stack_overflow_size(
+        exec_env: *mut WasmExecEnvT,
+        required_size: c_uint,
+    ) -> bool;
+
     /// Allocate memory from the WAMR runtime allocator.
     pub fn wasm_runtime_malloc(size: c_uint) -> *mut c_void;
 
@@ -1045,4 +1207,197 @@ extern "C" {
 
     /// Free memory allocated by the WAMR runtime allocator.
     pub fn wasm_runtime_free(ptr: *mut c_void);
+
+    // =================================================================
+    // Phase 18: Runtime Init & Mem Info
+    // =================================================================
+
+    /// Full initialization with RuntimeInitArgs.
+    pub fn wasm_runtime_full_init(init_args: *mut RuntimeInitArgs) -> bool;
+
+    /// Get memory allocator info.
+    pub fn wasm_runtime_get_mem_alloc_info(info: *mut MemAllocInfo) -> bool;
+
+    // =================================================================
+    // Phase 20: Host Function Registration (non-raw)
+    // =================================================================
+
+    /// Register native functions (non-raw, with signature).
+    pub fn wasm_runtime_register_natives(
+        module_name: *const c_char,
+        native_symbols: *mut NativeSymbol,
+        n_native_symbols: c_int,
+    ) -> bool;
+
+    // =================================================================
+    // Phase 21: Externref
+    // =================================================================
+
+    /// Map an external object to an externref index.
+    pub fn wasm_externref_obj2ref(
+        module_inst: *const WasmModuleInstT,
+        extern_obj: *mut c_void,
+        p_externref_idx: *mut c_uint,
+    ) -> bool;
+
+    /// Delete an externref mapping.
+    pub fn wasm_externref_objdel(
+        module_inst: *const WasmModuleInstT,
+        extern_obj: *mut c_void,
+    ) -> bool;
+
+    /// Set cleanup callback for an externref.
+    pub fn wasm_externref_set_cleanup(
+        module_inst: *const WasmModuleInstT,
+        extern_obj: *mut c_void,
+        cleanup_func: Option<unsafe extern "C" fn(*mut c_void)>,
+    ) -> bool;
+
+    /// Get the external object from an externref index.
+    pub fn wasm_externref_ref2obj(
+        externref_idx: c_uint,
+        p_extern_obj: *mut *mut c_void,
+    ) -> bool;
+
+    /// Retain an externref to prevent cleanup.
+    pub fn wasm_externref_retain(externref_idx: c_uint) -> bool;
+
+    // =================================================================
+    // Phase 22: Module Instance Context
+    // =================================================================
+
+    /// Create a context key with an optional destructor.
+    pub fn wasm_runtime_create_context_key(
+        dtor: Option<unsafe extern "C" fn(*const WasmModuleInstT, *mut c_void)>,
+    ) -> *mut c_void;
+
+    /// Destroy a context key.
+    pub fn wasm_runtime_destroy_context_key(key: *mut c_void);
+
+    /// Set context for an instance.
+    pub fn wasm_runtime_set_context(
+        module_inst: *const WasmModuleInstT,
+        key: *mut c_void,
+        ctx: *mut c_void,
+    );
+
+    /// Set context and spread to spawned threads.
+    pub fn wasm_runtime_set_context_spread(
+        module_inst: *const WasmModuleInstT,
+        key: *mut c_void,
+        ctx: *mut c_void,
+    );
+
+    /// Get context for an instance.
+    pub fn wasm_runtime_get_context(
+        module_inst: *const WasmModuleInstT,
+        key: *mut c_void,
+    ) -> *mut c_void;
+
+    // =================================================================
+    // Phase 23: Thread Spawning
+    // =================================================================
+
+    /// Spawn a new exec_env for parallel execution.
+    pub fn wasm_runtime_spawn_exec_env(
+        exec_env: *mut WasmExecEnvT,
+    ) -> *mut WasmExecEnvT;
+
+    /// Destroy a spawned exec_env.
+    pub fn wasm_runtime_destroy_spawned_exec_env(
+        exec_env: *mut WasmExecEnvT,
+    );
+
+    // =================================================================
+    // Phase 24: Shared Heap
+    // =================================================================
+
+    /// Create a shared heap.
+    pub fn wasm_runtime_create_shared_heap(
+        init_args: *mut SharedHeapInitArgs,
+    ) -> *mut c_void;
+
+    /// Attach a shared heap to an instance.
+    pub fn wasm_runtime_attach_shared_heap(
+        module_inst: *const WasmModuleInstT,
+        shared_heap: *mut c_void,
+    ) -> bool;
+
+    /// Detach a shared heap from an instance.
+    pub fn wasm_runtime_detach_shared_heap(
+        module_inst: *const WasmModuleInstT,
+    );
+
+    /// Allocate memory from a shared heap.
+    pub fn wasm_runtime_shared_heap_malloc(
+        module_inst: *const WasmModuleInstT,
+        size: u64,
+        p_native_addr: *mut *mut c_void,
+    ) -> u64;
+
+    /// Free memory from a shared heap.
+    pub fn wasm_runtime_shared_heap_free(
+        module_inst: *const WasmModuleInstT,
+        ptr: u64,
+    );
+
+    // =================================================================
+    // Phase 25: InstantiationArgs2 API
+    // =================================================================
+
+    /// Create opaque InstantiationArgs2.
+    pub fn wasm_runtime_instantiation_args_create(
+        p: *mut *mut InstantiationArgs2,
+    ) -> bool;
+
+    /// Destroy opaque InstantiationArgs2.
+    pub fn wasm_runtime_instantiation_args_destroy(
+        p: *mut InstantiationArgs2,
+    );
+
+    /// Set default stack size on InstantiationArgs2.
+    pub fn wasm_runtime_instantiation_args_set_default_stack_size(
+        p: *mut InstantiationArgs2,
+        size: c_uint,
+    );
+
+    /// Set host managed heap size on InstantiationArgs2.
+    pub fn wasm_runtime_instantiation_args_set_host_managed_heap_size(
+        p: *mut InstantiationArgs2,
+        size: c_uint,
+    );
+
+    /// Set max memory pages on InstantiationArgs2.
+    pub fn wasm_runtime_instantiation_args_set_max_memory_pages(
+        p: *mut InstantiationArgs2,
+        pages: c_uint,
+    );
+
+    /// Instantiate a module using InstantiationArgs2.
+    pub fn wasm_runtime_instantiate_ex2(
+        module: *const WasmModuleT,
+        args: *const InstantiationArgs2,
+        error_buf: *mut c_char,
+        error_buf_size: c_uint,
+    ) -> *mut WasmModuleInstT;
+
+    // =================================================================
+    // Phase 26: Memory Error Callback & Callstack Frames
+    // =================================================================
+
+    /// Set callback for memory enlarge errors.
+    pub fn wasm_runtime_set_enlarge_mem_error_callback(
+        cb: Option<unsafe extern "C" fn(u64, u64, *mut c_void)>,
+        user_data: *mut c_void,
+    );
+
+    /// Copy structured callstack frames.
+    pub fn wasm_copy_callstack(
+        exec_env: *const WasmExecEnvT,
+        buffer: *mut WasmCApiFrame,
+        length: c_uint,
+        skip_n: c_uint,
+        error_buf: *mut c_char,
+        error_buf_size: c_uint,
+    ) -> c_uint;
 }

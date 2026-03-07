@@ -83,6 +83,9 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
         static final MethodHandle INSTANTIATE_EX;
         static final MethodHandle GET_CUSTOM_SECTION;
         static final MethodHandle FREE_NATIVE_BUFFER;
+        static final MethodHandle GET_EXPORT_GLOBAL_TYPE_INFO;
+        static final MethodHandle GET_EXPORT_MEMORY_TYPE_INFO;
+        static final MethodHandle INSTANTIATE_EX2;
 
         private static final FunctionDescriptor NAMES_DESC = FunctionDescriptor.of(
             ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -190,6 +193,30 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
             FREE_NATIVE_BUFFER = resolveOptional(lookup, linker,
                 "wamr_free_native_buffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            GET_EXPORT_GLOBAL_TYPE_INFO = resolveOptional(lookup, linker,
+                "wamr_get_export_global_type_info",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,      // module
+                    ValueLayout.ADDRESS,      // name
+                    ValueLayout.ADDRESS,      // valkind_out
+                    ValueLayout.ADDRESS));    // is_mutable_out
+            GET_EXPORT_MEMORY_TYPE_INFO = resolveOptional(lookup, linker,
+                "wamr_get_export_memory_type_info",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,      // module
+                    ValueLayout.ADDRESS,      // name
+                    ValueLayout.ADDRESS,      // is_shared_out
+                    ValueLayout.ADDRESS,      // init_page_count_out
+                    ValueLayout.ADDRESS));    // max_page_count_out
+            INSTANTIATE_EX2 = resolveOptional(lookup, linker,
+                "wamr_instance_create_ex2",
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,      // module
+                    ValueLayout.JAVA_INT,     // default_stack_size
+                    ValueLayout.JAVA_INT,     // host_managed_heap_size
+                    ValueLayout.JAVA_INT,     // max_memory_pages
+                    ValueLayout.ADDRESS,      // error_buf
+                    ValueLayout.JAVA_INT));   // error_buf_size
         }
 
         private static MethodHandle resolveOptional(final SymbolLookup lookup, final Linker linker,
@@ -784,6 +811,88 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
         } catch (final Throwable e) {
             LOGGER.fine("Failed to get custom section '" + name + "': " + e.getMessage());
             return null;
+        }
+    }
+
+    @Override
+    public int[] getExportGlobalTypeInfo(final String name) {
+        ensureNotClosed();
+        if (name == null || Handles.GET_EXPORT_GLOBAL_TYPE_INFO == null) {
+            return null;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            final MemorySegment nameStr = arena.allocateFrom(name);
+            final MemorySegment valkindOut = arena.allocate(ValueLayout.JAVA_BYTE);
+            final MemorySegment isMutableOut = arena.allocate(ValueLayout.JAVA_INT);
+            final int result = (int) Handles.GET_EXPORT_GLOBAL_TYPE_INFO.invoke(
+                nativeHandle, nameStr, valkindOut, isMutableOut);
+            if (result != 0) {
+                return null;
+            }
+            return new int[] {
+                Byte.toUnsignedInt(valkindOut.get(ValueLayout.JAVA_BYTE, 0)),
+                isMutableOut.get(ValueLayout.JAVA_INT, 0)
+            };
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to get export global type info for '" + name + "': " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public int[] getExportMemoryTypeInfo(final String name) {
+        ensureNotClosed();
+        if (name == null || Handles.GET_EXPORT_MEMORY_TYPE_INFO == null) {
+            return null;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            final MemorySegment nameStr = arena.allocateFrom(name);
+            final MemorySegment isSharedOut = arena.allocate(ValueLayout.JAVA_INT);
+            final MemorySegment initPageCountOut = arena.allocate(ValueLayout.JAVA_INT);
+            final MemorySegment maxPageCountOut = arena.allocate(ValueLayout.JAVA_INT);
+            final int result = (int) Handles.GET_EXPORT_MEMORY_TYPE_INFO.invoke(
+                nativeHandle, nameStr, isSharedOut, initPageCountOut, maxPageCountOut);
+            if (result != 0) {
+                return null;
+            }
+            return new int[] {
+                isSharedOut.get(ValueLayout.JAVA_INT, 0),
+                initPageCountOut.get(ValueLayout.JAVA_INT, 0),
+                maxPageCountOut.get(ValueLayout.JAVA_INT, 0)
+            };
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to get export memory type info for '" + name + "': " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public WebAssemblyInstance instantiateEx2(final int defaultStackSize,
+            final int hostManagedHeapSize, final int maxMemoryPages) throws WasmRuntimeException {
+        ensureNotClosed();
+        if (defaultStackSize < 0 || hostManagedHeapSize < 0 || maxMemoryPages < 0) {
+            throw new IllegalArgumentException("Parameters must be non-negative");
+        }
+
+        if (Handles.INSTANTIATE_EX2 == null) {
+            throw new WasmRuntimeException("instantiateEx2 not available");
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment errorBuf = arena.allocate(WasmTypes.ERROR_BUF_SIZE);
+            final MemorySegment instanceHandle = (MemorySegment) Handles.INSTANTIATE_EX2.invoke(
+                nativeHandle, defaultStackSize, hostManagedHeapSize, maxMemoryPages,
+                errorBuf, WasmTypes.ERROR_BUF_SIZE);
+            if (instanceHandle.equals(MemorySegment.NULL)) {
+                final String errorMsg = errorBuf.getString(0);
+                throw new WasmRuntimeException(
+                    errorMsg.isEmpty() ? "Failed to instantiate module with ex2 API" : errorMsg);
+            }
+            return new PanamaWebAssemblyInstance(instanceHandle, List.of(), null);
+        } catch (final WasmRuntimeException e) {
+            throw e;
+        } catch (final Throwable e) {
+            throw new WasmRuntimeException("Unexpected error during ex2 instantiation", e);
         }
     }
 

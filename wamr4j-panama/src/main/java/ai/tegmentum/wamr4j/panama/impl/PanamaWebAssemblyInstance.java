@@ -100,6 +100,13 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
         static final MethodHandle SUM_EXEC_TIME;
         static final MethodHandle GET_FUNC_EXEC_TIME;
         static final MethodHandle DUMP_MEM_CONSUMPTION;
+        static final MethodHandle LOOKUP_MEMORY;
+        static final MethodHandle BEGIN_BLOCKING_OP;
+        static final MethodHandle END_BLOCKING_OP;
+        static final MethodHandle DETECT_NATIVE_STACK_OVERFLOW;
+        static final MethodHandle DETECT_NATIVE_STACK_OVERFLOW_SIZE;
+        static final MethodHandle SET_CONTEXT;
+        static final MethodHandle GET_CONTEXT;
 
         private static final FunctionDescriptor NAMES_DESC = FunctionDescriptor.of(
             ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -225,6 +232,31 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
             DUMP_MEM_CONSUMPTION = resolveOptional(lookup, linker,
                 "wamr_instance_dump_mem_consumption",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            LOOKUP_MEMORY = resolveOptional(lookup, linker,
+                "wamr_instance_lookup_memory",
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            BEGIN_BLOCKING_OP = resolveOptional(lookup, linker,
+                "wamr_instance_begin_blocking_op",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+            END_BLOCKING_OP = resolveOptional(lookup, linker,
+                "wamr_instance_end_blocking_op",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            DETECT_NATIVE_STACK_OVERFLOW = resolveOptional(lookup, linker,
+                "wamr_instance_detect_native_stack_overflow",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+            DETECT_NATIVE_STACK_OVERFLOW_SIZE = resolveOptional(lookup, linker,
+                "wamr_instance_detect_native_stack_overflow_size",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            SET_CONTEXT = resolveOptional(lookup, linker,
+                "wamr_set_context",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+            GET_CONTEXT = resolveOptional(lookup, linker,
+                "wamr_get_context",
+                FunctionDescriptor.of(ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         }
 
         private static MethodHandle resolveOptional(final SymbolLookup lookup, final Linker linker,
@@ -812,6 +844,107 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
             Handles.DUMP_MEM_CONSUMPTION.invoke(nativeHandle);
         } catch (final Throwable e) {
             LOGGER.warning("Failed to dump mem consumption: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean lookupMemory(final String name) {
+        ensureNotClosed();
+        if (name == null || Handles.LOOKUP_MEMORY == null) {
+            return false;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            final MemorySegment nameStr = arena.allocateFrom(name);
+            final MemorySegment result = (MemorySegment) Handles.LOOKUP_MEMORY.invoke(
+                nativeHandle, nameStr);
+            return !result.equals(MemorySegment.NULL);
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to lookup memory '" + name + "': " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean beginBlockingOp() {
+        ensureNotClosed();
+        if (Handles.BEGIN_BLOCKING_OP == null) {
+            return false;
+        }
+        try {
+            return ((int) Handles.BEGIN_BLOCKING_OP.invoke(nativeHandle)) != 0;
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to begin blocking op: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void endBlockingOp() {
+        ensureNotClosed();
+        if (Handles.END_BLOCKING_OP == null) {
+            return;
+        }
+        try {
+            Handles.END_BLOCKING_OP.invoke(nativeHandle);
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to end blocking op: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean detectNativeStackOverflow() {
+        ensureNotClosed();
+        if (Handles.DETECT_NATIVE_STACK_OVERFLOW == null) {
+            return true;
+        }
+        try {
+            return ((int) Handles.DETECT_NATIVE_STACK_OVERFLOW.invoke(nativeHandle)) != 0;
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to detect native stack overflow: " + e.getMessage());
+            return true;
+        }
+    }
+
+    @Override
+    public boolean detectNativeStackOverflowSize(final int requiredSize) {
+        ensureNotClosed();
+        if (Handles.DETECT_NATIVE_STACK_OVERFLOW_SIZE == null) {
+            return true;
+        }
+        try {
+            return ((int) Handles.DETECT_NATIVE_STACK_OVERFLOW_SIZE.invoke(
+                nativeHandle, requiredSize)) != 0;
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to detect native stack overflow size: " + e.getMessage());
+            return true;
+        }
+    }
+
+    @Override
+    public void setContext(final long key, final long ctx) {
+        ensureNotClosed();
+        if (Handles.SET_CONTEXT == null) {
+            LOGGER.warning("wamr_set_context not available");
+            return;
+        }
+        try {
+            Handles.SET_CONTEXT.invoke(nativeHandle, MemorySegment.ofAddress(key), ctx);
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to set context: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public long getContext(final long key) {
+        ensureNotClosed();
+        if (Handles.GET_CONTEXT == null) {
+            return 0;
+        }
+        try {
+            return (long) Handles.GET_CONTEXT.invoke(nativeHandle, MemorySegment.ofAddress(key));
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to get context: " + e.getMessage());
+            return 0;
         }
     }
 

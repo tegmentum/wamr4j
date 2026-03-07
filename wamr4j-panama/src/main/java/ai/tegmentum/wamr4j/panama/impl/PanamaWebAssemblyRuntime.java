@@ -70,6 +70,11 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
         static final MethodHandle SET_MAX_THREAD_NUM;
         static final MethodHandle GET_FILE_PACKAGE_TYPE;
         static final MethodHandle GET_CURRENT_PACKAGE_VERSION;
+        static final MethodHandle IS_IMPORT_FUNC_LINKED;
+        static final MethodHandle IS_IMPORT_GLOBAL_LINKED;
+        static final MethodHandle GET_MEM_ALLOC_INFO;
+        static final MethodHandle CREATE_CONTEXT_KEY;
+        static final MethodHandle DESTROY_CONTEXT_KEY;
 
         static {
             final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
@@ -118,6 +123,26 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
             GET_CURRENT_PACKAGE_VERSION = resolveOptional(lookup, linker,
                 "wamr_get_current_package_version",
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+            IS_IMPORT_FUNC_LINKED = resolveOptional(lookup, linker,
+                "wamr_is_import_func_linked",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            IS_IMPORT_GLOBAL_LINKED = resolveOptional(lookup, linker,
+                "wamr_is_import_global_linked",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            GET_MEM_ALLOC_INFO = resolveOptional(lookup, linker,
+                "wamr_get_mem_alloc_info",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,      // total_size_out
+                    ValueLayout.ADDRESS,      // total_free_size_out
+                    ValueLayout.ADDRESS));    // highmark_size_out
+            CREATE_CONTEXT_KEY = resolveOptional(lookup, linker,
+                "wamr_create_context_key",
+                FunctionDescriptor.of(ValueLayout.ADDRESS));
+            DESTROY_CONTEXT_KEY = resolveOptional(lookup, linker,
+                "wamr_destroy_context_key",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
         }
 
         private static MethodHandle resolveOptional(final SymbolLookup lookup, final Linker linker,
@@ -394,6 +419,96 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
         } catch (final Throwable e) {
             LOGGER.warning("Failed to get current package version: " + e.getMessage());
             return 0;
+        }
+    }
+
+    @Override
+    public boolean isImportFuncLinked(final String moduleName, final String funcName) {
+        ensureNotClosed();
+        if (moduleName == null || funcName == null || Handles.IS_IMPORT_FUNC_LINKED == null) {
+            return false;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            final MemorySegment modStr = arena.allocateFrom(moduleName);
+            final MemorySegment funcStr = arena.allocateFrom(funcName);
+            return ((int) Handles.IS_IMPORT_FUNC_LINKED.invoke(modStr, funcStr)) != 0;
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to check import func linked: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean isImportGlobalLinked(final String moduleName, final String globalName) {
+        ensureNotClosed();
+        if (moduleName == null || globalName == null || Handles.IS_IMPORT_GLOBAL_LINKED == null) {
+            return false;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            final MemorySegment modStr = arena.allocateFrom(moduleName);
+            final MemorySegment globalStr = arena.allocateFrom(globalName);
+            return ((int) Handles.IS_IMPORT_GLOBAL_LINKED.invoke(modStr, globalStr)) != 0;
+        } catch (final Throwable e) {
+            LOGGER.fine("Failed to check import global linked: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public int[] getMemAllocInfo() {
+        ensureNotClosed();
+
+        if (Handles.GET_MEM_ALLOC_INFO == null) {
+            return null;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment totalSizeOut = arena.allocate(ValueLayout.JAVA_INT);
+            final MemorySegment totalFreeSizeOut = arena.allocate(ValueLayout.JAVA_INT);
+            final MemorySegment highmarkSizeOut = arena.allocate(ValueLayout.JAVA_INT);
+            final int rc = (int) Handles.GET_MEM_ALLOC_INFO.invoke(
+                totalSizeOut, totalFreeSizeOut, highmarkSizeOut);
+            if (rc != 0) {
+                return null;
+            }
+            return new int[] {
+                totalSizeOut.get(ValueLayout.JAVA_INT, 0),
+                totalFreeSizeOut.get(ValueLayout.JAVA_INT, 0),
+                highmarkSizeOut.get(ValueLayout.JAVA_INT, 0)
+            };
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to get mem alloc info: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public long createContextKey() {
+        ensureNotClosed();
+
+        if (Handles.CREATE_CONTEXT_KEY == null) {
+            return 0;
+        }
+
+        try {
+            final MemorySegment key = (MemorySegment) Handles.CREATE_CONTEXT_KEY.invoke();
+            return key.address();
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to create context key: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public void destroyContextKey(final long key) {
+        ensureNotClosed();
+        if (key == 0 || Handles.DESTROY_CONTEXT_KEY == null) {
+            return;
+        }
+        try {
+            Handles.DESTROY_CONTEXT_KEY.invoke(MemorySegment.ofAddress(key));
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to destroy context key: " + e.getMessage());
         }
     }
 

@@ -61,6 +61,17 @@ use crate::runtime::{
     instance_get_wasm_func_exec_time, instance_dump_mem_consumption,
     init_thread_env, destroy_thread_env, is_thread_env_inited, set_max_thread_num,
     instance_create_ex, module_get_custom_section,
+    get_export_global_type_info, get_export_memory_type_info,
+    is_import_func_linked, is_import_global_linked,
+    instance_lookup_memory,
+    instance_begin_blocking_op, instance_end_blocking_op,
+    instance_detect_native_stack_overflow, instance_detect_native_stack_overflow_size,
+    get_mem_alloc_info,
+    externref_obj2ref, externref_objdel, externref_ref2obj, externref_retain,
+    create_context_key, destroy_context_key, set_context, set_context_spread, get_context,
+    spawn_exec_env, destroy_spawned_exec_env,
+    instance_create_ex2,
+    copy_callstack,
 };
 use crate::utils::{
     write_error_to_buffer, get_last_error, set_last_error, clear_last_error,
@@ -2068,6 +2079,456 @@ pub extern "C" fn wamr_free_native_buffer(ptr: *mut u8) {
     if !ptr.is_null() {
         unsafe { crate::bindings::wasm_runtime_free(ptr as *mut c_void); }
     }
+}
+
+// =============================================================================
+// Phase 14: Type Introspection
+// =============================================================================
+
+/// Get global type info (valkind, is_mutable) for an exported global by name.
+/// Returns 0 on success, -1 if not found.
+#[no_mangle]
+pub extern "C" fn wamr_get_export_global_type_info(
+    module_handle: *mut c_void,
+    name: *const c_char,
+    valkind_out: *mut u8,
+    is_mutable_out: *mut c_int,
+) -> c_int {
+    clear_last_error();
+    if module_handle.is_null() || name.is_null() {
+        set_last_error("Module handle or name is null".to_string());
+        return -1;
+    }
+    let module = unsafe { &*(module_handle as *const WamrModule) };
+    let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            set_last_error("Invalid UTF-8 in global name".to_string());
+            return -1;
+        }
+    };
+    match get_export_global_type_info(module, name_str) {
+        Some((valkind, is_mutable)) => {
+            if !valkind_out.is_null() {
+                unsafe { *valkind_out = valkind; }
+            }
+            if !is_mutable_out.is_null() {
+                unsafe { *is_mutable_out = if is_mutable { 1 } else { 0 }; }
+            }
+            0
+        }
+        None => {
+            set_last_error("Export global not found".to_string());
+            -1
+        }
+    }
+}
+
+/// Get memory type info (is_shared, init_page_count, max_page_count) for an exported memory by name.
+/// Returns 0 on success, -1 if not found.
+#[no_mangle]
+pub extern "C" fn wamr_get_export_memory_type_info(
+    module_handle: *mut c_void,
+    name: *const c_char,
+    is_shared_out: *mut c_int,
+    init_page_count_out: *mut c_int,
+    max_page_count_out: *mut c_int,
+) -> c_int {
+    clear_last_error();
+    if module_handle.is_null() || name.is_null() {
+        set_last_error("Module handle or name is null".to_string());
+        return -1;
+    }
+    let module = unsafe { &*(module_handle as *const WamrModule) };
+    let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            set_last_error("Invalid UTF-8 in memory name".to_string());
+            return -1;
+        }
+    };
+    match get_export_memory_type_info(module, name_str) {
+        Some((is_shared, init_pages, max_pages)) => {
+            if !is_shared_out.is_null() {
+                unsafe { *is_shared_out = if is_shared { 1 } else { 0 }; }
+            }
+            if !init_page_count_out.is_null() {
+                unsafe { *init_page_count_out = init_pages as c_int; }
+            }
+            if !max_page_count_out.is_null() {
+                unsafe { *max_page_count_out = max_pages as c_int; }
+            }
+            0
+        }
+        None => {
+            set_last_error("Export memory not found".to_string());
+            -1
+        }
+    }
+}
+
+// =============================================================================
+// Phase 15: Import Link Checking
+// =============================================================================
+
+/// Check if an import function is linked (has a registered host implementation).
+/// Returns 1 if linked, 0 if not.
+#[no_mangle]
+pub extern "C" fn wamr_is_import_func_linked(
+    module_name: *const c_char,
+    func_name: *const c_char,
+) -> c_int {
+    clear_last_error();
+    if module_name.is_null() || func_name.is_null() {
+        return 0;
+    }
+    let mod_str = match unsafe { CStr::from_ptr(module_name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    let func_str = match unsafe { CStr::from_ptr(func_name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    if is_import_func_linked(mod_str, func_str) { 1 } else { 0 }
+}
+
+/// Check if an import global is linked (has a registered host implementation).
+/// Returns 1 if linked, 0 if not.
+#[no_mangle]
+pub extern "C" fn wamr_is_import_global_linked(
+    module_name: *const c_char,
+    global_name: *const c_char,
+) -> c_int {
+    clear_last_error();
+    if module_name.is_null() || global_name.is_null() {
+        return 0;
+    }
+    let mod_str = match unsafe { CStr::from_ptr(module_name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    let global_str = match unsafe { CStr::from_ptr(global_name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    if is_import_global_linked(mod_str, global_str) { 1 } else { 0 }
+}
+
+// =============================================================================
+// Phase 16: Exec Env & Memory Lookup
+// =============================================================================
+
+/// Lookup a memory instance by export name.
+/// Returns a pointer to the memory instance, or null if not found.
+#[no_mangle]
+pub extern "C" fn wamr_instance_lookup_memory(
+    instance_handle: *mut c_void,
+    name: *const c_char,
+) -> *mut c_void {
+    clear_last_error();
+    if instance_handle.is_null() || name.is_null() {
+        return ptr::null_mut();
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    instance_lookup_memory(instance, name_str) as *mut c_void
+}
+
+// =============================================================================
+// Phase 17: Blocking Operations & Stack Overflow Detection
+// =============================================================================
+
+/// Begin a blocking operation on an instance's exec env.
+/// Returns 1 on success, 0 on failure.
+#[no_mangle]
+pub extern "C" fn wamr_instance_begin_blocking_op(
+    instance_handle: *mut c_void,
+) -> c_int {
+    clear_last_error();
+    if instance_handle.is_null() {
+        return 0;
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    if instance_begin_blocking_op(instance) { 1 } else { 0 }
+}
+
+/// End a blocking operation on an instance's exec env.
+#[no_mangle]
+pub extern "C" fn wamr_instance_end_blocking_op(
+    instance_handle: *mut c_void,
+) {
+    if instance_handle.is_null() {
+        return;
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    instance_end_blocking_op(instance);
+}
+
+/// Detect native stack overflow.
+/// Returns 1 if stack overflow detected, 0 if safe.
+#[no_mangle]
+pub extern "C" fn wamr_instance_detect_native_stack_overflow(
+    instance_handle: *mut c_void,
+) -> c_int {
+    if instance_handle.is_null() {
+        return 1;
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    if instance_detect_native_stack_overflow(instance) { 1 } else { 0 }
+}
+
+/// Detect native stack overflow with required size.
+/// Returns 1 if stack overflow detected, 0 if safe.
+#[no_mangle]
+pub extern "C" fn wamr_instance_detect_native_stack_overflow_size(
+    instance_handle: *mut c_void,
+    required_size: c_int,
+) -> c_int {
+    if instance_handle.is_null() {
+        return 1;
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    if instance_detect_native_stack_overflow_size(instance, required_size as u32) { 1 } else { 0 }
+}
+
+// =============================================================================
+// Phase 18: Runtime Mem Info
+// =============================================================================
+
+/// Get memory allocation info. Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub extern "C" fn wamr_get_mem_alloc_info(
+    total_size_out: *mut c_int,
+    total_free_size_out: *mut c_int,
+    highmark_size_out: *mut c_int,
+) -> c_int {
+    clear_last_error();
+    match get_mem_alloc_info() {
+        Some((total, free, highmark)) => {
+            if !total_size_out.is_null() {
+                unsafe { *total_size_out = total as c_int; }
+            }
+            if !total_free_size_out.is_null() {
+                unsafe { *total_free_size_out = free as c_int; }
+            }
+            if !highmark_size_out.is_null() {
+                unsafe { *highmark_size_out = highmark as c_int; }
+            }
+            0
+        }
+        None => -1,
+    }
+}
+
+// =============================================================================
+// Phase 21: Externref
+// =============================================================================
+
+/// Map an external object to an externref index.
+#[no_mangle]
+pub extern "C" fn wamr_externref_obj2ref(
+    instance_handle: *mut c_void,
+    extern_obj: *mut c_void,
+    p_idx: *mut c_int,
+) -> c_int {
+    if instance_handle.is_null() || p_idx.is_null() {
+        return 0;
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    match externref_obj2ref(instance, extern_obj) {
+        Some(idx) => {
+            unsafe { *p_idx = idx as c_int; }
+            1
+        }
+        None => 0,
+    }
+}
+
+/// Delete an externref mapping.
+#[no_mangle]
+pub extern "C" fn wamr_externref_objdel(
+    instance_handle: *mut c_void,
+    extern_obj: *mut c_void,
+) -> c_int {
+    if instance_handle.is_null() {
+        return 0;
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    if externref_objdel(instance, extern_obj) { 1 } else { 0 }
+}
+
+/// Get external object from externref index.
+#[no_mangle]
+pub extern "C" fn wamr_externref_ref2obj(
+    externref_idx: c_int,
+    p_obj: *mut *mut c_void,
+) -> c_int {
+    if p_obj.is_null() {
+        return 0;
+    }
+    match externref_ref2obj(externref_idx as u32) {
+        Some(obj) => {
+            unsafe { *p_obj = obj; }
+            1
+        }
+        None => 0,
+    }
+}
+
+/// Retain an externref.
+#[no_mangle]
+pub extern "C" fn wamr_externref_retain(externref_idx: c_int) -> c_int {
+    if externref_retain(externref_idx as u32) { 1 } else { 0 }
+}
+
+// =============================================================================
+// Phase 22: Module Instance Context
+// =============================================================================
+
+/// Create a context key.
+#[no_mangle]
+pub extern "C" fn wamr_create_context_key() -> *mut c_void {
+    create_context_key()
+}
+
+/// Destroy a context key.
+#[no_mangle]
+pub extern "C" fn wamr_destroy_context_key(key: *mut c_void) {
+    destroy_context_key(key);
+}
+
+/// Set context on an instance.
+#[no_mangle]
+pub extern "C" fn wamr_set_context(
+    instance_handle: *mut c_void,
+    key: *mut c_void,
+    ctx: *mut c_void,
+) {
+    if instance_handle.is_null() {
+        return;
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    set_context(instance, key, ctx);
+}
+
+/// Set context and spread to spawned threads.
+#[no_mangle]
+pub extern "C" fn wamr_set_context_spread(
+    instance_handle: *mut c_void,
+    key: *mut c_void,
+    ctx: *mut c_void,
+) {
+    if instance_handle.is_null() {
+        return;
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    set_context_spread(instance, key, ctx);
+}
+
+/// Get context from an instance.
+#[no_mangle]
+pub extern "C" fn wamr_get_context(
+    instance_handle: *mut c_void,
+    key: *mut c_void,
+) -> *mut c_void {
+    if instance_handle.is_null() {
+        return ptr::null_mut();
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    get_context(instance, key)
+}
+
+// =============================================================================
+// Phase 23: Thread Spawning
+// =============================================================================
+
+/// Spawn a new exec_env for parallel execution.
+#[no_mangle]
+pub extern "C" fn wamr_spawn_exec_env(
+    instance_handle: *mut c_void,
+) -> *mut c_void {
+    if instance_handle.is_null() {
+        return ptr::null_mut();
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    spawn_exec_env(instance) as *mut c_void
+}
+
+/// Destroy a spawned exec_env.
+#[no_mangle]
+pub extern "C" fn wamr_destroy_spawned_exec_env(
+    exec_env: *mut c_void,
+) {
+    destroy_spawned_exec_env(exec_env as *mut _);
+}
+
+// =============================================================================
+// Phase 25: InstantiationArgs2 API
+// =============================================================================
+
+/// Instantiate a module using the opaque InstantiationArgs2 API.
+#[no_mangle]
+pub extern "C" fn wamr_instance_create_ex2(
+    module_handle: *mut c_void,
+    default_stack_size: c_int,
+    host_managed_heap_size: c_int,
+    max_memory_pages: c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> *mut c_void {
+    clear_last_error();
+    if module_handle.is_null() {
+        write_error_to_buffer("Module handle is null", error_buf, error_buf_size);
+        return ptr::null_mut();
+    }
+    let module = unsafe { &*(module_handle as *const WamrModule) };
+    match instance_create_ex2(
+        module,
+        default_stack_size as u32,
+        host_managed_heap_size as u32,
+        max_memory_pages as u32,
+    ) {
+        Ok(instance) => Box::into_raw(instance) as *mut c_void,
+        Err(e) => {
+            let msg = format!("{}", e);
+            write_error_to_buffer(&msg, error_buf, error_buf_size);
+            ptr::null_mut()
+        }
+    }
+}
+
+// =============================================================================
+// Phase 26: Callstack Frames
+// =============================================================================
+
+/// Get the number of callstack frames.
+#[no_mangle]
+pub extern "C" fn wamr_copy_callstack(
+    instance_handle: *mut c_void,
+    func_indices_out: *mut c_int,
+    func_offsets_out: *mut c_int,
+    max_frames: c_int,
+    skip: c_int,
+) -> c_int {
+    if instance_handle.is_null() || max_frames <= 0 {
+        return 0;
+    }
+    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
+    let frames = copy_callstack(instance, skip as u32);
+    let count = std::cmp::min(frames.len(), max_frames as usize);
+    for i in 0..count {
+        if !func_indices_out.is_null() {
+            unsafe { *func_indices_out.add(i) = frames[i].1 as c_int; }
+        }
+        if !func_offsets_out.is_null() {
+            unsafe { *func_offsets_out.add(i) = frames[i].2 as c_int; }
+        }
+    }
+    count as c_int
 }
 
 // =============================================================================

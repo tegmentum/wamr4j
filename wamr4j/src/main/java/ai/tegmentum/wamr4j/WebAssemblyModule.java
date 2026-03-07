@@ -207,6 +207,49 @@ public interface WebAssemblyModule extends AutoCloseable {
     byte[] getCustomSection(String name);
 
     /**
+     * Gets the type info for an exported global by name.
+     *
+     * <p>Returns an int array where index 0 is the value kind (WASM type) and
+     * index 1 is 1 if mutable, 0 if immutable. Returns null if the global is
+     * not found.
+     *
+     * @param name the name of the exported global
+     * @return an int array [valkind, is_mutable] or null if not found
+     * @throws IllegalStateException if the module has been closed
+     */
+    int[] getExportGlobalTypeInfo(String name);
+
+    /**
+     * Gets the type info for an exported memory by name.
+     *
+     * <p>Returns an int array where index 0 is 1 if shared (0 otherwise),
+     * index 1 is the initial page count, and index 2 is the maximum page count.
+     * Returns null if the memory is not found.
+     *
+     * @param name the name of the exported memory
+     * @return an int array [is_shared, init_page_count, max_page_count] or null if not found
+     * @throws IllegalStateException if the module has been closed
+     */
+    int[] getExportMemoryTypeInfo(String name);
+
+    /**
+     * Creates a new instance of this module using the opaque InstantiationArgs2 API.
+     *
+     * <p>This is the ABI-stable alternative to {@link #instantiateEx(int, int, int)}.
+     * It uses the opaque InstantiationArgs2 struct which allows new fields to be added
+     * without breaking ABI compatibility.
+     *
+     * @param defaultStackSize the default stack size in bytes
+     * @param hostManagedHeapSize the host-managed heap size in bytes
+     * @param maxMemoryPages the maximum number of memory pages
+     * @return a new WebAssembly instance
+     * @throws WasmRuntimeException if instantiation fails
+     * @throws IllegalStateException if the module has been closed
+     */
+    WebAssemblyInstance instantiateEx2(int defaultStackSize, int hostManagedHeapSize,
+            int maxMemoryPages) throws WasmRuntimeException;
+
+    /**
      * Checks if the module has been closed.
      *
      * @return true if the module has been closed, false otherwise

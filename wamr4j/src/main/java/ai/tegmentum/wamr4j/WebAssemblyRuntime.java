@@ -205,6 +205,57 @@ public interface WebAssemblyRuntime extends AutoCloseable {
     void setMaxThreadNum(int num);
 
     /**
+     * Checks if an import function is linked (has a registered host implementation).
+     *
+     * @param moduleName the module name of the import
+     * @param funcName the function name of the import
+     * @return true if the import function is linked, false otherwise
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    boolean isImportFuncLinked(String moduleName, String funcName);
+
+    /**
+     * Checks if an import global is linked (has a registered host implementation).
+     *
+     * @param moduleName the module name of the import
+     * @param globalName the global name of the import
+     * @return true if the import global is linked, false otherwise
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    boolean isImportGlobalLinked(String moduleName, String globalName);
+
+    /**
+     * Gets memory allocation info from the runtime allocator.
+     *
+     * <p>Returns an int array where index 0 is total size, index 1 is total free size,
+     * and index 2 is highmark size. Returns null if info is unavailable.
+     *
+     * @return int array [total_size, total_free_size, highmark_size] or null
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    int[] getMemAllocInfo();
+
+    /**
+     * Creates a context key for per-instance context storage.
+     *
+     * <p>Context keys allow associating arbitrary data with module instances.
+     * The returned key handle should be destroyed with {@link #destroyContextKey(long)}
+     * when no longer needed.
+     *
+     * @return a native handle to the context key, or 0 on failure
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    long createContextKey();
+
+    /**
+     * Destroys a context key previously created with {@link #createContextKey()}.
+     *
+     * @param key the context key handle to destroy
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    void destroyContextKey(long key);
+
+    /**
      * Checks if the runtime has been closed.
      *
      * @return true if the runtime has been closed, false otherwise
