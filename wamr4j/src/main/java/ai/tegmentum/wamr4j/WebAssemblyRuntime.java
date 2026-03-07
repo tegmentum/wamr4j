@@ -337,6 +337,19 @@ public interface WebAssemblyRuntime extends AutoCloseable {
     long chainSharedHeaps(long head, long body);
 
     /**
+     * Finds a previously registered module by name.
+     *
+     * <p>Modules are registered using {@link WebAssemblyModule#register(String)}.
+     * This method looks up a module that was registered under the given name.
+     *
+     * @param name the registration name to look up
+     * @return the native module handle, or 0 if not found
+     * @throws IllegalArgumentException if name is null
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    long findRegisteredModule(String name);
+
+    /**
      * Checks if the runtime has been closed.
      *
      * @return true if the runtime has been closed, false otherwise

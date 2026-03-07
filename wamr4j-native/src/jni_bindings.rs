@@ -20,7 +20,7 @@
 //! methods declared in the Java JNI implementation classes.
 
 use jni::objects::{JClass, JObject, JByteArray, JString, JObjectArray, JValue};
-use jni::sys::{jlong, jstring, jint, jfloat, jdouble, jboolean, jobject, jobjectArray, jbyteArray, JNI_VERSION_1_8};
+use jni::sys::{jlong, jlongArray, jstring, jint, jfloat, jdouble, jboolean, jobject, jobjectArray, jbyteArray, JNI_VERSION_1_8};
 use jni::{JNIEnv, JavaVM};
 use once_cell::sync::OnceCell;
 use std::ffi::CStr;
@@ -2767,7 +2767,7 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nat
 /// Get the last error message.
 #[no_mangle]
 pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetLastError<'local>(
-    mut env: JNIEnv<'local>,
+    env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> JString<'local> {
     match crate::utils::get_last_error() {
@@ -3133,6 +3133,106 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_na
     unsafe {
         let memory_ref = &mut *(memory_handle as *mut WamrMemory);
         if runtime::memory_enlarge(memory_ref, inc_pages as u64) { 1 } else { 0 }
+    }
+}
+
+// =============================================================================
+// Gap Coverage: Runtime - findRegisteredModule
+// =============================================================================
+
+/// Find a previously registered module by name.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeFindRegisteredModule<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    name: JString<'local>,
+) -> jlong {
+    let name_str: String = match env.get_string(&name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    runtime::module_find_registered(&name_str) as jlong
+}
+
+// =============================================================================
+// Gap Coverage: Module - setWasiArgsEx
+// =============================================================================
+
+/// Set WASI args with explicit stdio file descriptors.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeSetWasiArgsEx<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    dir_list: JObjectArray<'local>,
+    map_dir_list: JObjectArray<'local>,
+    env_vars: JObjectArray<'local>,
+    argv: JObjectArray<'local>,
+    stdinfd: jlong,
+    stdoutfd: jlong,
+    stderrfd: jlong,
+) {
+    if module_handle == 0 {
+        return;
+    }
+    let dirs = jni_string_array_to_vec(&mut env, &dir_list);
+    let map_dirs = jni_string_array_to_vec(&mut env, &map_dir_list);
+    let envs = jni_string_array_to_vec(&mut env, &env_vars);
+    let args = jni_string_array_to_vec(&mut env, &argv);
+
+    let dir_cstrings: Vec<std::ffi::CString> = dirs.iter().filter_map(|s| std::ffi::CString::new(s.as_str()).ok()).collect();
+    let map_dir_cstrings: Vec<std::ffi::CString> = map_dirs.iter().filter_map(|s| std::ffi::CString::new(s.as_str()).ok()).collect();
+    let env_cstrings: Vec<std::ffi::CString> = envs.iter().filter_map(|s| std::ffi::CString::new(s.as_str()).ok()).collect();
+    let arg_cstrings: Vec<std::ffi::CString> = args.iter().filter_map(|s| std::ffi::CString::new(s.as_str()).ok()).collect();
+
+    let dir_ptrs: Vec<*const std::os::raw::c_char> = dir_cstrings.iter().map(|s| s.as_ptr()).collect();
+    let map_dir_ptrs: Vec<*const std::os::raw::c_char> = map_dir_cstrings.iter().map(|s| s.as_ptr()).collect();
+    let env_ptrs: Vec<*const std::os::raw::c_char> = env_cstrings.iter().map(|s| s.as_ptr()).collect();
+    let arg_ptrs: Vec<*const std::os::raw::c_char> = arg_cstrings.iter().map(|s| s.as_ptr()).collect();
+
+    unsafe {
+        let module_ref = &*(module_handle as *const WamrModule);
+        runtime::module_set_wasi_args_ex(
+            module_ref.handle,
+            &dir_ptrs,
+            &map_dir_ptrs,
+            &env_ptrs,
+            &arg_ptrs,
+            stdinfd as i64,
+            stdoutfd as i64,
+            stderrfd as i64,
+        );
+    }
+}
+
+// =============================================================================
+// Gap Coverage: Instance - getNativeAddrRange
+// =============================================================================
+
+/// Get native address range for a pointer.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetNativeAddrRange<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    native_ptr: jlong,
+) -> jlongArray {
+    if instance_handle == 0 {
+        return ptr::null_mut();
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    match runtime::get_native_addr_range(instance_ref, native_ptr as *mut u8) {
+        Some((start, end)) => {
+            let arr = [start as jlong, end as jlong];
+            match env.new_long_array(2) {
+                Ok(result) => {
+                    let _ = env.set_long_array_region(&result, 0, &arr);
+                    result.into_raw()
+                }
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        None => ptr::null_mut(),
     }
 }
 

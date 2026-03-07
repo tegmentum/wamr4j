@@ -41,7 +41,7 @@ use crate::runtime::{
     is_running_mode_supported, set_default_running_mode,
     set_running_mode, get_running_mode,
     set_log_level, set_bounds_checks, is_bounds_checks_enabled,
-    module_set_name, module_get_name, module_register,
+    module_set_name, module_get_name, module_register, module_find_registered,
     module_get_hash,
     get_file_package_type, get_module_package_type,
     get_file_package_version, get_module_package_version,
@@ -51,7 +51,7 @@ use crate::runtime::{
     register_host_functions,
     instance_get_exception, instance_set_exception, instance_clear_exception,
     instance_terminate, set_instruction_count_limit,
-    module_set_wasi_args, module_set_wasi_addr_pool, module_set_wasi_ns_lookup_pool,
+    module_set_wasi_args, module_set_wasi_args_ex, module_set_wasi_addr_pool, module_set_wasi_ns_lookup_pool,
     instance_is_wasi_mode, instance_get_wasi_exit_code,
     instance_lookup_wasi_start_function,
     instance_execute_main, instance_execute_func,
@@ -74,6 +74,7 @@ use crate::runtime::{
     copy_callstack,
     shared_heap_create, shared_heap_attach, shared_heap_detach,
     shared_heap_chain, shared_heap_malloc, shared_heap_free,
+    get_native_addr_range,
 };
 use crate::utils::{
     write_error_to_buffer, get_last_error, set_last_error, clear_last_error,
@@ -2585,6 +2586,112 @@ pub extern "C" fn wamr_shared_heap_free(instance: *mut c_void, ptr: u64) {
     }
     let inst = unsafe { &*(instance as *const WamrInstance) };
     shared_heap_free(inst, ptr);
+}
+
+// =============================================================================
+// Module Find Registered
+// =============================================================================
+
+/// Find a previously registered module by name.
+/// Returns the raw module handle or null.
+#[no_mangle]
+pub extern "C" fn wamr_module_find_registered(
+    name: *const c_char,
+) -> *mut c_void {
+    if name.is_null() {
+        return ptr::null_mut();
+    }
+    let name_str = unsafe { CStr::from_ptr(name) };
+    let name_str = match name_str.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    module_find_registered(name_str)
+}
+
+// =============================================================================
+// Extended WASI Configuration
+// =============================================================================
+
+/// Set WASI args with explicit stdio file descriptors.
+#[no_mangle]
+pub extern "C" fn wamr_module_set_wasi_args_ex(
+    module: *mut c_void,
+    dir_list: *const *const c_char,
+    dir_count: c_int,
+    map_dir_list: *const *const c_char,
+    map_dir_count: c_int,
+    env_vars: *const *const c_char,
+    env_count: c_int,
+    argv: *const *const c_char,
+    argc: c_int,
+    stdinfd: c_long,
+    stdoutfd: c_long,
+    stderrfd: c_long,
+) -> c_int {
+    if module.is_null() {
+        return -1;
+    }
+
+    let module_ref = unsafe { &*(module as *const crate::types::WamrModule) };
+
+    let dirs = read_string_array(dir_list, dir_count);
+    let map_dirs = read_string_array(map_dir_list, map_dir_count);
+    let envs = read_string_array(env_vars, env_count);
+    let args = read_string_array(argv, argc);
+
+    let dir_cstrings: Vec<CString> = dirs.iter().filter_map(|s| CString::new(s.as_str()).ok()).collect();
+    let map_dir_cstrings: Vec<CString> = map_dirs.iter().filter_map(|s| CString::new(s.as_str()).ok()).collect();
+    let env_cstrings: Vec<CString> = envs.iter().filter_map(|s| CString::new(s.as_str()).ok()).collect();
+    let arg_cstrings: Vec<CString> = args.iter().filter_map(|s| CString::new(s.as_str()).ok()).collect();
+
+    let dir_ptrs: Vec<*const c_char> = dir_cstrings.iter().map(|s| s.as_ptr()).collect();
+    let map_dir_ptrs: Vec<*const c_char> = map_dir_cstrings.iter().map(|s| s.as_ptr()).collect();
+    let env_ptrs: Vec<*const c_char> = env_cstrings.iter().map(|s| s.as_ptr()).collect();
+    let arg_ptrs: Vec<*const c_char> = arg_cstrings.iter().map(|s| s.as_ptr()).collect();
+
+    module_set_wasi_args_ex(
+        module_ref.handle,
+        &dir_ptrs,
+        &map_dir_ptrs,
+        &env_ptrs,
+        &arg_ptrs,
+        stdinfd as i64,
+        stdoutfd as i64,
+        stderrfd as i64,
+    );
+
+    0
+}
+
+// =============================================================================
+// Native Address Range
+// =============================================================================
+
+/// Get the native address range for a pointer.
+/// Returns start and end pointers via out parameters.
+/// Returns 0 on success, -1 on failure.
+#[no_mangle]
+pub extern "C" fn wamr_get_native_addr_range(
+    instance: *mut c_void,
+    native_ptr: c_long,
+    start_out: *mut c_long,
+    end_out: *mut c_long,
+) -> c_int {
+    if instance.is_null() || start_out.is_null() || end_out.is_null() {
+        return -1;
+    }
+    let inst = unsafe { &*(instance as *const crate::types::WamrInstance) };
+    match get_native_addr_range(inst, native_ptr as *mut u8) {
+        Some((start, end)) => {
+            unsafe {
+                *start_out = start as c_long;
+                *end_out = end as c_long;
+            }
+            0
+        }
+        None => -1,
+    }
 }
 
 fn read_string_array(arr: *const *const c_char, count: c_int) -> Vec<String> {

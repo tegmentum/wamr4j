@@ -78,6 +78,7 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
         static final MethodHandle REGISTER_HOST_FUNCTIONS;
         static final MethodHandle DESTROY_HOST_FUNCTION_REGISTRATION;
         static final MethodHandle SET_WASI_ARGS;
+        static final MethodHandle SET_WASI_ARGS_EX;
         static final MethodHandle SET_WASI_ADDR_POOL;
         static final MethodHandle SET_WASI_NS_LOOKUP_POOL;
         static final MethodHandle INSTANTIATE_EX;
@@ -164,6 +165,21 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
                     ValueLayout.JAVA_INT,     // env_count
                     ValueLayout.ADDRESS,      // argv
                     ValueLayout.JAVA_INT));   // argc
+            SET_WASI_ARGS_EX = resolveOptional(lookup, linker,
+                "wamr_module_set_wasi_args_ex",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,      // module
+                    ValueLayout.ADDRESS,      // dir_list
+                    ValueLayout.JAVA_INT,     // dir_count
+                    ValueLayout.ADDRESS,      // map_dir_list
+                    ValueLayout.JAVA_INT,     // map_dir_count
+                    ValueLayout.ADDRESS,      // env_vars
+                    ValueLayout.JAVA_INT,     // env_count
+                    ValueLayout.ADDRESS,      // argv
+                    ValueLayout.JAVA_INT,     // argc
+                    ValueLayout.JAVA_LONG,    // stdinfd
+                    ValueLayout.JAVA_LONG,    // stdoutfd
+                    ValueLayout.JAVA_LONG));  // stderrfd
             SET_WASI_ADDR_POOL = resolveOptional(lookup, linker,
                 "wamr_module_set_wasi_addr_pool",
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
@@ -727,11 +743,20 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
             final MemorySegment envList = allocateStringArray(arena, envVars);
             final MemorySegment argvList = allocateStringArray(arena, args);
 
-            Handles.SET_WASI_ARGS.invoke(nativeHandle,
-                dirList, preopens.length,
-                mapDirList, mappedDirs.length,
-                envList, envVars.length,
-                argvList, args.length);
+            if (config.hasCustomStdio() && Handles.SET_WASI_ARGS_EX != null) {
+                Handles.SET_WASI_ARGS_EX.invoke(nativeHandle,
+                    dirList, preopens.length,
+                    mapDirList, mappedDirs.length,
+                    envList, envVars.length,
+                    argvList, args.length,
+                    config.getStdinFd(), config.getStdoutFd(), config.getStderrFd());
+            } else {
+                Handles.SET_WASI_ARGS.invoke(nativeHandle,
+                    dirList, preopens.length,
+                    mapDirList, mappedDirs.length,
+                    envList, envVars.length,
+                    argvList, args.length);
+            }
 
             final String[] addrPool = config.getAddrPool();
             if (addrPool.length > 0 && Handles.SET_WASI_ADDR_POOL != null) {

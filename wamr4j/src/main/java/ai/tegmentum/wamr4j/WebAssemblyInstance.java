@@ -612,6 +612,20 @@ public interface WebAssemblyInstance extends AutoCloseable {
     void sharedHeapFree(long ptr);
 
     /**
+     * Gets the native address range containing the specified pointer.
+     *
+     * <p>Returns the start and end addresses of the memory region that contains
+     * the given native pointer. This is useful for validating that a native pointer
+     * falls within a known memory region.
+     *
+     * @param nativePtr the native pointer to query
+     * @return a two-element array {@code [startAddr, endAddr]}, or null if the
+     *         pointer does not fall within any known memory region
+     * @throws IllegalStateException if the instance has been closed
+     */
+    long[] getNativeAddrRange(long nativePtr);
+
+    /**
      * Checks if the instance has been closed.
      *
      * @return true if the instance has been closed, false otherwise

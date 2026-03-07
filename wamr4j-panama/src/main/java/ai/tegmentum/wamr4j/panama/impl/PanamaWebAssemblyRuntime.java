@@ -82,6 +82,7 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
         static final MethodHandle EXTERNREF_RETAIN;
         static final MethodHandle SHARED_HEAP_CREATE;
         static final MethodHandle SHARED_HEAP_CHAIN;
+        static final MethodHandle FIND_REGISTERED_MODULE;
 
         static {
             final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
@@ -178,6 +179,10 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
                 "wamr_shared_heap_chain",
                 FunctionDescriptor.of(ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            FIND_REGISTERED_MODULE = resolveOptional(lookup, linker,
+                "wamr_module_find_registered",
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
         }
 
         private static MethodHandle resolveOptional(final SymbolLookup lookup, final Linker linker,
@@ -710,6 +715,29 @@ public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
             };
         } catch (final Throwable e) {
             LOGGER.warning("Failed to get version part: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public long findRegisteredModule(final String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("Module name cannot be null");
+        }
+        ensureNotClosed();
+
+        if (Handles.FIND_REGISTERED_MODULE == null) {
+            LOGGER.warning("wamr_module_find_registered not available");
+            return 0;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment namePtr = arena.allocateFrom(name);
+            final MemorySegment result =
+                (MemorySegment) Handles.FIND_REGISTERED_MODULE.invoke(namePtr);
+            return result.address();
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to find registered module: " + e.getMessage());
             return 0;
         }
     }

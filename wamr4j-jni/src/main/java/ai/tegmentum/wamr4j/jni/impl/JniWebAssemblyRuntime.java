@@ -357,6 +357,15 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
     }
 
     @Override
+    public long findRegisteredModule(final String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("Module name cannot be null");
+        }
+        ensureNotClosed();
+        return nativeFindRegisteredModule(name);
+    }
+
+    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -599,4 +608,12 @@ public final class JniWebAssemblyRuntime implements WebAssemblyRuntime {
      * @return the chained shared heap handle, or 0 on failure
      */
     private static native long nativeChainSharedHeaps(long head, long body);
+
+    /**
+     * Finds a previously registered module by name.
+     *
+     * @param name the module registration name
+     * @return the native module handle, or 0 if not found
+     */
+    private static native long nativeFindRegisteredModule(String name);
 }
