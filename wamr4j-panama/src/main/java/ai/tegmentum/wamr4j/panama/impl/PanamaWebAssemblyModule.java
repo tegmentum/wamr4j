@@ -86,6 +86,7 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
         static final MethodHandle GET_EXPORT_GLOBAL_TYPE_INFO;
         static final MethodHandle GET_EXPORT_MEMORY_TYPE_INFO;
         static final MethodHandle INSTANTIATE_EX2;
+        static final MethodHandle MODULE_REGISTER;
 
         private static final FunctionDescriptor NAMES_DESC = FunctionDescriptor.of(
             ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -215,6 +216,13 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
                     ValueLayout.JAVA_INT,     // default_stack_size
                     ValueLayout.JAVA_INT,     // host_managed_heap_size
                     ValueLayout.JAVA_INT,     // max_memory_pages
+                    ValueLayout.ADDRESS,      // error_buf
+                    ValueLayout.JAVA_INT));   // error_buf_size
+            MODULE_REGISTER = resolveOptional(lookup, linker,
+                "wamr_module_register",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,      // module
+                    ValueLayout.ADDRESS,      // name
                     ValueLayout.ADDRESS,      // error_buf
                     ValueLayout.JAVA_INT));   // error_buf_size
         }
@@ -668,6 +676,30 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
             return result != 0;
         } catch (final Throwable e) {
             LOGGER.warning("Failed to check binary freeability: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean register(final String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("Module name cannot be null");
+        }
+        ensureNotClosed();
+
+        if (Handles.MODULE_REGISTER == null) {
+            LOGGER.warning("wamr_module_register not available");
+            return false;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment nameStr = arena.allocateFrom(name);
+            final MemorySegment errorBuf = arena.allocate(256);
+            final int result = (int) Handles.MODULE_REGISTER.invoke(
+                nativeHandle, nameStr, errorBuf, 256);
+            return result != 0;
+        } catch (final Throwable t) {
+            LOGGER.warning("Failed to register module: " + t.getMessage());
             return false;
         }
     }

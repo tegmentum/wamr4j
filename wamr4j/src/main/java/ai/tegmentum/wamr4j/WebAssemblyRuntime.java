@@ -256,6 +256,87 @@ public interface WebAssemblyRuntime extends AutoCloseable {
     void destroyContextKey(long key);
 
     /**
+     * Retrieves the last error message from the thread-local error store.
+     *
+     * <p>This is useful for diagnostics when a native call fails without throwing.
+     * The error is thread-local and cleared at the start of most native operations.
+     *
+     * @return the last error message, or null if no error has occurred
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    String getLastError();
+
+    /**
+     * Checks if a binary buffer contains an XIP (eXecute In Place) AOT file.
+     *
+     * <p>XIP files are a WAMR-specific AOT format that can be executed directly
+     * from flash/ROM without loading into RAM.
+     *
+     * @param wasmBytes the binary data to inspect, must not be null
+     * @return true if the buffer is an XIP file, false otherwise
+     * @throws IllegalArgumentException if wasmBytes is null
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    boolean isXipFile(byte[] wasmBytes);
+
+    /**
+     * Gets the package version from raw WebAssembly binary bytes.
+     *
+     * <p>This inspects the binary header without compiling the module.
+     *
+     * @param wasmBytes the binary data to inspect, must not be null
+     * @return the package version number
+     * @throws IllegalArgumentException if wasmBytes is null
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    int getFilePackageVersion(byte[] wasmBytes);
+
+    /**
+     * Retrieves the host object pointer from an externref index.
+     *
+     * <p>This is the reverse of {@link WebAssemblyInstance#externrefObj2Ref(long)}.
+     * It maps a WASM externref index back to the original host object pointer.
+     *
+     * @param externrefIdx the externref index
+     * @return the host object pointer, or 0 if not found
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    long externrefRef2Obj(int externrefIdx);
+
+    /**
+     * Retains an externref, preventing it from being garbage collected by WAMR.
+     *
+     * @param externrefIdx the externref index to retain
+     * @return true if the retain succeeded, false otherwise
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    boolean externrefRetain(int externrefIdx);
+
+    /**
+     * Creates a shared heap that can be attached to multiple instances.
+     *
+     * <p>Shared heaps enable cross-instance memory sharing. The returned handle
+     * must be used with {@link WebAssemblyInstance#attachSharedHeap(long)} and
+     * should eventually be freed by the caller.
+     *
+     * @param size the initial size of the shared heap in bytes
+     * @return a native handle to the shared heap, or 0 on failure
+     * @throws IllegalArgumentException if size is not positive
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    long createSharedHeap(int size);
+
+    /**
+     * Chains two shared heaps together to form a linked heap structure.
+     *
+     * @param head the handle of the head heap
+     * @param body the handle of the body heap to chain
+     * @return a handle to the chained heap, or 0 on failure
+     * @throws IllegalStateException if the runtime has been closed
+     */
+    long chainSharedHeaps(long head, long body);
+
+    /**
      * Checks if the runtime has been closed.
      *
      * @return true if the runtime has been closed, false otherwise

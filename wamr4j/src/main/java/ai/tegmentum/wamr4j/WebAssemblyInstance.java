@@ -484,6 +484,134 @@ public interface WebAssemblyInstance extends AutoCloseable {
     long getContext(long key);
 
     /**
+     * Validates whether a native (host) memory address is within the instance's
+     * linear memory bounds.
+     *
+     * @param nativeAddr the native address to validate
+     * @param size the size of the address range
+     * @return true if the address range is valid, false otherwise
+     * @throws IllegalStateException if the instance has been closed
+     */
+    boolean validateNativeAddr(long nativeAddr, long size);
+
+    /**
+     * Converts a WebAssembly app-space offset to a native (host) pointer.
+     *
+     * @param appOffset the application-space offset
+     * @return the native address, or 0 if the offset is invalid
+     * @throws IllegalStateException if the instance has been closed
+     */
+    long addrAppToNative(long appOffset);
+
+    /**
+     * Converts a native (host) pointer to a WebAssembly app-space offset.
+     *
+     * @param nativeAddr the native address
+     * @return the application-space offset, or 0 if the address is invalid
+     * @throws IllegalStateException if the instance has been closed
+     */
+    long addrNativeToApp(long nativeAddr);
+
+    /**
+     * Sets context on this instance and propagates it to all child instances.
+     *
+     * <p>Unlike {@link #setContext(long, long)}, this also sets the context on
+     * any threads spawned from this instance.
+     *
+     * @param key the context key handle
+     * @param ctx the context value
+     * @throws IllegalStateException if the instance has been closed
+     */
+    void setContextSpread(long key, long ctx);
+
+    /**
+     * Spawns a new execution environment for parallel execution within this instance.
+     *
+     * <p>The returned handle must be destroyed with {@link #destroySpawnedExecEnv(long)}
+     * when no longer needed.
+     *
+     * @return a native handle to the spawned execution environment, or 0 on failure
+     * @throws IllegalStateException if the instance has been closed
+     */
+    long spawnExecEnv();
+
+    /**
+     * Destroys a previously spawned execution environment.
+     *
+     * @param execEnv the native handle of the spawned execution environment
+     * @throws IllegalStateException if the instance has been closed
+     */
+    void destroySpawnedExecEnv(long execEnv);
+
+    /**
+     * Copies the current call stack into structured arrays.
+     *
+     * <p>Returns an array where result[0] contains function indices and result[1]
+     * contains code offsets for each frame. Returns null if the call stack is empty
+     * or unavailable.
+     *
+     * @param maxFrames the maximum number of frames to copy
+     * @param skip the number of top frames to skip
+     * @return int[2][n] where [0][i] is func index and [1][i] is code offset, or null
+     * @throws IllegalArgumentException if maxFrames is not positive
+     * @throws IllegalStateException if the instance has been closed
+     */
+    int[][] copyCallstack(int maxFrames, int skip);
+
+    /**
+     * Maps a host object pointer to a WebAssembly externref index.
+     *
+     * @param externObj the host object pointer
+     * @return the externref index, or -1 on failure
+     * @throws IllegalStateException if the instance has been closed
+     */
+    int externrefObj2Ref(long externObj);
+
+    /**
+     * Removes a host object from the externref mapping table.
+     *
+     * @param externObj the host object pointer to remove
+     * @throws IllegalStateException if the instance has been closed
+     */
+    void externrefObjDel(long externObj);
+
+    /**
+     * Attaches a shared heap to this instance.
+     *
+     * <p>Once attached, the instance can allocate from the shared heap using
+     * {@link #sharedHeapMalloc(long)}.
+     *
+     * @param heapHandle the native handle of the shared heap
+     * @return true if attachment succeeded, false otherwise
+     * @throws IllegalStateException if the instance has been closed
+     */
+    boolean attachSharedHeap(long heapHandle);
+
+    /**
+     * Detaches the shared heap from this instance.
+     *
+     * @throws IllegalStateException if the instance has been closed
+     */
+    void detachSharedHeap();
+
+    /**
+     * Allocates memory from the shared heap attached to this instance.
+     *
+     * @param size the number of bytes to allocate
+     * @return the application offset of the allocated memory, or 0 on failure
+     * @throws IllegalStateException if the instance has been closed
+     */
+    long sharedHeapMalloc(long size);
+
+    /**
+     * Frees memory previously allocated from the shared heap.
+     *
+     * @param ptr the application offset returned by {@link #sharedHeapMalloc(long)}
+     * @throws IllegalStateException if the instance has been closed
+     */
+    void sharedHeapFree(long ptr);
+
+    /**
      * Checks if the instance has been closed.
      *
      * @return true if the instance has been closed, false otherwise

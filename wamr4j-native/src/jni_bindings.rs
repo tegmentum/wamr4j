@@ -2761,6 +2761,382 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nat
 }
 
 // =============================================================================
+// Gap Coverage: WebAssemblyRuntime additions
+// =============================================================================
+
+/// Get the last error message.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetLastError<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> JString<'local> {
+    match crate::utils::get_last_error() {
+        Some(msg) => env.new_string(&msg).unwrap_or_else(|_| JString::default()),
+        None => JString::default(),
+    }
+}
+
+/// Check if a binary buffer is an XIP file.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeIsXipFile<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    wasm_bytes: JByteArray<'local>,
+) -> jboolean {
+    let bytes = match env.convert_byte_array(&wasm_bytes) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+    if runtime::is_xip_file(&bytes) { 1 } else { 0 }
+}
+
+/// Get the file package version from a binary buffer.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeGetFilePackageVersion<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    wasm_bytes: JByteArray<'local>,
+) -> jint {
+    let bytes = match env.convert_byte_array(&wasm_bytes) {
+        Ok(b) => b,
+        Err(_) => return 0,
+    };
+    runtime::get_file_package_version(&bytes) as jint
+}
+
+/// Get host object from externref index.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeExternrefRef2Obj<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    externref_idx: jint,
+) -> jlong {
+    match runtime::externref_ref2obj(externref_idx as u32) {
+        Some(ptr) => ptr as jlong,
+        None => 0,
+    }
+}
+
+/// Retain an externref.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeExternrefRetain<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    externref_idx: jint,
+) -> jboolean {
+    if runtime::externref_retain(externref_idx as u32) { 1 } else { 0 }
+}
+
+/// Create a shared heap.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeCreateSharedHeap<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    size: jint,
+) -> jlong {
+    runtime::shared_heap_create(size as u32) as jlong
+}
+
+/// Chain two shared heaps.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_nativeChainSharedHeaps<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    head: jlong,
+    body: jlong,
+) -> jlong {
+    runtime::shared_heap_chain(
+        head as *mut std::os::raw::c_void,
+        body as *mut std::os::raw::c_void,
+    ) as jlong
+}
+
+// =============================================================================
+// Gap Coverage: WebAssemblyModule additions
+// =============================================================================
+
+/// Register a module under a name.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeRegister<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    module_handle: jlong,
+    name: JString<'local>,
+) -> jboolean {
+    if module_handle == 0 {
+        return 0;
+    }
+    let name_str: String = match env.get_string(&name) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    let module_ref = unsafe { &*(module_handle as *const WamrModule) };
+    match runtime::module_register(module_ref, &name_str) {
+        Ok(()) => 1,
+        Err(_) => 0,
+    }
+}
+
+// =============================================================================
+// Gap Coverage: WebAssemblyInstance additions
+// =============================================================================
+
+/// Validate a native address.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeValidateNativeAddr<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    native_addr: jlong,
+    size: jlong,
+) -> jboolean {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if runtime::validate_native_addr(instance_ref, native_addr as *mut std::os::raw::c_void, size as u64) { 1 } else { 0 }
+    }
+}
+
+/// Convert app offset to native address.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeAddrAppToNative<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    app_offset: jlong,
+) -> jlong {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::addr_app_to_native(instance_ref, app_offset as u64) as jlong
+    }
+}
+
+/// Convert native address to app offset.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeAddrNativeToApp<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    native_addr: jlong,
+) -> jlong {
+    if instance_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        runtime::addr_native_to_app(instance_ref, native_addr as *mut std::os::raw::c_void) as jlong
+    }
+}
+
+/// Set context with spread.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetContextSpread<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    key: jlong,
+    ctx: jlong,
+) {
+    if instance_handle == 0 || key == 0 {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::set_context_spread(
+        instance_ref,
+        key as *mut std::os::raw::c_void,
+        ctx as *mut std::os::raw::c_void,
+    );
+}
+
+/// Spawn a new execution environment.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSpawnExecEnv<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) -> jlong {
+    if instance_handle == 0 {
+        return 0;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::spawn_exec_env(instance_ref) as jlong
+}
+
+/// Destroy a spawned execution environment.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDestroySpawnedExecEnv<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    exec_env: jlong,
+) {
+    if exec_env == 0 {
+        return;
+    }
+    runtime::destroy_spawned_exec_env(exec_env as *mut crate::bindings::WasmExecEnvT);
+}
+
+/// Copy the call stack into arrays.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeCopyCallstack<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    max_frames: jint,
+    skip: jint,
+) -> JObjectArray<'local> {
+    if instance_handle == 0 || max_frames <= 0 {
+        return JObjectArray::default();
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    let frames = runtime::copy_callstack(instance_ref, skip as u32);
+    let count = std::cmp::min(frames.len(), max_frames as usize);
+    if count == 0 {
+        return JObjectArray::default();
+    }
+    let func_indices: Vec<i32> = frames[..count].iter().map(|f| f.1 as i32).collect();
+    let func_offsets: Vec<i32> = frames[..count].iter().map(|f| f.2 as i32).collect();
+    let int_array_class = match env.find_class("[I") {
+        Ok(c) => c,
+        Err(_) => return JObjectArray::default(),
+    };
+    let outer = match env.new_object_array(2, &int_array_class, &JObject::null()) {
+        Ok(a) => a,
+        Err(_) => return JObjectArray::default(),
+    };
+    let indices_arr = match env.new_int_array(count as i32) {
+        Ok(a) => a,
+        Err(_) => return JObjectArray::default(),
+    };
+    let offsets_arr = match env.new_int_array(count as i32) {
+        Ok(a) => a,
+        Err(_) => return JObjectArray::default(),
+    };
+    let _ = env.set_int_array_region(&indices_arr, 0, &func_indices);
+    let _ = env.set_int_array_region(&offsets_arr, 0, &func_offsets);
+    let _ = env.set_object_array_element(&outer, 0, &indices_arr);
+    let _ = env.set_object_array_element(&outer, 1, &offsets_arr);
+    outer
+}
+
+/// Map host object to externref.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeExternrefObj2Ref<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    extern_obj: jlong,
+) -> jint {
+    if instance_handle == 0 {
+        return -1;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    match runtime::externref_obj2ref(instance_ref, extern_obj as *mut std::os::raw::c_void) {
+        Some(idx) => idx as jint,
+        None => -1,
+    }
+}
+
+/// Delete host object from externref table.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeExternrefObjDel<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    extern_obj: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::externref_objdel(instance_ref, extern_obj as *mut std::os::raw::c_void);
+}
+
+/// Attach shared heap to instance.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeAttachSharedHeap<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    heap_handle: jlong,
+) -> jboolean {
+    if instance_handle == 0 || heap_handle == 0 {
+        return 0;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    if runtime::shared_heap_attach(instance_ref, heap_handle as *mut std::os::raw::c_void) { 1 } else { 0 }
+}
+
+/// Detach shared heap from instance.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDetachSharedHeap<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::shared_heap_detach(instance_ref);
+}
+
+/// Allocate from shared heap.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSharedHeapMalloc<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    size: jlong,
+) -> jlong {
+    if instance_handle == 0 {
+        return 0;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::shared_heap_malloc(instance_ref, size as u64) as jlong
+}
+
+/// Free shared heap memory.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSharedHeapFree<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    ptr: jlong,
+) {
+    if instance_handle == 0 {
+        return;
+    }
+    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
+    runtime::shared_heap_free(instance_ref, ptr as u64);
+}
+
+// =============================================================================
+// Gap Coverage: WebAssemblyMemory additions
+// =============================================================================
+
+/// Enlarge memory by pages.
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeEnlarge<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    memory_handle: jlong,
+    inc_pages: jlong,
+) -> jboolean {
+    if memory_handle == 0 {
+        return 0;
+    }
+    unsafe {
+        let memory_ref = &mut *(memory_handle as *mut WamrMemory);
+        if runtime::memory_enlarge(memory_ref, inc_pages as u64) { 1 } else { 0 }
+    }
+}
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 

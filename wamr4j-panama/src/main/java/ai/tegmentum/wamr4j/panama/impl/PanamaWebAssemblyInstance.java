@@ -107,6 +107,19 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
         static final MethodHandle DETECT_NATIVE_STACK_OVERFLOW_SIZE;
         static final MethodHandle SET_CONTEXT;
         static final MethodHandle GET_CONTEXT;
+        static final MethodHandle VALIDATE_NATIVE_ADDR;
+        static final MethodHandle ADDR_APP_TO_NATIVE;
+        static final MethodHandle ADDR_NATIVE_TO_APP;
+        static final MethodHandle SET_CONTEXT_SPREAD;
+        static final MethodHandle SPAWN_EXEC_ENV;
+        static final MethodHandle DESTROY_SPAWNED_EXEC_ENV;
+        static final MethodHandle COPY_CALLSTACK;
+        static final MethodHandle EXTERNREF_OBJ2REF;
+        static final MethodHandle EXTERNREF_OBJDEL;
+        static final MethodHandle SHARED_HEAP_ATTACH;
+        static final MethodHandle SHARED_HEAP_DETACH;
+        static final MethodHandle SHARED_HEAP_MALLOC;
+        static final MethodHandle SHARED_HEAP_FREE;
 
         private static final FunctionDescriptor NAMES_DESC = FunctionDescriptor.of(
             ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -257,6 +270,57 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
                 "wamr_get_context",
                 FunctionDescriptor.of(ValueLayout.JAVA_LONG,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            VALIDATE_NATIVE_ADDR = resolveOptional(lookup, linker,
+                "wamr_validate_native_addr",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+            ADDR_APP_TO_NATIVE = resolveOptional(lookup, linker,
+                "wamr_addr_app_to_native",
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+            ADDR_NATIVE_TO_APP = resolveOptional(lookup, linker,
+                "wamr_addr_native_to_app",
+                FunctionDescriptor.of(ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            SET_CONTEXT_SPREAD = resolveOptional(lookup, linker,
+                "wamr_set_context_spread",
+                FunctionDescriptor.ofVoid(
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            SPAWN_EXEC_ENV = resolveOptional(lookup, linker,
+                "wamr_spawn_exec_env",
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
+            DESTROY_SPAWNED_EXEC_ENV = resolveOptional(lookup, linker,
+                "wamr_destroy_spawned_exec_env",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            COPY_CALLSTACK = resolveOptional(lookup, linker,
+                "wamr_copy_callstack",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+            EXTERNREF_OBJ2REF = resolveOptional(lookup, linker,
+                "wamr_externref_obj2ref",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            EXTERNREF_OBJDEL = resolveOptional(lookup, linker,
+                "wamr_externref_objdel",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            SHARED_HEAP_ATTACH = resolveOptional(lookup, linker,
+                "wamr_shared_heap_attach",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            SHARED_HEAP_DETACH = resolveOptional(lookup, linker,
+                "wamr_shared_heap_detach",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            SHARED_HEAP_MALLOC = resolveOptional(lookup, linker,
+                "wamr_shared_heap_malloc",
+                FunctionDescriptor.of(ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+            SHARED_HEAP_FREE = resolveOptional(lookup, linker,
+                "wamr_shared_heap_free",
+                FunctionDescriptor.ofVoid(
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         }
 
         private static MethodHandle resolveOptional(final SymbolLookup lookup, final Linker linker,
@@ -1242,6 +1306,264 @@ public final class PanamaWebAssemblyInstance implements WebAssemblyInstance {
         } catch (final Throwable e) {
             throw new WasmRuntimeException(
                 "Unexpected error getting memory at index: " + index, e);
+        }
+    }
+
+    @Override
+    public boolean validateNativeAddr(final long nativePtr, final long size) {
+        ensureNotClosed();
+
+        if (Handles.VALIDATE_NATIVE_ADDR == null) {
+            return false;
+        }
+
+        try {
+            final int result = (int) Handles.VALIDATE_NATIVE_ADDR.invoke(
+                nativeHandle, MemorySegment.ofAddress(nativePtr), size);
+            return result != 0;
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to validate native addr: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public long addrAppToNative(final long appOffset) {
+        ensureNotClosed();
+
+        if (Handles.ADDR_APP_TO_NATIVE == null) {
+            return 0;
+        }
+
+        try {
+            final MemorySegment result = (MemorySegment) Handles.ADDR_APP_TO_NATIVE.invoke(
+                nativeHandle, appOffset);
+            if (result.equals(MemorySegment.NULL)) {
+                return 0;
+            }
+            return result.address();
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to convert app addr to native: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public long addrNativeToApp(final long nativePtr) {
+        ensureNotClosed();
+
+        if (Handles.ADDR_NATIVE_TO_APP == null) {
+            return 0;
+        }
+
+        try {
+            return (long) Handles.ADDR_NATIVE_TO_APP.invoke(
+                nativeHandle, MemorySegment.ofAddress(nativePtr));
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to convert native addr to app: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public void setContextSpread(final long key, final long ctx) {
+        ensureNotClosed();
+
+        if (Handles.SET_CONTEXT_SPREAD == null) {
+            LOGGER.warning("wamr_set_context_spread not available");
+            return;
+        }
+
+        try {
+            Handles.SET_CONTEXT_SPREAD.invoke(
+                nativeHandle, MemorySegment.ofAddress(key), MemorySegment.ofAddress(ctx));
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to set context spread: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public long spawnExecEnv() {
+        ensureNotClosed();
+
+        if (Handles.SPAWN_EXEC_ENV == null) {
+            return 0;
+        }
+
+        try {
+            final MemorySegment result = (MemorySegment) Handles.SPAWN_EXEC_ENV.invoke(nativeHandle);
+            if (result.equals(MemorySegment.NULL)) {
+                return 0;
+            }
+            return result.address();
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to spawn exec env: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public void destroySpawnedExecEnv(final long execEnv) {
+        ensureNotClosed();
+
+        if (Handles.DESTROY_SPAWNED_EXEC_ENV == null) {
+            LOGGER.warning("wamr_destroy_spawned_exec_env not available");
+            return;
+        }
+
+        if (execEnv == 0) {
+            return;
+        }
+
+        try {
+            Handles.DESTROY_SPAWNED_EXEC_ENV.invoke(MemorySegment.ofAddress(execEnv));
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to destroy spawned exec env: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public int[][] copyCallstack(final int maxFrames, final int skip) {
+        ensureNotClosed();
+
+        if (Handles.COPY_CALLSTACK == null) {
+            return null;
+        }
+
+        if (maxFrames <= 0) {
+            throw new IllegalArgumentException("maxFrames must be positive: " + maxFrames);
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment funcIndices = arena.allocate(ValueLayout.JAVA_INT, maxFrames);
+            final MemorySegment funcOffsets = arena.allocate(ValueLayout.JAVA_INT, maxFrames);
+            final int count = (int) Handles.COPY_CALLSTACK.invoke(
+                nativeHandle, funcIndices, funcOffsets, maxFrames, skip);
+            if (count <= 0) {
+                return new int[2][0];
+            }
+            final int[] indices = new int[count];
+            final int[] offsets = new int[count];
+            for (int i = 0; i < count; i++) {
+                indices[i] = funcIndices.getAtIndex(ValueLayout.JAVA_INT, i);
+                offsets[i] = funcOffsets.getAtIndex(ValueLayout.JAVA_INT, i);
+            }
+            return new int[][] {indices, offsets};
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to copy callstack: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public int externrefObj2Ref(final long externObj) {
+        ensureNotClosed();
+
+        if (Handles.EXTERNREF_OBJ2REF == null) {
+            return -1;
+        }
+
+        try (final Arena arena = Arena.ofConfined()) {
+            final MemorySegment pIdx = arena.allocate(ValueLayout.JAVA_INT);
+            final int result = (int) Handles.EXTERNREF_OBJ2REF.invoke(
+                nativeHandle, MemorySegment.ofAddress(externObj), pIdx);
+            if (result != 0) {
+                return pIdx.get(ValueLayout.JAVA_INT, 0);
+            }
+            return -1;
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to convert object to externref: " + e.getMessage());
+            return -1;
+        }
+    }
+
+    @Override
+    public void externrefObjDel(final long externObj) {
+        ensureNotClosed();
+
+        if (Handles.EXTERNREF_OBJDEL == null) {
+            return;
+        }
+
+        try {
+            Handles.EXTERNREF_OBJDEL.invoke(
+                nativeHandle, MemorySegment.ofAddress(externObj));
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to delete externref object: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean attachSharedHeap(final long heap) {
+        ensureNotClosed();
+
+        if (Handles.SHARED_HEAP_ATTACH == null) {
+            return false;
+        }
+
+        if (heap == 0) {
+            throw new IllegalArgumentException("Shared heap handle cannot be zero");
+        }
+
+        try {
+            final int result = (int) Handles.SHARED_HEAP_ATTACH.invoke(
+                nativeHandle, MemorySegment.ofAddress(heap));
+            return result != 0;
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to attach shared heap: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void detachSharedHeap() {
+        ensureNotClosed();
+
+        if (Handles.SHARED_HEAP_DETACH == null) {
+            LOGGER.warning("wamr_shared_heap_detach not available");
+            return;
+        }
+
+        try {
+            Handles.SHARED_HEAP_DETACH.invoke(nativeHandle);
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to detach shared heap: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public long sharedHeapMalloc(final long size) {
+        ensureNotClosed();
+
+        if (Handles.SHARED_HEAP_MALLOC == null) {
+            return 0;
+        }
+
+        if (size <= 0) {
+            throw new IllegalArgumentException("Size must be positive: " + size);
+        }
+
+        try {
+            return (long) Handles.SHARED_HEAP_MALLOC.invoke(nativeHandle, size);
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to malloc from shared heap: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
+    public void sharedHeapFree(final long ptr) {
+        ensureNotClosed();
+
+        if (Handles.SHARED_HEAP_FREE == null) {
+            LOGGER.warning("wamr_shared_heap_free not available");
+            return;
+        }
+
+        try {
+            Handles.SHARED_HEAP_FREE.invoke(nativeHandle, ptr);
+        } catch (final Throwable e) {
+            LOGGER.warning("Failed to free shared heap memory: " + e.getMessage());
         }
     }
 

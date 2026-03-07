@@ -637,6 +637,101 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
     }
 
     @Override
+    public boolean validateNativeAddr(final long nativeAddr, final long size) {
+        ensureNotClosed();
+        try {
+            return nativeValidateNativeAddr(nativeHandle, nativeAddr, size);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to validate native addr: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public long addrAppToNative(final long appOffset) {
+        ensureNotClosed();
+        return nativeAddrAppToNative(nativeHandle, appOffset);
+    }
+
+    @Override
+    public long addrNativeToApp(final long nativeAddr) {
+        ensureNotClosed();
+        return nativeAddrNativeToApp(nativeHandle, nativeAddr);
+    }
+
+    @Override
+    public void setContextSpread(final long key, final long ctx) {
+        ensureNotClosed();
+        if (key != 0) {
+            nativeSetContextSpread(nativeHandle, key, ctx);
+        }
+    }
+
+    @Override
+    public long spawnExecEnv() {
+        ensureNotClosed();
+        return nativeSpawnExecEnv(nativeHandle);
+    }
+
+    @Override
+    public void destroySpawnedExecEnv(final long execEnv) {
+        ensureNotClosed();
+        if (execEnv != 0) {
+            nativeDestroySpawnedExecEnv(execEnv);
+        }
+    }
+
+    @Override
+    public int[][] copyCallstack(final int maxFrames, final int skip) {
+        if (maxFrames <= 0) {
+            throw new IllegalArgumentException("maxFrames must be positive: " + maxFrames);
+        }
+        ensureNotClosed();
+        try {
+            return nativeCopyCallstack(nativeHandle, maxFrames, skip);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to copy callstack: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public int externrefObj2Ref(final long externObj) {
+        ensureNotClosed();
+        return nativeExternrefObj2Ref(nativeHandle, externObj);
+    }
+
+    @Override
+    public void externrefObjDel(final long externObj) {
+        ensureNotClosed();
+        nativeExternrefObjDel(nativeHandle, externObj);
+    }
+
+    @Override
+    public boolean attachSharedHeap(final long heapHandle) {
+        ensureNotClosed();
+        return nativeAttachSharedHeap(nativeHandle, heapHandle);
+    }
+
+    @Override
+    public void detachSharedHeap() {
+        ensureNotClosed();
+        nativeDetachSharedHeap(nativeHandle);
+    }
+
+    @Override
+    public long sharedHeapMalloc(final long size) {
+        ensureNotClosed();
+        return nativeSharedHeapMalloc(nativeHandle, size);
+    }
+
+    @Override
+    public void sharedHeapFree(final long ptr) {
+        ensureNotClosed();
+        nativeSharedHeapFree(nativeHandle, ptr);
+    }
+
+    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -1104,6 +1199,118 @@ public final class JniWebAssemblyInstance implements WebAssemblyInstance {
      * @return the context value
      */
     private static native long nativeGetContext(long instanceHandle, long key);
+
+    /**
+     * Validates a native address range.
+     *
+     * @param instanceHandle the native instance handle
+     * @param nativeAddr the native address
+     * @param size the size of the range
+     * @return true if valid
+     */
+    private static native boolean nativeValidateNativeAddr(long instanceHandle, long nativeAddr, long size);
+
+    /**
+     * Converts an application offset to a native address.
+     *
+     * @param instanceHandle the native instance handle
+     * @param appOffset the application offset
+     * @return the native address
+     */
+    private static native long nativeAddrAppToNative(long instanceHandle, long appOffset);
+
+    /**
+     * Converts a native address to an application offset.
+     *
+     * @param instanceHandle the native instance handle
+     * @param nativeAddr the native address
+     * @return the application offset
+     */
+    private static native long nativeAddrNativeToApp(long instanceHandle, long nativeAddr);
+
+    /**
+     * Sets context on an instance with spread semantics.
+     *
+     * @param instanceHandle the native instance handle
+     * @param key the context key handle
+     * @param ctx the context value
+     */
+    private static native void nativeSetContextSpread(long instanceHandle, long key, long ctx);
+
+    /**
+     * Spawns a new execution environment from the instance.
+     *
+     * @param instanceHandle the native instance handle
+     * @return the spawned exec env handle, or 0 on failure
+     */
+    private static native long nativeSpawnExecEnv(long instanceHandle);
+
+    /**
+     * Destroys a spawned execution environment.
+     *
+     * @param execEnv the exec env handle
+     */
+    private static native void nativeDestroySpawnedExecEnv(long execEnv);
+
+    /**
+     * Copies the current call stack frames.
+     *
+     * @param instanceHandle the native instance handle
+     * @param maxFrames the maximum number of frames to capture
+     * @param skip the number of frames to skip
+     * @return array of frames, each as [funcIndex, moduleNameIdx], or null
+     */
+    private static native int[][] nativeCopyCallstack(long instanceHandle, int maxFrames, int skip);
+
+    /**
+     * Converts a native object pointer to an externref index.
+     *
+     * @param instanceHandle the native instance handle
+     * @param externObj the native object pointer
+     * @return the externref index
+     */
+    private static native int nativeExternrefObj2Ref(long instanceHandle, long externObj);
+
+    /**
+     * Deletes a native object from the externref map.
+     *
+     * @param instanceHandle the native instance handle
+     * @param externObj the native object pointer
+     */
+    private static native void nativeExternrefObjDel(long instanceHandle, long externObj);
+
+    /**
+     * Attaches a shared heap to the instance.
+     *
+     * @param instanceHandle the native instance handle
+     * @param heapHandle the shared heap handle
+     * @return true if attached successfully
+     */
+    private static native boolean nativeAttachSharedHeap(long instanceHandle, long heapHandle);
+
+    /**
+     * Detaches the shared heap from the instance.
+     *
+     * @param instanceHandle the native instance handle
+     */
+    private static native void nativeDetachSharedHeap(long instanceHandle);
+
+    /**
+     * Allocates memory from the shared heap.
+     *
+     * @param instanceHandle the native instance handle
+     * @param size the number of bytes to allocate
+     * @return the allocated address, or 0 on failure
+     */
+    private static native long nativeSharedHeapMalloc(long instanceHandle, long size);
+
+    /**
+     * Frees memory previously allocated from the shared heap.
+     *
+     * @param instanceHandle the native instance handle
+     * @param ptr the address to free
+     */
+    private static native void nativeSharedHeapFree(long instanceHandle, long ptr);
 
     /**
      * Static helper for destroying a registration handle from JniWebAssemblyModule

@@ -338,6 +338,20 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
     }
 
     @Override
+    public boolean register(final String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("Module name cannot be null");
+        }
+        ensureNotClosed();
+        try {
+            return nativeRegister(nativeHandle, name);
+        } catch (final Exception e) {
+            LOGGER.warning("Failed to register module: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
     public boolean isClosed() {
         return closed.get();
     }
@@ -549,4 +563,12 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
         int defaultStackSize, int hostManagedHeapSize, int maxMemoryPages)
         throws WasmRuntimeException;
 
+    /**
+     * Registers a module under a given name for inter-module linking.
+     *
+     * @param moduleHandle the native module handle
+     * @param name the name to register the module under
+     * @return true if registration succeeded
+     */
+    private static native boolean nativeRegister(long moduleHandle, String name);
 }

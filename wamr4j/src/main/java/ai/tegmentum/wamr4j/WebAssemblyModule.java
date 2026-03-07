@@ -250,6 +250,19 @@ public interface WebAssemblyModule extends AutoCloseable {
             int maxMemoryPages) throws WasmRuntimeException;
 
     /**
+     * Registers this module under a name for multi-module linking.
+     *
+     * <p>Once registered, other modules can import from this module by name.
+     * The module must remain open as long as other modules reference it.
+     *
+     * @param name the name to register under, must not be null
+     * @return true if registration succeeded, false otherwise
+     * @throws IllegalArgumentException if name is null
+     * @throws IllegalStateException if the module has been closed
+     */
+    boolean register(String name);
+
+    /**
      * Checks if the module has been closed.
      *
      * @return true if the module has been closed, false otherwise

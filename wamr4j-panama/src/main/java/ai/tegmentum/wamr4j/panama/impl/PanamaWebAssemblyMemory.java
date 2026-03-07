@@ -62,6 +62,7 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
         static final MethodHandle DESTROY_MEMORY;
         static final MethodHandle BASE_ADDRESS;
         static final MethodHandle BYTES_PER_PAGE;
+        static final MethodHandle ENLARGE;
 
         static {
             final SymbolLookup lookup = NativeLibraryLoader.getSymbolLookup();
@@ -98,6 +99,12 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
             BYTES_PER_PAGE = bytesPerPageSymbol.isPresent()
                 ? linker.downcallHandle(bytesPerPageSymbol.get(),
                     FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS))
+                : null;
+            final var enlargeSymbol = lookup.find("wamr_memory_enlarge_inst");
+            ENLARGE = enlargeSymbol.isPresent()
+                ? linker.downcallHandle(enlargeSymbol.get(),
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG))
                 : null;
         }
     }
@@ -280,6 +287,29 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
             return result; // Returns previous page count, or -1 on failure
         } catch (final Throwable e) {
             throw new IllegalStateException("Unexpected error growing memory", e);
+        }
+    }
+
+    @Override
+    public boolean enlarge(final long incPages) {
+        if (incPages < 0) {
+            throw new IllegalArgumentException("Increment page count cannot be negative: " + incPages);
+        }
+
+        ensureNotClosed();
+
+        if (Handles.ENLARGE == null) {
+            throw new UnsupportedOperationException("Memory enlargement is not supported");
+        }
+
+        try {
+            final int result = (int) Handles.ENLARGE.invoke(nativeHandle, incPages);
+            if (result != 0) {
+                cachedBuffer = null; // Invalidate cached buffer after successful enlarge
+            }
+            return result != 0;
+        } catch (final Throwable e) {
+            throw new IllegalStateException("Unexpected error enlarging memory", e);
         }
     }
 
