@@ -553,7 +553,7 @@ fn val_t_to_wasm_value(val: &bindings::WasmValT) -> WasmValue {
 }
 
 /// Get the exception message from a module instance, clearing it afterward.
-fn get_and_clear_exception(instance_handle: *mut bindings::WasmModuleInstT) -> String {
+pub(crate) fn get_and_clear_exception(instance_handle: *mut bindings::WasmModuleInstT) -> String {
     unsafe {
         let exception_ptr = bindings::wasm_runtime_get_exception(instance_handle);
         if !exception_ptr.is_null() {
