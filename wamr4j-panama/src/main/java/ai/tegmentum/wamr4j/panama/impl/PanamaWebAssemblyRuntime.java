@@ -19,7 +19,7 @@ package ai.tegmentum.wamr4j.panama.impl;
 import ai.tegmentum.wamr4j.PackageType;
 import ai.tegmentum.wamr4j.RunningMode;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
-import ai.tegmentum.wamr4j.WebAssemblyRuntime;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.exception.CompilationException;
 import ai.tegmentum.wamr4j.exception.ValidationException;
 import ai.tegmentum.wamr4j.panama.internal.NativeLibraryLoader;
@@ -44,7 +44,7 @@ import java.util.logging.Logger;
  * 
  * @since 1.0.0
  */
-public final class PanamaWebAssemblyRuntime implements WebAssemblyRuntime {
+public final class PanamaWebAssemblyRuntime implements WamrRuntimeExtensions {
 
     private static final Logger LOGGER = Logger.getLogger(PanamaWebAssemblyRuntime.class.getName());
     

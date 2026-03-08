@@ -18,6 +18,8 @@ package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
 import ai.tegmentum.wamr4j.WebAssemblyFunction;
+import ai.tegmentum.wamr4j.WamrInstanceExtensions;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
@@ -69,7 +71,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final long jniResult = instance.getCustomData();
             LOGGER.info("JNI getCustomData() default: " + jniResult);
@@ -80,7 +83,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final long panamaResult = instance.getCustomData();
             LOGGER.info("Panama getCustomData() default: " + panamaResult);
@@ -99,7 +103,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setCustomData(testValue);
             final long jniResult = instance.getCustomData();
@@ -111,7 +116,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setCustomData(testValue);
             final long panamaResult = instance.getCustomData();
@@ -131,7 +137,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setCustomData(largeValue);
             final long jniResult = instance.getCustomData();
@@ -144,7 +151,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setCustomData(largeValue);
             final long panamaResult = instance.getCustomData();
@@ -164,7 +172,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setCustomData(100L);
             assertEquals(100L, instance.getCustomData(), "JNI: First set failed");
@@ -182,7 +191,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setCustomData(100L);
             assertEquals(100L, instance.getCustomData(), "Panama: First set failed");
@@ -208,7 +218,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setCustomData(testValue);
             final WebAssemblyFunction addFunc = instance.getFunction("add");
@@ -223,7 +234,8 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setCustomData(testValue);
             final WebAssemblyFunction addFunc = instance.getFunction("add");
@@ -243,10 +255,10 @@ class CustomDataTest {
 
         // JNI
         System.setProperty("wamr4j.runtime", "jni");
-        final WebAssemblyInstance jniInstance;
+        final WamrInstanceExtensions jniInstance;
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
-            jniInstance = module.instantiate();
+            jniInstance = (WamrInstanceExtensions) module.instantiate();
             jniInstance.close();
         }
 
@@ -258,10 +270,10 @@ class CustomDataTest {
 
         // Panama
         System.setProperty("wamr4j.runtime", "panama");
-        final WebAssemblyInstance panamaInstance;
+        final WamrInstanceExtensions panamaInstance;
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
-            panamaInstance = module.instantiate();
+            panamaInstance = (WamrInstanceExtensions) module.instantiate();
             panamaInstance.close();
         }
 
@@ -282,8 +294,10 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance1 = module.instantiate();
-             final WebAssemblyInstance instance2 = module.instantiate()) {
+             final WamrInstanceExtensions instance1 =
+                 (WamrInstanceExtensions) module.instantiate();
+             final WamrInstanceExtensions instance2 =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance1.setCustomData(111L);
             instance2.setCustomData(222L);
@@ -299,8 +313,10 @@ class CustomDataTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance1 = module.instantiate();
-             final WebAssemblyInstance instance2 = module.instantiate()) {
+             final WamrInstanceExtensions instance1 =
+                 (WamrInstanceExtensions) module.instantiate();
+             final WamrInstanceExtensions instance2 =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             instance1.setCustomData(111L);
             instance2.setCustomData(222L);

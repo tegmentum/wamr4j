@@ -17,7 +17,7 @@
 package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
-import ai.tegmentum.wamr4j.WebAssemblyRuntime;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import org.junit.jupiter.api.Test;
 import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.*;
@@ -41,7 +41,8 @@ class ThreadingTest {
 
         // JNI
         System.setProperty("wamr4j.runtime", "jni");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             // The main thread should have thread env inited after runtime creation
             final boolean jniResult = runtime.isThreadEnvInited();
             LOGGER.info("JNI isThreadEnvInited() on main thread: " + jniResult);
@@ -53,7 +54,8 @@ class ThreadingTest {
 
         // Panama
         System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             final boolean panamaResult = runtime.isThreadEnvInited();
             LOGGER.info("Panama isThreadEnvInited() on main thread: " + panamaResult);
             assertNotNull(Boolean.valueOf(panamaResult),
@@ -67,7 +69,8 @@ class ThreadingTest {
 
         // JNI
         System.setProperty("wamr4j.runtime", "jni");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             // initThreadEnv on a thread that already has env may return true (idempotent)
             // or false (already initialized) depending on WAMR behavior
             final boolean jniInit = runtime.initThreadEnv();
@@ -84,7 +87,8 @@ class ThreadingTest {
 
         // Panama
         System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             final boolean panamaInit = runtime.initThreadEnv();
             LOGGER.info("Panama initThreadEnv(): " + panamaInit);
 
@@ -102,7 +106,8 @@ class ThreadingTest {
 
         // JNI
         System.setProperty("wamr4j.runtime", "jni");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             assertDoesNotThrow(() -> runtime.setMaxThreadNum(4),
                 "JNI: setMaxThreadNum(4) should not throw");
             assertDoesNotThrow(() -> runtime.setMaxThreadNum(1),
@@ -114,7 +119,8 @@ class ThreadingTest {
 
         // Panama
         System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             assertDoesNotThrow(() -> runtime.setMaxThreadNum(4),
                 "Panama: setMaxThreadNum(4) should not throw");
             assertDoesNotThrow(() -> runtime.setMaxThreadNum(1),
@@ -131,7 +137,8 @@ class ThreadingTest {
 
         // JNI
         System.setProperty("wamr4j.runtime", "jni");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             assertThrows(IllegalArgumentException.class,
                 () -> runtime.setMaxThreadNum(-1),
                 "JNI: setMaxThreadNum(-1) should throw");
@@ -140,7 +147,8 @@ class ThreadingTest {
 
         // Panama
         System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             assertThrows(IllegalArgumentException.class,
                 () -> runtime.setMaxThreadNum(-1),
                 "Panama: setMaxThreadNum(-1) should throw");
@@ -154,7 +162,8 @@ class ThreadingTest {
 
         // JNI
         System.setProperty("wamr4j.runtime", "jni");
-        final WebAssemblyRuntime jniRuntime = RuntimeFactory.createRuntime();
+        final WamrRuntimeExtensions jniRuntime =
+            (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
         jniRuntime.close();
 
         assertThrows(IllegalStateException.class, () -> jniRuntime.initThreadEnv(),
@@ -169,7 +178,8 @@ class ThreadingTest {
 
         // Panama
         System.setProperty("wamr4j.runtime", "panama");
-        final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime();
+        final WamrRuntimeExtensions panamaRuntime =
+            (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
         panamaRuntime.close();
 
         assertThrows(IllegalStateException.class, () -> panamaRuntime.initThreadEnv(),

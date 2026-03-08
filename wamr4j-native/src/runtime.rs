@@ -242,13 +242,6 @@ pub fn module_find_registered(name: &str) -> *mut std::os::raw::c_void {
     unsafe { bindings::wasm_runtime_find_module_registered(c_name.as_ptr()) }
 }
 
-/// Get the module hash string
-pub fn module_get_hash(_module: &WamrModule) -> Option<String> {
-    // wasm_runtime_get_module_hash is only available on linux-sgx platform
-    // with remote attestation enabled. Return None on other platforms.
-    None
-}
-
 // =============================================================================
 // Package Type Detection
 // =============================================================================

@@ -18,6 +18,8 @@ package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
 import ai.tegmentum.wamr4j.RunningMode;
+import ai.tegmentum.wamr4j.WamrInstanceExtensions;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
@@ -66,13 +68,14 @@ class RuntimeConfigurationTest {
         // JNI runtime
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
             for (final RunningMode mode : RunningMode.values()) {
-                jniResults[mode.ordinal()] = runtime.isRunningModeSupported(mode);
+                jniResults[mode.ordinal()] = ext.isRunningModeSupported(mode);
                 LOGGER.info("JNI isRunningModeSupported(" + mode + "): " + jniResults[mode.ordinal()]);
             }
 
             // Interpreter should always be supported
-            assertTrue(runtime.isRunningModeSupported(RunningMode.INTERP),
+            assertTrue(ext.isRunningModeSupported(RunningMode.INTERP),
                 "JNI: Interpreter mode should always be supported");
         } catch (final Exception e) {
             fail("Failed to create JNI runtime: " + e.getMessage());
@@ -84,12 +87,13 @@ class RuntimeConfigurationTest {
         // Panama runtime
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
             for (final RunningMode mode : RunningMode.values()) {
-                panamaResults[mode.ordinal()] = runtime.isRunningModeSupported(mode);
+                panamaResults[mode.ordinal()] = ext.isRunningModeSupported(mode);
                 LOGGER.info("Panama isRunningModeSupported(" + mode + "): " + panamaResults[mode.ordinal()]);
             }
 
-            assertTrue(runtime.isRunningModeSupported(RunningMode.INTERP),
+            assertTrue(ext.isRunningModeSupported(RunningMode.INTERP),
                 "Panama: Interpreter mode should always be supported");
         } catch (final Exception e) {
             LOGGER.warning("Panama runtime not available, skipping comparison: " + e.getMessage());
@@ -115,7 +119,8 @@ class RuntimeConfigurationTest {
         // JNI runtime - set interpreter as default (should always succeed)
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
-            jniResult = runtime.setDefaultRunningMode(RunningMode.INTERP);
+            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
+            jniResult = ext.setDefaultRunningMode(RunningMode.INTERP);
             LOGGER.info("JNI setDefaultRunningMode(INTERP): " + jniResult);
             assertTrue(jniResult, "JNI: Setting interpreter as default should succeed");
         } catch (final Exception e) {
@@ -128,7 +133,8 @@ class RuntimeConfigurationTest {
         // Panama runtime
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
-            panamaResult = runtime.setDefaultRunningMode(RunningMode.INTERP);
+            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
+            panamaResult = ext.setDefaultRunningMode(RunningMode.INTERP);
             LOGGER.info("Panama setDefaultRunningMode(INTERP): " + panamaResult);
             assertTrue(panamaResult, "Panama: Setting interpreter as default should succeed");
         } catch (final Exception e) {
@@ -149,9 +155,10 @@ class RuntimeConfigurationTest {
         // JNI runtime
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
-            assertDoesNotThrow(() -> runtime.setLogLevel(0), "JNI: setLogLevel(0) should not throw");
-            assertDoesNotThrow(() -> runtime.setLogLevel(3), "JNI: setLogLevel(3) should not throw");
-            assertDoesNotThrow(() -> runtime.setLogLevel(5), "JNI: setLogLevel(5) should not throw");
+            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
+            assertDoesNotThrow(() -> ext.setLogLevel(0), "JNI: setLogLevel(0) should not throw");
+            assertDoesNotThrow(() -> ext.setLogLevel(3), "JNI: setLogLevel(3) should not throw");
+            assertDoesNotThrow(() -> ext.setLogLevel(5), "JNI: setLogLevel(5) should not throw");
             LOGGER.info("JNI: setLogLevel tested at levels 0, 3, 5");
         } catch (final Exception e) {
             fail("Failed to create JNI runtime: " + e.getMessage());
@@ -163,9 +170,10 @@ class RuntimeConfigurationTest {
         // Panama runtime
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
-            assertDoesNotThrow(() -> runtime.setLogLevel(0), "Panama: setLogLevel(0) should not throw");
-            assertDoesNotThrow(() -> runtime.setLogLevel(3), "Panama: setLogLevel(3) should not throw");
-            assertDoesNotThrow(() -> runtime.setLogLevel(5), "Panama: setLogLevel(5) should not throw");
+            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
+            assertDoesNotThrow(() -> ext.setLogLevel(0), "Panama: setLogLevel(0) should not throw");
+            assertDoesNotThrow(() -> ext.setLogLevel(3), "Panama: setLogLevel(3) should not throw");
+            assertDoesNotThrow(() -> ext.setLogLevel(5), "Panama: setLogLevel(5) should not throw");
             LOGGER.info("Panama: setLogLevel tested at levels 0, 3, 5");
         } catch (final Exception e) {
             LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
@@ -187,16 +195,17 @@ class RuntimeConfigurationTest {
              final WebAssemblyModule module = runtime.compile(moduleBytes);
              final WebAssemblyInstance instance = module.instantiate()) {
 
-            jniMode = instance.getRunningMode();
+            final WamrInstanceExtensions instExt = (WamrInstanceExtensions) instance;
+            jniMode = instExt.getRunningMode();
             LOGGER.info("JNI initial running mode: " + jniMode);
             assertNotNull(jniMode, "JNI: getRunningMode() should return a non-null value");
 
             // Try setting interpreter mode (should succeed)
-            final boolean setResult = instance.setRunningMode(RunningMode.INTERP);
+            final boolean setResult = instExt.setRunningMode(RunningMode.INTERP);
             LOGGER.info("JNI setRunningMode(INTERP): " + setResult);
             assertTrue(setResult, "JNI: setRunningMode(INTERP) should succeed");
 
-            final RunningMode afterSet = instance.getRunningMode();
+            final RunningMode afterSet = instExt.getRunningMode();
             LOGGER.info("JNI running mode after set: " + afterSet);
             assertEquals(RunningMode.INTERP, afterSet,
                 "JNI: Running mode should be INTERP after set");
@@ -213,18 +222,19 @@ class RuntimeConfigurationTest {
              final WebAssemblyModule module = runtime.compile(moduleBytes);
              final WebAssemblyInstance instance = module.instantiate()) {
 
-            final RunningMode panamaMode = instance.getRunningMode();
+            final WamrInstanceExtensions instExt = (WamrInstanceExtensions) instance;
+            final RunningMode panamaMode = instExt.getRunningMode();
             LOGGER.info("Panama initial running mode: " + panamaMode);
             assertNotNull(panamaMode, "Panama: getRunningMode() should return a non-null value");
 
             assertEquals(jniMode, panamaMode,
                 "JNI and Panama should report the same initial running mode");
 
-            final boolean setResult = instance.setRunningMode(RunningMode.INTERP);
+            final boolean setResult = instExt.setRunningMode(RunningMode.INTERP);
             LOGGER.info("Panama setRunningMode(INTERP): " + setResult);
             assertTrue(setResult, "Panama: setRunningMode(INTERP) should succeed");
 
-            final RunningMode afterSet = instance.getRunningMode();
+            final RunningMode afterSet = instExt.getRunningMode();
             LOGGER.info("Panama running mode after set: " + afterSet);
             assertEquals(RunningMode.INTERP, afterSet,
                 "Panama: Running mode should be INTERP after set");
@@ -252,20 +262,21 @@ class RuntimeConfigurationTest {
              final WebAssemblyModule module = runtime.compile(moduleBytes);
              final WebAssemblyInstance instance = module.instantiate()) {
 
-            jniInitialBounds = instance.isBoundsChecksEnabled();
+            final WamrInstanceExtensions instExt = (WamrInstanceExtensions) instance;
+            jniInitialBounds = instExt.isBoundsChecksEnabled();
             LOGGER.info("JNI initial bounds checks: " + jniInitialBounds);
 
             // Disable bounds checks
-            final boolean jniSetResult = instance.setBoundsChecks(false);
+            final boolean jniSetResult = instExt.setBoundsChecks(false);
             LOGGER.info("JNI setBoundsChecks(false): " + jniSetResult);
 
-            jniAfterDisable = instance.isBoundsChecksEnabled();
+            jniAfterDisable = instExt.isBoundsChecksEnabled();
             LOGGER.info("JNI bounds checks after disable: " + jniAfterDisable);
 
             // Re-enable bounds checks
-            instance.setBoundsChecks(true);
+            instExt.setBoundsChecks(true);
 
-            jniAfterReenable = instance.isBoundsChecksEnabled();
+            jniAfterReenable = instExt.isBoundsChecksEnabled();
             LOGGER.info("JNI bounds checks after re-enable: " + jniAfterReenable);
 
             // Note: On platforms with hardware bounds checking (e.g., macOS/Linux 64-bit),
@@ -285,19 +296,20 @@ class RuntimeConfigurationTest {
              final WebAssemblyModule module = runtime.compile(moduleBytes);
              final WebAssemblyInstance instance = module.instantiate()) {
 
-            final boolean panamaInitialBounds = instance.isBoundsChecksEnabled();
+            final WamrInstanceExtensions instExt = (WamrInstanceExtensions) instance;
+            final boolean panamaInitialBounds = instExt.isBoundsChecksEnabled();
             LOGGER.info("Panama initial bounds checks: " + panamaInitialBounds);
             assertEquals(jniInitialBounds, panamaInitialBounds,
                 "JNI and Panama should agree on initial bounds checks state");
 
-            instance.setBoundsChecks(false);
-            final boolean panamaAfterDisable = instance.isBoundsChecksEnabled();
+            instExt.setBoundsChecks(false);
+            final boolean panamaAfterDisable = instExt.isBoundsChecksEnabled();
             LOGGER.info("Panama bounds checks after disable: " + panamaAfterDisable);
             assertEquals(jniAfterDisable, panamaAfterDisable,
                 "JNI and Panama should agree on bounds checks after disable");
 
-            instance.setBoundsChecks(true);
-            final boolean panamaAfterReenable = instance.isBoundsChecksEnabled();
+            instExt.setBoundsChecks(true);
+            final boolean panamaAfterReenable = instExt.isBoundsChecksEnabled();
             LOGGER.info("Panama bounds checks after re-enable: " + panamaAfterReenable);
             assertEquals(jniAfterReenable, panamaAfterReenable,
                 "JNI and Panama should agree on bounds checks after re-enable");
@@ -314,11 +326,12 @@ class RuntimeConfigurationTest {
 
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
             assertThrows(IllegalArgumentException.class,
-                () -> runtime.isRunningModeSupported(null),
+                () -> ext.isRunningModeSupported(null),
                 "isRunningModeSupported(null) should throw IllegalArgumentException");
             assertThrows(IllegalArgumentException.class,
-                () -> runtime.setDefaultRunningMode(null),
+                () -> ext.setDefaultRunningMode(null),
                 "setDefaultRunningMode(null) should throw IllegalArgumentException");
         } catch (final Exception e) {
             fail("Failed to create JNI runtime: " + e.getMessage());
@@ -331,8 +344,9 @@ class RuntimeConfigurationTest {
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
              final WebAssemblyInstance instance = module.instantiate()) {
+            final WamrInstanceExtensions instExt = (WamrInstanceExtensions) instance;
             assertThrows(IllegalArgumentException.class,
-                () -> instance.setRunningMode(null),
+                () -> instExt.setRunningMode(null),
                 "instance.setRunningMode(null) should throw IllegalArgumentException");
         } catch (final Exception e) {
             fail("Failed to create JNI instance: " + e.getMessage());

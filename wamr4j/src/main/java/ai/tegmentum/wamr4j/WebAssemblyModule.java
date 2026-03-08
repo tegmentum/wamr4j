@@ -143,14 +143,6 @@ public interface WebAssemblyModule extends AutoCloseable {
     int getPackageVersion();
 
     /**
-     * Returns the hash string for this module.
-     *
-     * @return the module hash string, or an empty string if unavailable
-     * @throws IllegalStateException if the module has been closed
-     */
-    String getHash();
-
-    /**
      * Checks if the underlying binary data can be freed after loading.
      *
      * <p>Some module formats allow the original bytecode buffer to be freed
@@ -231,23 +223,6 @@ public interface WebAssemblyModule extends AutoCloseable {
      * @throws IllegalStateException if the module has been closed
      */
     int[] getExportMemoryTypeInfo(String name);
-
-    /**
-     * Creates a new instance of this module using the opaque InstantiationArgs2 API.
-     *
-     * <p>This is the ABI-stable alternative to {@link #instantiateEx(int, int, int)}.
-     * It uses the opaque InstantiationArgs2 struct which allows new fields to be added
-     * without breaking ABI compatibility.
-     *
-     * @param defaultStackSize the default stack size in bytes
-     * @param hostManagedHeapSize the host-managed heap size in bytes
-     * @param maxMemoryPages the maximum number of memory pages
-     * @return a new WebAssembly instance
-     * @throws WasmRuntimeException if instantiation fails
-     * @throws IllegalStateException if the module has been closed
-     */
-    WebAssemblyInstance instantiateEx2(int defaultStackSize, int hostManagedHeapSize,
-            int maxMemoryPages) throws WasmRuntimeException;
 
     /**
      * Registers this module under a name for multi-module linking.

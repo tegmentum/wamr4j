@@ -308,28 +308,6 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
     }
 }
 
-/// Get the module hash string
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetModuleHash<'local>(
-    env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    module_handle: jlong,
-) -> jstring {
-    if module_handle == 0 {
-        return ptr::null_mut();
-    }
-    unsafe {
-        let module_ref = &*(module_handle as *const WamrModule);
-        match runtime::module_get_hash(module_ref) {
-            Some(hash) => match env.new_string(&hash) {
-                Ok(s) => s.into_raw(),
-                Err(_) => ptr::null_mut(),
-            },
-            None => ptr::null_mut(),
-        }
-    }
-}
-
 /// Get the package type of a loaded module
 #[no_mangle]
 pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetPackageType<'local>(

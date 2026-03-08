@@ -209,18 +209,6 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
     }
 
     @Override
-    public String getHash() {
-        ensureNotClosed();
-        try {
-            final String hash = nativeGetModuleHash(nativeHandle);
-            return hash != null ? hash : "";
-        } catch (final Exception e) {
-            LOGGER.warning("Failed to get module hash: " + e.getMessage());
-            return "";
-        }
-    }
-
-    @Override
     public boolean isUnderlyingBinaryFreeable() {
         ensureNotClosed();
         try {
@@ -313,21 +301,6 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
             LOGGER.fine("Failed to get custom section '" + name + "': " + e.getMessage());
             return null;
         }
-    }
-
-    @Override
-    public WebAssemblyInstance instantiateEx2(final int defaultStackSize,
-            final int hostManagedHeapSize, final int maxMemoryPages) throws WasmRuntimeException {
-        ensureNotClosed();
-        if (defaultStackSize < 0 || hostManagedHeapSize < 0 || maxMemoryPages < 0) {
-            throw new IllegalArgumentException("Parameters must be non-negative");
-        }
-        final long instanceHandle = nativeInstantiateEx2(nativeHandle,
-            defaultStackSize, hostManagedHeapSize, maxMemoryPages);
-        if (instanceHandle == 0) {
-            throw new WasmRuntimeException("Failed to instantiate module with ex2 API");
-        }
-        return new JniWebAssemblyInstance(instanceHandle, 0L);
     }
 
     @Override
@@ -458,14 +431,6 @@ public final class JniWebAssemblyModule implements WebAssemblyModule {
      * @return the module name, or null
      */
     private static native String nativeGetModuleName(long moduleHandle);
-
-    /**
-     * Gets the hash string for a module.
-     *
-     * @param moduleHandle the native module handle
-     * @return the module hash, or null
-     */
-    private static native String nativeGetModuleHash(long moduleHandle);
 
     /**
      * Gets the package type of a module.

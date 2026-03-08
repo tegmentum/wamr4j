@@ -17,6 +17,7 @@
 package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
+import ai.tegmentum.wamr4j.WamrInstanceExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyMemory;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
@@ -74,7 +75,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             jniOffset = instance.moduleMalloc(256);
             LOGGER.info("JNI moduleMalloc(256) returned offset: " + jniOffset);
@@ -100,7 +102,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final long panamaOffset = instance.moduleMalloc(256);
             LOGGER.info("Panama moduleMalloc(256) returned offset: " + panamaOffset);
@@ -132,7 +135,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertThrows(IllegalArgumentException.class,
                 () -> instance.moduleMalloc(0),
@@ -161,7 +165,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             jniOffset = instance.moduleDupData(testData);
             LOGGER.info("JNI moduleDupData returned offset: " + jniOffset);
@@ -189,7 +194,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final long panamaOffset = instance.moduleDupData(testData);
             LOGGER.info("Panama moduleDupData returned offset: " + panamaOffset);
@@ -221,7 +227,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertThrows(IllegalArgumentException.class,
                 () -> instance.moduleDupData(null),
@@ -250,7 +257,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             // Offset 0, size 100 — should be valid within 1 page (65536 bytes)
             jniValid = instance.validateAppAddr(0, 100);
@@ -278,7 +286,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final boolean panamaValid = instance.validateAppAddr(0, 100);
             LOGGER.info("Panama validateAppAddr(0, 100): " + panamaValid);
@@ -312,7 +321,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             // Write "Hi\0" at a known offset
             final WebAssemblyMemory memory = instance.getMemory();
@@ -333,7 +343,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final WebAssemblyMemory memory = instance.getMemory();
             memory.write(0, new byte[]{0x48, 0x69, 0x00});
@@ -363,7 +374,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final WebAssemblyMemory memory = instance.getMemoryByIndex(0);
             assertNotNull(memory, "JNI: getMemoryByIndex(0) should not return null");
@@ -399,7 +411,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final WebAssemblyMemory memory = instance.getMemoryByIndex(0);
             assertNotNull(memory, "Panama: getMemoryByIndex(0) should not return null");
@@ -527,7 +540,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             // Allocate several blocks
             final long offset1 = instance.moduleMalloc(64);
@@ -572,7 +586,8 @@ class AdvancedMemoryOperationsTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             // Allocate space for 4 bytes
             final long offset = instance.moduleMalloc(4);

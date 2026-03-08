@@ -17,8 +17,8 @@
 package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
+import ai.tegmentum.wamr4j.WamrInstanceExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyFunction;
-import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
 import ai.tegmentum.wamr4j.test.framework.WasmModuleBuilder;
@@ -70,7 +70,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final String jniCallStack = instance.getCallStack();
             LOGGER.info("JNI getCallStack() outside execution: "
@@ -84,7 +85,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final String panamaCallStack = instance.getCallStack();
             LOGGER.info("Panama getCallStack() outside execution: "
@@ -104,7 +106,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertDoesNotThrow(() -> instance.dumpCallStack(),
                 "JNI: dumpCallStack should not throw");
@@ -115,7 +118,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertDoesNotThrow(() -> instance.dumpCallStack(),
                 "Panama: dumpCallStack should not throw");
@@ -133,7 +137,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final WebAssemblyFunction addFunc = instance.getFunction("add");
             addFunc.invoke(1, 2); // Execute something first
@@ -147,7 +152,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final WebAssemblyFunction addFunc = instance.getFunction("add");
             addFunc.invoke(1, 2);
@@ -168,7 +174,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             // Before any execution
             final double jniBefore = instance.sumWasmExecTime();
@@ -189,7 +196,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final double panamaBefore = instance.sumWasmExecTime();
             LOGGER.info("Panama sumWasmExecTime() before execution: " + panamaBefore);
@@ -215,7 +223,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final WebAssemblyFunction addFunc = instance.getFunction("add");
             addFunc.invoke(1, 2);
@@ -235,7 +244,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final WebAssemblyFunction addFunc = instance.getFunction("add");
             addFunc.invoke(1, 2);
@@ -263,7 +273,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertThrows(IllegalArgumentException.class,
                 () -> instance.getWasmFuncExecTime(null),
@@ -275,7 +286,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertThrows(IllegalArgumentException.class,
                 () -> instance.getWasmFuncExecTime(null),
@@ -294,7 +306,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertDoesNotThrow(() -> instance.dumpMemConsumption(),
                 "JNI: dumpMemConsumption should not throw");
@@ -305,7 +318,8 @@ class DebuggingProfilingTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertDoesNotThrow(() -> instance.dumpMemConsumption(),
                 "Panama: dumpMemConsumption should not throw");
@@ -321,10 +335,10 @@ class DebuggingProfilingTest {
 
         // JNI
         System.setProperty("wamr4j.runtime", "jni");
-        final WebAssemblyInstance jniInstance;
+        final WamrInstanceExtensions jniInstance;
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
-            jniInstance = module.instantiate();
+            jniInstance = (WamrInstanceExtensions) module.instantiate();
             jniInstance.close();
         }
 
@@ -345,10 +359,10 @@ class DebuggingProfilingTest {
 
         // Panama
         System.setProperty("wamr4j.runtime", "panama");
-        final WebAssemblyInstance panamaInstance;
+        final WamrInstanceExtensions panamaInstance;
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
-            panamaInstance = module.instantiate();
+            panamaInstance = (WamrInstanceExtensions) module.instantiate();
             panamaInstance.close();
         }
 
