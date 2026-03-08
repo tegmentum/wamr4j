@@ -17,9 +17,10 @@
 package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
-import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
+import ai.tegmentum.wamr4j.WamrInstanceExtensions;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.test.framework.WasmModuleBuilder;
 import org.junit.jupiter.api.Test;
 import java.util.logging.Logger;
@@ -183,7 +184,8 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
-            try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
+            try (final WamrRuntimeExtensions rt =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
 
                 // No host functions registered, so nothing should be linked
                 final boolean linked = rt.isImportFuncLinked("env", "some_function");
@@ -199,7 +201,8 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
-            try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
+            try (final WamrRuntimeExtensions rt =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
 
                 final boolean linked = rt.isImportGlobalLinked("env", "some_global");
                 LOGGER.info(runtime.toUpperCase() + ": isImportGlobalLinked('env', 'some_global') = " + linked);
@@ -222,7 +225,8 @@ class TypeIntrospectionAndOpsTest {
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes);
-                 final WebAssemblyInstance instance = module.instantiate()) {
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
                 final boolean found = instance.lookupMemory("memory");
                 LOGGER.info(runtime.toUpperCase() + ": lookupMemory('memory') = " + found);
@@ -251,7 +255,8 @@ class TypeIntrospectionAndOpsTest {
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes);
-                 final WebAssemblyInstance instance = module.instantiate()) {
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
                 // begin/end blocking op should not crash
                 final boolean started = instance.beginBlockingOp();
@@ -279,7 +284,8 @@ class TypeIntrospectionAndOpsTest {
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes);
-                 final WebAssemblyInstance instance = module.instantiate()) {
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
                 final boolean overflow = instance.detectNativeStackOverflow();
                 LOGGER.info(runtime.toUpperCase() + ": detectNativeStackOverflow() = " + overflow);
@@ -308,7 +314,8 @@ class TypeIntrospectionAndOpsTest {
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes);
-                 final WebAssemblyInstance instance = module.instantiate()) {
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
                 // Test with small size - may or may not overflow depending on
                 // native stack boundary configuration; just verify no crash

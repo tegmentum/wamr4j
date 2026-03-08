@@ -21,6 +21,7 @@ import ai.tegmentum.wamr4j.WebAssemblyFunction;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
+import ai.tegmentum.wamr4j.WamrInstanceExtensions;
 import ai.tegmentum.wamr4j.test.framework.WasmModuleBuilder;
 import org.junit.jupiter.api.Test;
 import java.util.logging.Logger;
@@ -71,7 +72,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             final String jniException = instance.getException();
             LOGGER.info("JNI getException() initial: " + jniException);
@@ -82,7 +83,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             final String panamaException = instance.getException();
             LOGGER.info("Panama getException() initial: " + panamaException);
@@ -101,7 +102,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             // Set exception
             instance.setException(testMessage);
@@ -122,7 +123,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             // Set exception
             instance.setException(testMessage);
@@ -150,7 +151,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setException("first exception");
             String jniEx = instance.getException();
@@ -171,7 +172,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setException("first exception");
             String panamaEx = instance.getException();
@@ -199,7 +200,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             assertThrows(IllegalArgumentException.class,
                 () -> instance.setException(null),
@@ -210,7 +211,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             assertThrows(IllegalArgumentException.class,
                 () -> instance.setException(null),
@@ -228,7 +229,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             // Call function first to verify it works
             final WebAssemblyFunction add = instance.getFunction("add");
@@ -245,7 +246,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             final WebAssemblyFunction add = instance.getFunction("add");
             final Object result = add.invoke(10, 20);
@@ -269,7 +270,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             // Set a generous limit
             instance.setInstructionCountLimit(1000000);
@@ -295,7 +296,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setInstructionCountLimit(1000000);
             LOGGER.info("Panama setInstructionCountLimit(1000000) called");
@@ -326,7 +327,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             // Set an exception
             instance.setException("pre-call exception");
@@ -354,7 +355,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             instance.setException("pre-call exception");
             LOGGER.info("Panama set exception before call");
@@ -385,7 +386,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             assertNull(instance.getException(), "JNI: No exception initially");
             instance.clearException(); // Should not crash
@@ -397,7 +398,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance = (WamrInstanceExtensions) module.instantiate()) {
 
             assertNull(instance.getException(), "Panama: No exception initially");
             instance.clearException(); // Should not crash
@@ -416,7 +417,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "jni");
         final WebAssemblyRuntime jniRuntime = RuntimeFactory.createRuntime();
         final WebAssemblyModule jniModule = jniRuntime.compile(moduleBytes);
-        final WebAssemblyInstance jniInstance = jniModule.instantiate();
+        final WamrInstanceExtensions jniInstance = (WamrInstanceExtensions) jniModule.instantiate();
         jniInstance.close();
 
         assertThrows(IllegalStateException.class,
@@ -443,7 +444,7 @@ class ExceptionExecutionControlTest {
         System.setProperty("wamr4j.runtime", "panama");
         final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime();
         final WebAssemblyModule panamaModule = panamaRuntime.compile(moduleBytes);
-        final WebAssemblyInstance panamaInstance = panamaModule.instantiate();
+        final WamrInstanceExtensions panamaInstance = (WamrInstanceExtensions) panamaModule.instantiate();
         panamaInstance.close();
 
         assertThrows(IllegalStateException.class,

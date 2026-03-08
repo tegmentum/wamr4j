@@ -71,7 +71,6 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
         static final MethodHandle GET_EXPORT_FUNC_SIG;
         static final MethodHandle SET_MODULE_NAME;
         static final MethodHandle GET_MODULE_NAME;
-        static final MethodHandle GET_MODULE_HASH;
         static final MethodHandle GET_PACKAGE_TYPE;
         static final MethodHandle GET_PACKAGE_VERSION;
         static final MethodHandle IS_UNDERLYING_BINARY_FREEABLE;
@@ -123,10 +122,6 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
             GET_MODULE_NAME = resolveOptional(lookup, linker,
                 "wamr_module_get_name",
-                FunctionDescriptor.of(ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-            GET_MODULE_HASH = resolveOptional(lookup, linker,
-                "wamr_module_get_hash",
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
             GET_PACKAGE_TYPE = resolveOptional(lookup, linker,
@@ -656,29 +651,6 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
     }
 
     @Override
-    public String getHash() {
-        ensureNotClosed();
-
-        if (Handles.GET_MODULE_HASH == null) {
-            LOGGER.warning("wamr_module_get_hash not available");
-            return "";
-        }
-
-        try (final Arena arena = Arena.ofConfined()) {
-            final MemorySegment hashBuf = arena.allocate(WasmTypes.MAX_NAME_LENGTH);
-            final int rc = (int) Handles.GET_MODULE_HASH.invoke(
-                nativeHandle, hashBuf, WasmTypes.MAX_NAME_LENGTH);
-            if (rc != 0) {
-                return "";
-            }
-            return hashBuf.getString(0);
-        } catch (final Throwable e) {
-            LOGGER.warning("Failed to get module hash: " + e.getMessage());
-            return "";
-        }
-    }
-
-    @Override
     public boolean isUnderlyingBinaryFreeable() {
         ensureNotClosed();
 
@@ -920,36 +892,6 @@ public final class PanamaWebAssemblyModule implements WebAssemblyModule {
         } catch (final Throwable e) {
             LOGGER.fine("Failed to get export memory type info for '" + name + "': " + e.getMessage());
             return null;
-        }
-    }
-
-    @Override
-    public WebAssemblyInstance instantiateEx2(final int defaultStackSize,
-            final int hostManagedHeapSize, final int maxMemoryPages) throws WasmRuntimeException {
-        ensureNotClosed();
-        if (defaultStackSize < 0 || hostManagedHeapSize < 0 || maxMemoryPages < 0) {
-            throw new IllegalArgumentException("Parameters must be non-negative");
-        }
-
-        if (Handles.INSTANTIATE_EX2 == null) {
-            throw new WasmRuntimeException("instantiateEx2 not available");
-        }
-
-        try (final Arena arena = Arena.ofConfined()) {
-            final MemorySegment errorBuf = arena.allocate(WasmTypes.ERROR_BUF_SIZE);
-            final MemorySegment instanceHandle = (MemorySegment) Handles.INSTANTIATE_EX2.invoke(
-                nativeHandle, defaultStackSize, hostManagedHeapSize, maxMemoryPages,
-                errorBuf, WasmTypes.ERROR_BUF_SIZE);
-            if (instanceHandle.equals(MemorySegment.NULL)) {
-                final String errorMsg = errorBuf.getString(0);
-                throw new WasmRuntimeException(
-                    errorMsg.isEmpty() ? "Failed to instantiate module with ex2 API" : errorMsg);
-            }
-            return new PanamaWebAssemblyInstance(instanceHandle, List.of(), null);
-        } catch (final WasmRuntimeException e) {
-            throw e;
-        } catch (final Throwable e) {
-            throw new WasmRuntimeException("Unexpected error during ex2 instantiation", e);
         }
     }
 

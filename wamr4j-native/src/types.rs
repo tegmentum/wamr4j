@@ -188,9 +188,9 @@ pub struct WamrMemory {
     pub data_ptr: *mut u8,
 }
 
-// Implement Send and Sync for memory handle (with caution)
+// SAFETY: WamrMemory can be sent between threads but is not safe to share
+// concurrently due to the mutable data_ptr.
 unsafe impl Send for WamrMemory {}
-unsafe impl Sync for WamrMemory {}
 
 /// WebAssembly table handle with metadata
 pub struct WamrTable {

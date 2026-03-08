@@ -20,6 +20,7 @@ import ai.tegmentum.wamr4j.FunctionSignature;
 import ai.tegmentum.wamr4j.RuntimeFactory;
 import ai.tegmentum.wamr4j.ValueType;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
 import ai.tegmentum.wamr4j.test.framework.WasmModuleBuilder;
 import org.junit.jupiter.api.Test;
@@ -98,7 +99,8 @@ class VersionAndSignatureTest {
 
         // JNI runtime
         System.setProperty("wamr4j.runtime", "jni");
-        try (final WebAssemblyRuntime jniRuntime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions jniRuntime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             jniMajor = jniRuntime.getMajorVersion();
             jniMinor = jniRuntime.getMinorVersion();
             jniPatch = jniRuntime.getPatchVersion();
@@ -127,7 +129,8 @@ class VersionAndSignatureTest {
 
         // Panama runtime
         System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions panamaRuntime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             final int panamaMajor = panamaRuntime.getMajorVersion();
             final int panamaMinor = panamaRuntime.getMinorVersion();
             final int panamaPatch = panamaRuntime.getPatchVersion();

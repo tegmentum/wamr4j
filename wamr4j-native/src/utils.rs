@@ -56,6 +56,34 @@ pub fn clear_last_error() {
     });
 }
 
+/// Write a string to a C string buffer without setting the last error
+pub fn write_string_to_buffer(s: &str, buffer: *mut c_char, buffer_size: c_int) {
+    if buffer.is_null() || buffer_size <= 0 {
+        return;
+    }
+
+    let cstring = match CString::new(s) {
+        Ok(cstr) => cstr,
+        Err(_) => return,
+    };
+
+    let bytes = cstring.as_bytes_with_nul();
+    let copy_len = std::cmp::min(bytes.len(), buffer_size as usize);
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            bytes.as_ptr(),
+            buffer as *mut u8,
+            copy_len,
+        );
+
+        // Ensure null termination
+        if copy_len > 0 {
+            *((buffer as *mut u8).add(copy_len - 1)) = 0;
+        }
+    }
+}
+
 /// Write error message to a C string buffer
 pub fn write_error_to_buffer(error: &str, buffer: *mut c_char, buffer_size: c_int) {
     if buffer.is_null() || buffer_size <= 0 {
@@ -163,7 +191,10 @@ pub fn wasm_value_from_ffi(ffi_value: &WasmValueFFI) -> WasmValue {
         WASM_TYPE_F64 => {
             WasmValue::F64(f64::from_le_bytes(ffi_value.data))
         }
-        _ => WasmValue::I32(0), // Default fallback
+        _ => {
+            set_last_error(format!("Unknown WASM value type: {}", ffi_value.value_type));
+            WasmValue::I32(0)
+        }
     }
 }
 

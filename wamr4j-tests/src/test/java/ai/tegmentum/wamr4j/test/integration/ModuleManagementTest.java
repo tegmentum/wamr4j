@@ -19,6 +19,7 @@ package ai.tegmentum.wamr4j.test.integration;
 import ai.tegmentum.wamr4j.PackageType;
 import ai.tegmentum.wamr4j.RuntimeFactory;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
 import ai.tegmentum.wamr4j.test.framework.WasmModuleBuilder;
 import org.junit.jupiter.api.Test;
@@ -128,7 +129,8 @@ class ModuleManagementTest {
 
         // JNI runtime
         System.setProperty("wamr4j.runtime", "jni");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
             jniFileType = runtime.getFilePackageType(moduleBytes);
@@ -155,7 +157,8 @@ class ModuleManagementTest {
 
         // Panama runtime
         System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
             final PackageType panamaFileType = runtime.getFilePackageType(moduleBytes);
@@ -194,7 +197,8 @@ class ModuleManagementTest {
 
         // JNI runtime
         System.setProperty("wamr4j.runtime", "jni");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
             jniModuleVersion = module.getPackageVersion();
@@ -215,7 +219,8 @@ class ModuleManagementTest {
 
         // Panama runtime
         System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
             final int panamaModuleVersion = module.getPackageVersion();
@@ -227,46 +232,6 @@ class ModuleManagementTest {
             LOGGER.info("Panama getCurrentPackageVersion(WASM): " + panamaCurrentVersion);
             assertEquals(jniCurrentVersion, panamaCurrentVersion,
                 "JNI and Panama should agree on current WASM package version");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
-        }
-    }
-
-    @Test
-    void testModuleHashParity() {
-        LOGGER.info("Testing module hash parity between JNI and Panama");
-
-        final byte[] moduleBytes = buildMinimalModule();
-
-        String jniHash = null;
-
-        // JNI runtime
-        System.setProperty("wamr4j.runtime", "jni");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
-
-            jniHash = module.getHash();
-            LOGGER.info("JNI module.getHash(): '" + jniHash + "'");
-            assertNotNull(jniHash, "JNI: getHash() should not return null");
-        } catch (final Exception e) {
-            fail("Failed JNI module hash test: " + e.getMessage());
-            return;
-        } finally {
-            System.clearProperty("wamr4j.runtime");
-        }
-
-        // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
-
-            final String panamaHash = module.getHash();
-            LOGGER.info("Panama module.getHash(): '" + panamaHash + "'");
-            assertNotNull(panamaHash, "Panama: getHash() should not return null");
-            assertEquals(jniHash, panamaHash,
-                "JNI and Panama should agree on module hash");
         } catch (final Exception e) {
             LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
         } finally {
@@ -319,7 +284,8 @@ class ModuleManagementTest {
         final byte[] moduleBytes = buildMinimalModule();
 
         System.setProperty("wamr4j.runtime", "jni");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        try (final WamrRuntimeExtensions runtime =
+                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
             assertThrows(IllegalArgumentException.class,
                 () -> runtime.getFilePackageType(null),
                 "getFilePackageType(null) should throw IllegalArgumentException");

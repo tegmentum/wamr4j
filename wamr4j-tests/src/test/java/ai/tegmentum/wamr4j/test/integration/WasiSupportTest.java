@@ -18,6 +18,7 @@ package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
 import ai.tegmentum.wamr4j.WasiConfiguration;
+import ai.tegmentum.wamr4j.WamrInstanceExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
@@ -70,7 +71,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final boolean jniResult = instance.isWasiMode();
             LOGGER.info("JNI isWasiMode() on non-WASI module: " + jniResult);
@@ -81,7 +83,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final boolean panamaResult = instance.isWasiMode();
             LOGGER.info("Panama isWasiMode() on non-WASI module: " + panamaResult);
@@ -99,7 +102,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final int jniCode = instance.getWasiExitCode();
             LOGGER.info("JNI getWasiExitCode() default: " + jniCode);
@@ -110,7 +114,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final int panamaCode = instance.getWasiExitCode();
             LOGGER.info("Panama getWasiExitCode() default: " + panamaCode);
@@ -128,7 +133,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final boolean jniResult = instance.hasWasiStartFunction();
             LOGGER.info("JNI hasWasiStartFunction() on non-WASI module: " + jniResult);
@@ -139,7 +145,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final boolean panamaResult = instance.hasWasiStartFunction();
             LOGGER.info("Panama hasWasiStartFunction() on non-WASI module: " + panamaResult);
@@ -292,7 +299,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final boolean jniResult = instance.executeFunc("add", new String[]{"10", "20"});
             LOGGER.info("JNI executeFunc('add', ['10', '20']): " + jniResult);
@@ -305,7 +313,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             final boolean panamaResult = instance.executeFunc("add", new String[]{"10", "20"});
             LOGGER.info("Panama executeFunc('add', ['10', '20']): " + panamaResult);
@@ -323,7 +332,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "jni");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertThrows(IllegalArgumentException.class,
                 () -> instance.executeFunc(null, new String[0]),
@@ -335,7 +345,8 @@ class WasiSupportTest {
         System.setProperty("wamr4j.runtime", "panama");
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+             final WamrInstanceExtensions instance =
+                 (WamrInstanceExtensions) module.instantiate()) {
 
             assertThrows(IllegalArgumentException.class,
                 () -> instance.executeFunc(null, new String[0]),
@@ -355,7 +366,8 @@ class WasiSupportTest {
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            final WebAssemblyInstance instance = module.instantiate();
+            final WamrInstanceExtensions instance =
+                (WamrInstanceExtensions) module.instantiate();
             instance.close();
 
             assertThrows(IllegalStateException.class, instance::isWasiMode,
@@ -377,7 +389,8 @@ class WasiSupportTest {
         try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
              final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            final WebAssemblyInstance instance = module.instantiate();
+            final WamrInstanceExtensions instance =
+                (WamrInstanceExtensions) module.instantiate();
             instance.close();
 
             assertThrows(IllegalStateException.class, instance::isWasiMode,

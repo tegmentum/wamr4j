@@ -17,6 +17,8 @@
 package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
+import ai.tegmentum.wamr4j.WamrInstanceExtensions;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
@@ -61,7 +63,8 @@ class AdvancedApiTest {
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
-                final int[] info = rt.getMemAllocInfo();
+                final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
+                final int[] info = ext.getMemAllocInfo();
                 LOGGER.info(runtime.toUpperCase() + ": getMemAllocInfo() = "
                     + (info != null ? "[" + info[0] + ", " + info[1] + ", " + info[2] + "]" : "null"));
             } catch (final Exception e) {
@@ -78,10 +81,11 @@ class AdvancedApiTest {
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
-                final long key = rt.createContextKey();
+                final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
+                final long key = ext.createContextKey();
                 LOGGER.info(runtime.toUpperCase() + ": createContextKey() = " + key);
                 if (key != 0) {
-                    rt.destroyContextKey(key);
+                    ext.destroyContextKey(key);
                     LOGGER.info(runtime.toUpperCase() + ": destroyContextKey succeeded");
                 }
             } catch (final Exception e) {
@@ -99,7 +103,8 @@ class AdvancedApiTest {
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
-                final long key = rt.createContextKey();
+                final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
+                final long key = ext.createContextKey();
                 LOGGER.info(runtime.toUpperCase() + ": created context key = " + key);
 
                 if (key == 0) {
@@ -108,7 +113,8 @@ class AdvancedApiTest {
                 }
 
                 try (final WebAssemblyModule module = rt.compile(wasm);
-                     final WebAssemblyInstance instance = module.instantiate()) {
+                     final WamrInstanceExtensions instance =
+                         (WamrInstanceExtensions) module.instantiate()) {
 
                     instance.setContext(key, 12345L);
                     final long ctx = instance.getContext(key);
@@ -118,7 +124,7 @@ class AdvancedApiTest {
                         runtime.toUpperCase() + ": context value mismatch");
                 }
 
-                rt.destroyContextKey(key);
+                ext.destroyContextKey(key);
             } catch (final Exception e) {
                 fail(runtime.toUpperCase() + ": setContext/getContext threw: " + e.getMessage());
             } finally {
@@ -128,8 +134,8 @@ class AdvancedApiTest {
     }
 
     @Test
-    void testInstantiateEx2Parity() {
-        LOGGER.info("Testing instantiateEx2 on both runtimes");
+    void testInstantiateExParity() {
+        LOGGER.info("Testing instantiateEx on both runtimes");
         final byte[] wasm = buildSimpleModule();
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
@@ -137,21 +143,21 @@ class AdvancedApiTest {
                  final WebAssemblyModule module = rt.compile(wasm)) {
 
                 try (final WebAssemblyInstance instance =
-                         module.instantiateEx2(16384, 16 * 1024 * 1024, 65536)) {
+                         module.instantiateEx(16384, 16 * 1024 * 1024, 65536)) {
                     assertNotNull(instance,
-                        runtime.toUpperCase() + ": instantiateEx2 returned null");
+                        runtime.toUpperCase() + ": instantiateEx returned null");
                     assertFalse(instance.isClosed(),
                         runtime.toUpperCase() + ": instance should not be closed");
 
                     final var func = instance.getFunction("add");
                     final Object result = func.invoke(3, 4);
                     LOGGER.info(runtime.toUpperCase()
-                        + ": instantiateEx2 -> add(3,4) = " + result);
+                        + ": instantiateEx -> add(3,4) = " + result);
                     assertEquals(7, ((Number) result).intValue(),
                         runtime.toUpperCase() + ": add(3,4) should be 7");
                 }
             } catch (final Exception e) {
-                fail(runtime.toUpperCase() + ": instantiateEx2 threw: " + e.getMessage());
+                fail(runtime.toUpperCase() + ": instantiateEx threw: " + e.getMessage());
             } finally {
                 System.clearProperty("wamr4j.runtime");
             }
@@ -159,8 +165,8 @@ class AdvancedApiTest {
     }
 
     @Test
-    void testInstantiateEx2NegativeArgs() {
-        LOGGER.info("Testing instantiateEx2 with negative arguments");
+    void testInstantiateExNegativeArgs() {
+        LOGGER.info("Testing instantiateEx with negative arguments");
         final byte[] wasm = buildSimpleModule();
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
@@ -168,7 +174,7 @@ class AdvancedApiTest {
                  final WebAssemblyModule module = rt.compile(wasm)) {
 
                 assertThrows(IllegalArgumentException.class, () ->
-                    module.instantiateEx2(-1, 1024, 1024),
+                    module.instantiateEx(-1, 1024, 1024),
                     runtime.toUpperCase() + ": should reject negative stackSize");
                 LOGGER.info(runtime.toUpperCase() + ": negative args correctly rejected");
             } catch (final Exception e) {
@@ -185,7 +191,8 @@ class AdvancedApiTest {
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
-                rt.destroyContextKey(0);
+                final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
+                ext.destroyContextKey(0);
                 LOGGER.info(runtime.toUpperCase()
                     + ": destroyContextKey(0) succeeded (no-op)");
             } catch (final Exception e) {

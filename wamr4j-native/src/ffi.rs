@@ -42,7 +42,6 @@ use crate::runtime::{
     set_running_mode, get_running_mode,
     set_log_level, set_bounds_checks, is_bounds_checks_enabled,
     module_set_name, module_get_name, module_register, module_find_registered,
-    module_get_hash,
     get_file_package_type, get_module_package_type,
     get_file_package_version, get_module_package_version,
     get_current_package_version, is_xip_file,
@@ -77,7 +76,7 @@ use crate::runtime::{
     get_native_addr_range,
 };
 use crate::utils::{
-    write_error_to_buffer, get_last_error, set_last_error, clear_last_error,
+    write_error_to_buffer, write_string_to_buffer, get_last_error, set_last_error, clear_last_error,
     wasm_value_from_ffi, wasm_value_to_ffi, wasm_type_to_ffi,
     WasmValueFFI,
     WASM_TYPE_I32, WASM_TYPE_I64, WASM_TYPE_F32, WASM_TYPE_F64,
@@ -807,7 +806,7 @@ pub extern "C" fn wamr_module_get_name(
         let module_ref = &*(module as *const WamrModule);
         match module_get_name(module_ref) {
             Some(name) => {
-                write_error_to_buffer(&name, name_buf, name_buf_size);
+                write_string_to_buffer(&name, name_buf, name_buf_size);
                 0
             }
             None => -1,
@@ -843,29 +842,6 @@ pub extern "C" fn wamr_module_register(
                 write_error_to_buffer("Module registration failed", error_buf, error_buf_size);
                 -1
             }
-        }
-    }
-}
-
-/// Get the module hash string
-#[no_mangle]
-pub extern "C" fn wamr_module_get_hash(
-    module: *mut c_void,
-    hash_buf: *mut c_char,
-    hash_buf_size: c_int,
-) -> c_int {
-    clear_last_error();
-    if module.is_null() || hash_buf.is_null() || hash_buf_size <= 0 {
-        return -1;
-    }
-    unsafe {
-        let module_ref = &*(module as *const WamrModule);
-        match module_get_hash(module_ref) {
-            Some(hash) => {
-                write_error_to_buffer(&hash, hash_buf, hash_buf_size);
-                0
-            }
-            None => -1,
         }
     }
 }
