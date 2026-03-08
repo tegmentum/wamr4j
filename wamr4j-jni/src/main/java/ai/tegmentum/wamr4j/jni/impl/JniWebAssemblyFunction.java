@@ -17,6 +17,7 @@
 package ai.tegmentum.wamr4j.jni.impl;
 
 import ai.tegmentum.wamr4j.FunctionSignature;
+import ai.tegmentum.wamr4j.ValueType;
 import ai.tegmentum.wamr4j.WebAssemblyFunction;
 import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import java.util.logging.Logger;
@@ -43,6 +44,9 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
 
     // Cached signature (loaded lazily)
     private volatile FunctionSignature cachedSignature;
+
+    // Cached fast path for optimized invocation dispatch
+    private volatile FastPath fastPath;
 
     /**
      * Creates a new JNI WebAssembly function wrapper.
@@ -76,14 +80,71 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
         if (!isValid()) {
             throw new IllegalStateException("Function is no longer valid - parent instance has been closed");
         }
-        
+
         try {
-            return nativeInvokeFunction(nativeHandle, args);
+            return invokeFastPath(args);
         } catch (final WasmRuntimeException e) {
             throw e; // Re-throw WebAssembly exceptions as-is
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error invoking function: " + functionName, e);
         }
+    }
+
+    /**
+     * Dispatches to a typed native fast path when the function signature matches
+     * a known pattern, bypassing Object[] marshalling overhead entirely.
+     * Falls back to the generic path for unrecognized signatures.
+     */
+    @SuppressWarnings("checkstyle:CyclomaticComplexity")
+    private Object invokeFastPath(final Object... args) throws WasmRuntimeException {
+        final FastPath path = resolveFastPath();
+        final long handle = nativeHandle;
+
+        switch (path) {
+            case V_V:
+                nativeInvoke_V(handle);
+                return null;
+            case V_I:
+                return nativeInvoke_I(handle);
+            case I_V:
+                nativeInvokeI_V(handle, ((Number) args[0]).intValue());
+                return null;
+            case I_I:
+                return nativeInvokeI_I(handle, ((Number) args[0]).intValue());
+            case II_V:
+                nativeInvokeII_V(handle,
+                        ((Number) args[0]).intValue(), ((Number) args[1]).intValue());
+                return null;
+            case II_I:
+                return nativeInvokeII_I(handle,
+                        ((Number) args[0]).intValue(), ((Number) args[1]).intValue());
+            case III_I:
+                return nativeInvokeIII_I(handle,
+                        ((Number) args[0]).intValue(), ((Number) args[1]).intValue(),
+                        ((Number) args[2]).intValue());
+            case J_J:
+                return nativeInvokeJ_J(handle, ((Number) args[0]).longValue());
+            case JJ_J:
+                return nativeInvokeJJ_J(handle,
+                        ((Number) args[0]).longValue(), ((Number) args[1]).longValue());
+            case DD_D:
+                return nativeInvokeDD_D(handle,
+                        ((Number) args[0]).doubleValue(), ((Number) args[1]).doubleValue());
+            default:
+                return nativeInvokeFunction(handle, args);
+        }
+    }
+
+    /**
+     * Resolves and caches the fast path enum for this function's signature.
+     */
+    private FastPath resolveFastPath() {
+        FastPath path = fastPath;
+        if (path == null) {
+            path = FastPath.resolve(getSignature());
+            fastPath = path;
+        }
+        return path;
     }
 
     @Override
@@ -164,4 +225,117 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
      * @return the function signature
      */
     private static native FunctionSignature nativeGetFunctionSignature(long functionHandle);
+
+    // =========================================================================
+    // Typed primitive fast-path native methods — 1 JNI crossing, 0 allocations
+    // =========================================================================
+
+    private static native void nativeInvoke_V(long functionHandle) throws WasmRuntimeException;
+
+    private static native int nativeInvoke_I(long functionHandle) throws WasmRuntimeException;
+
+    private static native void nativeInvokeI_V(long functionHandle,
+            int arg0) throws WasmRuntimeException;
+
+    private static native int nativeInvokeI_I(long functionHandle,
+            int arg0) throws WasmRuntimeException;
+
+    private static native void nativeInvokeII_V(long functionHandle,
+            int arg0, int arg1) throws WasmRuntimeException;
+
+    private static native int nativeInvokeII_I(long functionHandle,
+            int arg0, int arg1) throws WasmRuntimeException;
+
+    private static native int nativeInvokeIII_I(long functionHandle,
+            int arg0, int arg1, int arg2) throws WasmRuntimeException;
+
+    private static native long nativeInvokeJ_J(long functionHandle,
+            long arg0) throws WasmRuntimeException;
+
+    private static native long nativeInvokeJJ_J(long functionHandle,
+            long arg0, long arg1) throws WasmRuntimeException;
+
+    private static native double nativeInvokeDD_D(long functionHandle,
+            double arg0, double arg1) throws WasmRuntimeException;
+
+    // =========================================================================
+    // Fast path signature matching
+    // =========================================================================
+
+    /**
+     * Enum of recognized function signatures for typed fast-path dispatch.
+     * Each variant corresponds to a typed native method that bypasses Object[]
+     * marshalling, reducing JNI crossings from ~6 to 1 per call.
+     */
+    @SuppressWarnings("checkstyle:JavadocVariable")
+    enum FastPath {
+        V_V,     // () -> void
+        V_I,     // () -> i32
+        I_V,     // (i32) -> void
+        I_I,     // (i32) -> i32
+        II_V,    // (i32, i32) -> void
+        II_I,    // (i32, i32) -> i32
+        III_I,   // (i32, i32, i32) -> i32
+        J_J,     // (i64) -> i64
+        JJ_J,    // (i64, i64) -> i64
+        DD_D,    // (f64, f64) -> f64
+        GENERIC; // fallback to Object[] path
+
+        /**
+         * Resolves the fast path for a given function signature.
+         *
+         * @param signature the function signature
+         * @return the matching fast path, or GENERIC if no fast path applies
+         */
+        @SuppressWarnings("checkstyle:CyclomaticComplexity")
+        static FastPath resolve(final FunctionSignature signature) {
+            final ValueType[] params = signature.getParameterTypes();
+            final ValueType[] results = signature.getReturnTypes();
+            final int pc = params.length;
+            final int rc = results.length;
+
+            if (rc == 0) {
+                // void return
+                if (pc == 0) {
+                    return V_V;
+                }
+                if (pc == 1 && params[0] == ValueType.I32) {
+                    return I_V;
+                }
+                if (pc == 2 && params[0] == ValueType.I32 && params[1] == ValueType.I32) {
+                    return II_V;
+                }
+            } else if (rc == 1) {
+                final ValueType rt = results[0];
+                if (rt == ValueType.I32) {
+                    if (pc == 0) {
+                        return V_I;
+                    }
+                    if (pc == 1 && params[0] == ValueType.I32) {
+                        return I_I;
+                    }
+                    if (pc == 2 && params[0] == ValueType.I32 && params[1] == ValueType.I32) {
+                        return II_I;
+                    }
+                    if (pc == 3 && params[0] == ValueType.I32
+                            && params[1] == ValueType.I32 && params[2] == ValueType.I32) {
+                        return III_I;
+                    }
+                } else if (rt == ValueType.I64) {
+                    if (pc == 1 && params[0] == ValueType.I64) {
+                        return J_J;
+                    }
+                    if (pc == 2 && params[0] == ValueType.I64 && params[1] == ValueType.I64) {
+                        return JJ_J;
+                    }
+                } else if (rt == ValueType.F64) {
+                    if (pc == 2 && params[0] == ValueType.F64 && params[1] == ValueType.F64) {
+                        return DD_D;
+                    }
+                }
+            }
+
+            return GENERIC;
+        }
+    }
 }

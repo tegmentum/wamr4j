@@ -1940,6 +1940,230 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_
     }
 }
 
+// =============================================================================
+// Typed Fast-Path Invocation — 1 JNI crossing, 0 heap allocations
+// =============================================================================
+//
+// These native methods accept and return primitives directly, bypassing the
+// Object[] marshalling that the generic nativeInvokeFunction uses. Each call
+// uses stack-allocated WasmValT arrays and calls wasm_runtime_call_wasm_a
+// directly, avoiding Vec allocations and JNI round-trips for boxing/unboxing.
+
+/// Helper: call WAMR with stack-allocated args/results and throw on failure.
+/// Returns false if an exception was thrown (caller should return default).
+unsafe fn fast_call(
+    env: &mut JNIEnv,
+    function_handle: jlong,
+    args: &mut [bindings::WasmValT],
+    results: &mut [bindings::WasmValT],
+) -> bool {
+    if function_handle == 0 {
+        let _ = throw_wasm_exception(env, "Invalid function handle");
+        return false;
+    }
+
+    let function_ref = &*(function_handle as *const WamrFunction);
+    if !function_ref.is_valid() {
+        let _ = throw_wasm_exception(env, "Function is no longer valid");
+        return false;
+    }
+    if function_ref.exec_env.is_null() {
+        let _ = throw_wasm_exception(env, "No execution environment");
+        return false;
+    }
+
+    let success = bindings::wasm_runtime_call_wasm_a(
+        function_ref.exec_env,
+        function_ref.handle,
+        results.len() as u32,
+        results.as_mut_ptr(),
+        args.len() as u32,
+        args.as_mut_ptr(),
+    );
+
+    if !success {
+        let error_msg = runtime::get_and_clear_exception(function_ref.instance_handle);
+        let _ = throw_wasm_exception(env, &error_msg);
+        return false;
+    }
+
+    true
+}
+
+/// () -> void
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvoke_1V<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+) {
+    unsafe {
+        fast_call(&mut env, function_handle, &mut [], &mut []);
+    }
+}
+
+/// () -> i32
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvoke_1I<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+) -> jint {
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I32)];
+    unsafe {
+        if !fast_call(&mut env, function_handle, &mut [], &mut results) {
+            return 0;
+        }
+        results[0].as_i32()
+    }
+}
+
+/// (i32) -> void
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeI_1V<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    arg0: jint,
+) {
+    let mut args = [bindings::WasmValT::i32(arg0)];
+    unsafe {
+        fast_call(&mut env, function_handle, &mut args, &mut []);
+    }
+}
+
+/// (i32) -> i32
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeI_1I<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    arg0: jint,
+) -> jint {
+    let mut args = [bindings::WasmValT::i32(arg0)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I32)];
+    unsafe {
+        if !fast_call(&mut env, function_handle, &mut args, &mut results) {
+            return 0;
+        }
+        results[0].as_i32()
+    }
+}
+
+/// (i32, i32) -> void
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeII_1V<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    arg0: jint,
+    arg1: jint,
+) {
+    let mut args = [bindings::WasmValT::i32(arg0), bindings::WasmValT::i32(arg1)];
+    unsafe {
+        fast_call(&mut env, function_handle, &mut args, &mut []);
+    }
+}
+
+/// (i32, i32) -> i32
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeII_1I<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    arg0: jint,
+    arg1: jint,
+) -> jint {
+    let mut args = [bindings::WasmValT::i32(arg0), bindings::WasmValT::i32(arg1)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I32)];
+    unsafe {
+        if !fast_call(&mut env, function_handle, &mut args, &mut results) {
+            return 0;
+        }
+        results[0].as_i32()
+    }
+}
+
+/// (i32, i32, i32) -> i32
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeIII_1I<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    arg0: jint,
+    arg1: jint,
+    arg2: jint,
+) -> jint {
+    let mut args = [
+        bindings::WasmValT::i32(arg0),
+        bindings::WasmValT::i32(arg1),
+        bindings::WasmValT::i32(arg2),
+    ];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I32)];
+    unsafe {
+        if !fast_call(&mut env, function_handle, &mut args, &mut results) {
+            return 0;
+        }
+        results[0].as_i32()
+    }
+}
+
+/// (i64) -> i64
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeJ_1J<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    arg0: jlong,
+) -> jlong {
+    let mut args = [bindings::WasmValT::i64(arg0)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I64)];
+    unsafe {
+        if !fast_call(&mut env, function_handle, &mut args, &mut results) {
+            return 0;
+        }
+        results[0].as_i64()
+    }
+}
+
+/// (i64, i64) -> i64
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeJJ_1J<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    arg0: jlong,
+    arg1: jlong,
+) -> jlong {
+    let mut args = [bindings::WasmValT::i64(arg0), bindings::WasmValT::i64(arg1)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I64)];
+    unsafe {
+        if !fast_call(&mut env, function_handle, &mut args, &mut results) {
+            return 0;
+        }
+        results[0].as_i64()
+    }
+}
+
+/// (f64, f64) -> f64
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeDD_1D<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    arg0: jdouble,
+    arg1: jdouble,
+) -> jdouble {
+    let mut args = [bindings::WasmValT::f64(arg0), bindings::WasmValT::f64(arg1)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_F64)];
+    unsafe {
+        if !fast_call(&mut env, function_handle, &mut args, &mut results) {
+            return 0.0;
+        }
+        results[0].as_f64()
+    }
+}
+
 /// Get the function signature
 #[no_mangle]
 pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeGetFunctionSignature<'local>(
