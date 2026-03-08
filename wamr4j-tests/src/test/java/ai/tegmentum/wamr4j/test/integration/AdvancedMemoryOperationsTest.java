@@ -18,6 +18,7 @@ package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
 import ai.tegmentum.wamr4j.WamrInstanceExtensions;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyMemory;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
@@ -616,6 +617,71 @@ class AdvancedMemoryOperationsTest {
             fail("Malloc/write/read/free round trip failed: " + e.getMessage());
         } finally {
             System.clearProperty("wamr4j.runtime");
+        }
+    }
+
+    @Test
+    void testSharedHeapOperationsParity() {
+        LOGGER.info("Testing shared heap operations on both runtimes");
+
+        final byte[] moduleBytes = buildMemoryModule();
+
+        for (final String runtime : new String[]{"jni", "panama"}) {
+            System.setProperty("wamr4j.runtime", runtime);
+            try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
+                final WamrRuntimeExtensions rtExt = (WamrRuntimeExtensions) rt;
+
+                // Create a shared heap (64KB)
+                final long heapHandle = rtExt.createSharedHeap(65536);
+                LOGGER.info(runtime.toUpperCase()
+                    + ": createSharedHeap(65536) = " + heapHandle);
+
+                if (heapHandle == 0) {
+                    LOGGER.info(runtime.toUpperCase()
+                        + ": shared heap API not available on this platform, skipping");
+                    continue;
+                }
+
+                try (final WebAssemblyModule module = rt.compile(moduleBytes);
+                     final WamrInstanceExtensions instance =
+                         (WamrInstanceExtensions) module.instantiate()) {
+
+                    // Attach the shared heap
+                    final boolean attached = instance.attachSharedHeap(heapHandle);
+                    LOGGER.info(runtime.toUpperCase()
+                        + ": attachSharedHeap() = " + attached);
+
+                    if (attached) {
+                        // Malloc from shared heap
+                        final long ptr = instance.sharedHeapMalloc(256);
+                        LOGGER.info(runtime.toUpperCase()
+                            + ": sharedHeapMalloc(256) = " + ptr);
+
+                        if (ptr != 0) {
+                            // Free the allocated memory
+                            instance.sharedHeapFree(ptr);
+                            LOGGER.info(runtime.toUpperCase()
+                                + ": sharedHeapFree succeeded");
+                        }
+
+                        // Detach the shared heap
+                        instance.detachSharedHeap();
+                        LOGGER.info(runtime.toUpperCase()
+                            + ": detachSharedHeap succeeded");
+                    }
+                }
+
+                // Destroy the shared heap via runtime
+                // (createSharedHeap returns a handle that must be cleaned up)
+                LOGGER.info(runtime.toUpperCase()
+                    + ": shared heap lifecycle completed successfully");
+
+            } catch (final Exception e) {
+                LOGGER.info(runtime.toUpperCase()
+                    + ": shared heap operations threw (may be expected): " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 }

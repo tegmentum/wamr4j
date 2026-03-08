@@ -311,4 +311,63 @@ class ModuleManagementTest {
             System.clearProperty("wamr4j.runtime");
         }
     }
+
+    @Test
+    void testIsXipFileParity() {
+        LOGGER.info("Testing isXipFile on both runtimes");
+
+        final byte[] moduleBytes = buildMinimalModule();
+
+        for (final String runtime : new String[]{"jni", "panama"}) {
+            System.setProperty("wamr4j.runtime", runtime);
+            try (final WamrRuntimeExtensions rt =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
+
+                final boolean isXip = rt.isXipFile(moduleBytes);
+                LOGGER.info(runtime.toUpperCase() + ": isXipFile(wasmBytes) = " + isXip);
+                assertFalse(isXip,
+                    runtime.toUpperCase()
+                        + ": regular WASM bytecode should not be detected as XIP/AOT");
+            } catch (final Exception e) {
+                fail(runtime.toUpperCase() + ": isXipFile threw: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
+        }
+    }
+
+    @Test
+    void testGetFilePackageVersionParity() {
+        LOGGER.info("Testing getFilePackageVersion on both runtimes");
+
+        final byte[] moduleBytes = buildMinimalModule();
+
+        int jniVersion = -1;
+
+        for (final String runtime : new String[]{"jni", "panama"}) {
+            System.setProperty("wamr4j.runtime", runtime);
+            try (final WamrRuntimeExtensions rt =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
+
+                final int version = rt.getFilePackageVersion(moduleBytes);
+                LOGGER.info(runtime.toUpperCase()
+                    + ": getFilePackageVersion(wasmBytes) = " + version);
+                assertTrue(version >= 0,
+                    runtime.toUpperCase()
+                        + ": file package version should be non-negative, got: " + version);
+
+                if ("jni".equals(runtime)) {
+                    jniVersion = version;
+                } else {
+                    assertEquals(jniVersion, version,
+                        "JNI and Panama should agree on file package version");
+                }
+            } catch (final Exception e) {
+                fail(runtime.toUpperCase()
+                    + ": getFilePackageVersion threw: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
+        }
+    }
 }

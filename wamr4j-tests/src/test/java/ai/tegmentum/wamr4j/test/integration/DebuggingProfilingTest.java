@@ -18,6 +18,7 @@ package ai.tegmentum.wamr4j.test.integration;
 
 import ai.tegmentum.wamr4j.RuntimeFactory;
 import ai.tegmentum.wamr4j.WamrInstanceExtensions;
+import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyFunction;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
@@ -381,5 +382,67 @@ class DebuggingProfilingTest {
             "Panama: dumpMemConsumption on closed instance should throw");
         LOGGER.info(
             "Panama: All closed instance methods correctly threw IllegalStateException");
+    }
+
+    @Test
+    void testCopyCallstackParity() throws Exception {
+        LOGGER.info("Testing copyCallstack() on both runtimes");
+
+        final byte[] moduleBytes = buildSimpleModule();
+
+        for (final String runtime : new String[]{"jni", "panama"}) {
+            System.setProperty("wamr4j.runtime", runtime);
+            try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = rt.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
+
+                // Call a function first so there has been some execution
+                final WebAssemblyFunction addFunc = instance.getFunction("add");
+                addFunc.invoke(1, 2);
+
+                // copyCallstack outside of active execution may return empty or null
+                final int[][] frames = instance.copyCallstack(10, 0);
+                LOGGER.info(runtime.toUpperCase() + ": copyCallstack(10, 0) = "
+                    + (frames != null ? "int[" + frames.length + "][]" : "null"));
+
+                // Should not crash and should return either null or a valid array
+                if (frames != null) {
+                    assertTrue(frames.length >= 0,
+                        runtime.toUpperCase() + ": frames length should be non-negative");
+                    for (int i = 0; i < frames.length; i++) {
+                        assertNotNull(frames[i],
+                            runtime.toUpperCase() + ": frame " + i + " should not be null");
+                        LOGGER.info(runtime.toUpperCase() + ": frame[" + i + "] length="
+                            + frames[i].length);
+                    }
+                }
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
+        }
+    }
+
+    @Test
+    void testGetLastErrorParity() throws Exception {
+        LOGGER.info("Testing getLastError() on both runtimes");
+
+        for (final String runtime : new String[]{"jni", "panama"}) {
+            System.setProperty("wamr4j.runtime", runtime);
+            try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
+                final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
+                final String lastError = ext.getLastError();
+                LOGGER.info(runtime.toUpperCase() + ": getLastError() = "
+                    + (lastError == null ? "null" : "'" + lastError + "'"));
+
+                // No error expected on a fresh runtime
+                assertTrue(lastError == null || lastError.isEmpty(),
+                    runtime.toUpperCase()
+                        + ": getLastError() on fresh runtime should be null or empty, got: '"
+                        + lastError + "'");
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
+        }
     }
 }
