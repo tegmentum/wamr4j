@@ -154,6 +154,28 @@ public final class NativePlatform {
     }
 
     /**
+     * Resolves the native library path by extracting it from JAR resources.
+     *
+     * <p>Builds the platform-specific resource path and extracts the library to a
+     * temporary location. The resource is expected at
+     * {@code /META-INF/native/{platform}/{libraryFileName}}.
+     *
+     * @param anchor the class whose classloader is used to locate the resource
+     * @param libraryName the base library name (e.g. {@code "wamr4j_native"})
+     * @return the path to the extracted library, or {@code null} if not found
+     * @throws IOException if extraction fails
+     */
+    public static Path resolveLibraryPath(final Class<?> anchor, final String libraryName)
+            throws IOException {
+        final String platformName = getPlatformName();
+        final String libraryFileName = getLibraryFileName(libraryName);
+        final String resourcePath = "/META-INF/native/" + platformName + "/" + libraryFileName;
+
+        LOGGER.fine("Resolving native library from resources: " + resourcePath);
+        return extractLibraryFromResources(anchor, resourcePath);
+    }
+
+    /**
      * Extracts a native library from JAR resources to a temporary file.
      *
      * <p>The resource is located using the provided anchor class's classloader. The extracted

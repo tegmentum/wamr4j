@@ -48,7 +48,6 @@ public final class NativeLibraryLoader {
     private static final Logger LOGGER = Logger.getLogger(NativeLibraryLoader.class.getName());
 
     private static final String LIBRARY_NAME = "wamr4j_native";
-    private static final String LIBRARY_PATH_PREFIX = "/META-INF/native/";
 
     private static volatile boolean loaded = false;
     private static volatile Throwable loadingError = null;
@@ -118,19 +117,13 @@ public final class NativeLibraryLoader {
         }
 
         // Fall back to extracting from JAR resources
-        final String platformName = NativePlatform.getPlatformName();
-        final String libraryFileName = NativePlatform.getLibraryFileName(LIBRARY_NAME);
-        final String resourcePath = LIBRARY_PATH_PREFIX + platformName + "/" + libraryFileName;
-
-        LOGGER.fine("Attempting to load native library from resources: " + resourcePath);
-
-        final Path extracted = NativePlatform.extractLibraryFromResources(
-                NativeLibraryLoader.class, resourcePath);
+        final Path extracted = NativePlatform.resolveLibraryPath(
+                NativeLibraryLoader.class, LIBRARY_NAME);
 
         if (extracted == null) {
             throw new UnsupportedOperationException(
-                    "Native library not found for platform: " + platformName
-                            + " (expected: " + resourcePath + ")");
+                    "Native library not found for platform: "
+                            + NativePlatform.getPlatformName());
         }
 
         System.load(extracted.toString());

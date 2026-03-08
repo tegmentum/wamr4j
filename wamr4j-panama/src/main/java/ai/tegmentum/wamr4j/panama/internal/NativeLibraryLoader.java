@@ -42,7 +42,6 @@ public final class NativeLibraryLoader {
     private static final Logger LOGGER = Logger.getLogger(NativeLibraryLoader.class.getName());
 
     private static final String LIBRARY_NAME = "wamr4j_native";
-    private static final String LIBRARY_PATH_PREFIX = "/META-INF/native/";
     private static final AtomicBoolean attempted = new AtomicBoolean(false);
     private static volatile SymbolLookup symbolLookup;
     private static volatile String loadError;
@@ -133,18 +132,12 @@ public final class NativeLibraryLoader {
 
     private static SymbolLookup tryLoadFromResources() {
         try {
-            final String platformName = NativePlatform.getPlatformName();
-            final String libraryFileName = NativePlatform.getLibraryFileName(LIBRARY_NAME);
-            final String resourcePath =
-                    LIBRARY_PATH_PREFIX + platformName + "/" + libraryFileName;
-
-            LOGGER.fine("Attempting to load from resources: " + resourcePath);
-
-            final Path extracted = NativePlatform.extractLibraryFromResources(
-                    NativeLibraryLoader.class, resourcePath);
+            final Path extracted = NativePlatform.resolveLibraryPath(
+                    NativeLibraryLoader.class, LIBRARY_NAME);
 
             if (extracted == null) {
-                LOGGER.fine("Resource not found: " + resourcePath);
+                LOGGER.fine("Native library not found for platform: "
+                        + NativePlatform.getPlatformName());
                 return null;
             }
 
