@@ -308,53 +308,21 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
     }
 }
 
-/// Get the package type of a loaded module
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetPackageType<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    module_handle: jlong,
-) -> jint {
-    if module_handle == 0 {
-        return bindings::PACKAGE_TYPE_UNKNOWN as jint;
-    }
-    unsafe {
-        let module_ref = &*(module_handle as *const WamrModule);
-        runtime::get_module_package_type(module_ref) as jint
-    }
-}
+// Get the package type of a loaded module
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetPackageType,
+    WamrModule, jint, bindings::PACKAGE_TYPE_UNKNOWN as jint, |r: &WamrModule| {
+    runtime::get_module_package_type(r) as jint
+});
 
-/// Get the package version of a loaded module
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetPackageVersion<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    module_handle: jlong,
-) -> jint {
-    if module_handle == 0 {
-        return 0;
-    }
-    unsafe {
-        let module_ref = &*(module_handle as *const WamrModule);
-        runtime::get_module_package_version(module_ref) as jint
-    }
-}
+// Get the package version of a loaded module
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeGetPackageVersion,
+    WamrModule, jint, 0, |r: &WamrModule| {
+    runtime::get_module_package_version(r) as jint
+});
 
-/// Check if the underlying binary is freeable
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeIsUnderlyingBinaryFreeable<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    module_handle: jlong,
-) -> jboolean {
-    if module_handle == 0 {
-        return 0;
-    }
-    unsafe {
-        let module_ref = &*(module_handle as *const WamrModule);
-        if runtime::is_underlying_binary_freeable(module_ref) { 1 } else { 0 }
-    }
-}
+// Check if the underlying binary is freeable
+jni_bool_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_nativeIsUnderlyingBinaryFreeable,
+    WamrModule, runtime::is_underlying_binary_freeable);
 
 /// Get file package type from WASM bytecode
 #[no_mangle]
@@ -1067,21 +1035,11 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     }
 }
 
-/// Get the running mode for an instance
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetRunningMode<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jint {
-    if instance_handle == 0 {
-        return -1;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        runtime::get_running_mode(instance_ref) as jint
-    }
-}
+// Get the running mode for an instance
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetRunningMode,
+    WamrInstance, jint, -1, |r: &WamrInstance| {
+    runtime::get_running_mode(r) as jint
+});
 
 /// Enable or disable bounds checks for an instance
 #[no_mangle]
@@ -1100,21 +1058,9 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     }
 }
 
-/// Check if bounds checks are enabled for an instance
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeIsBoundsChecksEnabled<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jboolean {
-    if instance_handle == 0 {
-        return 0;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        if runtime::is_bounds_checks_enabled(instance_ref) { 1 } else { 0 }
-    }
-}
+// Check if bounds checks are enabled for an instance
+jni_bool_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeIsBoundsChecksEnabled,
+    WamrInstance, runtime::is_bounds_checks_enabled);
 
 /// Get an exported table by name
 #[no_mangle]
@@ -1277,55 +1223,23 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     }
 }
 
-/// Get memory base address as a long (native pointer)
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetBaseAddress<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    memory_handle: jlong,
-) -> jlong {
-    if memory_handle == 0 {
-        return 0;
-    }
-    unsafe {
-        let memory_ref = &*(memory_handle as *const WamrMemory);
-        runtime::memory_base_address(memory_ref) as jlong
-    }
-}
+// Get memory base address as a long (native pointer)
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetBaseAddress,
+    WamrMemory, jlong, 0, |r: &WamrMemory| {
+    runtime::memory_base_address(r) as jlong
+});
 
-/// Get bytes per page for a memory instance
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetBytesPerPage<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    memory_handle: jlong,
-) -> jlong {
-    if memory_handle == 0 {
-        return 0;
-    }
-    unsafe {
-        let memory_ref = &*(memory_handle as *const WamrMemory);
-        runtime::memory_bytes_per_page(memory_ref) as jlong
-    }
-}
+// Get bytes per page for a memory instance
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetBytesPerPage,
+    WamrMemory, jlong, 0, |r: &WamrMemory| {
+    runtime::memory_bytes_per_page(r) as jlong
+});
 
-/// Check if the instance exports memory
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeHasMemory<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jboolean {
-    if instance_handle == 0 {
-        return 0;
-    }
-
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        let memory_handle = crate::bindings::wasm_runtime_get_default_memory(instance_ref.handle);
-        if memory_handle.is_null() { 0 } else { 1 }
-    }
-}
+// Check if the instance exports memory
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeHasMemory,
+    WamrInstance, jni::sys::jboolean, 0, |r: &WamrInstance| {
+    if crate::bindings::wasm_runtime_get_default_memory(r.handle).is_null() { 0 } else { 1 }
+});
 
 // =============================================================================
 // Exception & Execution Control
@@ -1376,54 +1290,19 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     }
 }
 
-/// Clear the current exception on an instance.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeClearException<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        runtime::instance_clear_exception(instance_ref);
-    }
-}
+// Clear the current exception on an instance.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeClearException,
+    WamrInstance, runtime::instance_clear_exception);
 
-/// Terminate execution of an instance.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeTerminate<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        runtime::instance_terminate(instance_ref);
-    }
-}
+// Terminate execution of an instance.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeTerminate,
+    WamrInstance, runtime::instance_terminate);
 
-/// Set the instruction count limit for an instance's execution environment.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetInstructionCountLimit<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-    limit: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        runtime::set_instruction_count_limit(instance_ref, limit as i32);
-    }
-}
+// Set the instruction count limit for an instance's execution environment.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetInstructionCountLimit,
+    WamrInstance, limit: jlong, |r: &WamrInstance, l: jlong| {
+    runtime::set_instruction_count_limit(r, l as i32);
+});
 
 // =============================================================================
 // WASI Support (JniWebAssemblyModule)
@@ -1640,54 +1519,21 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyModule_na
 // WASI Support (JniWebAssemblyInstance)
 // =============================================================================
 
-/// Check if instance is in WASI mode.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeIsWasiMode<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jboolean {
-    if instance_handle == 0 {
-        return 0;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        if runtime::instance_is_wasi_mode(instance_ref) { 1 } else { 0 }
-    }
-}
+// Check if instance is in WASI mode.
+jni_bool_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeIsWasiMode,
+    WamrInstance, runtime::instance_is_wasi_mode);
 
-/// Get the WASI exit code.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetWasiExitCode<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jint {
-    if instance_handle == 0 {
-        return 0;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        runtime::instance_get_wasi_exit_code(instance_ref) as jint
-    }
-}
+// Get the WASI exit code.
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetWasiExitCode,
+    WamrInstance, jint, 0, |r: &WamrInstance| {
+    runtime::instance_get_wasi_exit_code(r) as jint
+});
 
-/// Check if WASI _start function exists.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeHasWasiStartFunction<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jboolean {
-    if instance_handle == 0 {
-        return 0;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        let func = runtime::instance_lookup_wasi_start_function(instance_ref);
-        if func.is_null() { 0 } else { 1 }
-    }
-}
+// Check if WASI _start function exists.
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeHasWasiStartFunction,
+    WamrInstance, jni::sys::jboolean, 0, |r: &WamrInstance| {
+    if runtime::instance_lookup_wasi_start_function(r).is_null() { 0 } else { 1 }
+});
 
 /// Execute the WASI _start function (execute main).
 #[no_mangle]
@@ -1768,38 +1614,17 @@ fn jni_string_array_to_vec(env: &mut JNIEnv, arr: &JObjectArray) -> Vec<String> 
 // Custom Data (JniWebAssemblyInstance)
 // =============================================================================
 
-/// Set custom data on a module instance.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetCustomData<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-    custom_data: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        runtime::instance_set_custom_data(instance_ref, custom_data as u64);
-    }
-}
+// Set custom data on a module instance.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetCustomData,
+    WamrInstance, custom_data: jlong, |r: &WamrInstance, d: jlong| {
+    runtime::instance_set_custom_data(r, d as u64);
+});
 
-/// Get custom data from a module instance.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetCustomData<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jlong {
-    if instance_handle == 0 {
-        return 0;
-    }
-    unsafe {
-        let instance_ref = &*(instance_handle as *const WamrInstance);
-        runtime::instance_get_custom_data(instance_ref) as jlong
-    }
-}
+// Get custom data from a module instance.
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetCustomData,
+    WamrInstance, jlong, 0, |r: &WamrInstance| {
+    runtime::instance_get_custom_data(r) as jlong
+});
 
 // =============================================================================
 // Debugging & Profiling — JniWebAssemblyInstance
@@ -1826,47 +1651,19 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     }
 }
 
-/// Dump call stack to stdout.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDumpCallStack<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    runtime::instance_dump_call_stack(instance_ref);
-}
+// Dump call stack to stdout.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDumpCallStack,
+    WamrInstance, runtime::instance_dump_call_stack);
 
-/// Dump performance profiling data to stdout.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDumpPerfProfiling<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    runtime::instance_dump_perf_profiling(instance_ref);
-}
+// Dump performance profiling data to stdout.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDumpPerfProfiling,
+    WamrInstance, runtime::instance_dump_perf_profiling);
 
-/// Get total WASM execution time in milliseconds.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSumExecTime<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jdouble {
-    if instance_handle == 0 {
-        return 0.0;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    runtime::instance_sum_wasm_exec_time(instance_ref)
-}
+// Get total WASM execution time in milliseconds.
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSumExecTime,
+    WamrInstance, jdouble, 0.0, |r: &WamrInstance| {
+    runtime::instance_sum_wasm_exec_time(r)
+});
 
 /// Get execution time for a specific function in milliseconds.
 #[no_mangle]
@@ -1887,19 +1684,9 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     runtime::instance_get_wasm_func_exec_time(instance_ref, &name)
 }
 
-/// Dump memory consumption to stdout.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDumpMemConsumption<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    runtime::instance_dump_mem_consumption(instance_ref);
-}
+// Dump memory consumption to stdout.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDumpMemConsumption,
+    WamrInstance, runtime::instance_dump_mem_consumption);
 
 // =============================================================================
 // Phase 16: Memory Lookup (JniWebAssemblyInstance)
@@ -1929,33 +1716,13 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
 // Phase 17: Blocking Ops & Stack Overflow (JniWebAssemblyInstance)
 // =============================================================================
 
-/// Begin a blocking operation.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeBeginBlockingOp<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jboolean {
-    if instance_handle == 0 {
-        return 0;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    if runtime::instance_begin_blocking_op(instance_ref) { 1 } else { 0 }
-}
+// Begin a blocking operation.
+jni_bool_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeBeginBlockingOp,
+    WamrInstance, runtime::instance_begin_blocking_op);
 
-/// End a blocking operation.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeEndBlockingOp<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    runtime::instance_end_blocking_op(instance_ref);
-}
+// End a blocking operation.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeEndBlockingOp,
+    WamrInstance, runtime::instance_end_blocking_op);
 
 /// Detect native stack overflow.
 #[no_mangle]
@@ -2459,22 +2226,9 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_na
     }
 }
 
-/// Get memory size in bytes
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetMemorySize<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    memory_handle: jlong,
-) -> jint {
-    if memory_handle == 0 {
-        return -1;
-    }
-
-    unsafe {
-        let memory_ref = &*(memory_handle as *const WamrMemory);
-        memory_ref.size as jint
-    }
-}
+// Get memory size in bytes
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetMemorySize,
+    WamrMemory, jint, -1, |r: &WamrMemory| r.size as jint);
 
 /// Grow memory by specified pages
 #[no_mangle]
@@ -2524,56 +2278,17 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_na
     }
 }
 
-/// Get current page count
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetPageCount<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    memory_handle: jlong,
-) -> jint {
-    if memory_handle == 0 {
-        return 0;
-    }
+// Get current page count
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetPageCount,
+    WamrMemory, jint, 0, |r: &WamrMemory| runtime::memory_page_count(r) as jint);
 
-    unsafe {
-        let memory_ref = &*(memory_handle as *const WamrMemory);
-        runtime::memory_page_count(memory_ref) as jint
-    }
-}
+// Get maximum page count
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetMaxPageCount,
+    WamrMemory, jint, 0, |r: &WamrMemory| runtime::memory_max_page_count(r) as jint);
 
-/// Get maximum page count
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeGetMaxPageCount<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    memory_handle: jlong,
-) -> jint {
-    if memory_handle == 0 {
-        return 0;
-    }
-
-    unsafe {
-        let memory_ref = &*(memory_handle as *const WamrMemory);
-        runtime::memory_max_page_count(memory_ref) as jint
-    }
-}
-
-/// Check if memory is shared
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeIsShared<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    memory_handle: jlong,
-) -> jboolean {
-    if memory_handle == 0 {
-        return 0; // false
-    }
-
-    unsafe {
-        let memory_ref = &*(memory_handle as *const WamrMemory);
-        if runtime::memory_is_shared(memory_ref) { 1 } else { 0 }
-    }
-}
+// Check if memory is shared
+jni_bool_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyMemory_nativeIsShared,
+    WamrMemory, runtime::memory_is_shared);
 
 // =============================================================================
 // JniWebAssemblyTable
@@ -2593,53 +2308,17 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nat
     }
 }
 
-/// Get table current size
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetSize<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    table_handle: jlong,
-) -> jint {
-    if table_handle == 0 {
-        return -1;
-    }
-    unsafe {
-        let table_ref = &*(table_handle as *const WamrTable);
-        table_ref.table_inst.cur_size as jint
-    }
-}
+// Get table current size
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetSize,
+    WamrTable, jint, -1, |r: &WamrTable| r.table_inst.cur_size as jint);
 
-/// Get table maximum size
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetMaxSize<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    table_handle: jlong,
-) -> jint {
-    if table_handle == 0 {
-        return -1;
-    }
-    unsafe {
-        let table_ref = &*(table_handle as *const WamrTable);
-        table_ref.table_inst.max_size as jint
-    }
-}
+// Get table maximum size
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetMaxSize,
+    WamrTable, jint, -1, |r: &WamrTable| r.table_inst.max_size as jint);
 
-/// Get table element kind
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetElementKind<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    table_handle: jlong,
-) -> jint {
-    if table_handle == 0 {
-        return -1;
-    }
-    unsafe {
-        let table_ref = &*(table_handle as *const WamrTable);
-        table_ref.table_inst.elem_kind as jint
-    }
-}
+// Get table element kind
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyTable_nativeGetElementKind,
+    WamrTable, jint, -1, |r: &WamrTable| r.table_inst.elem_kind as jint);
 
 /// Get a function from a table at the given index
 #[no_mangle]
@@ -2931,19 +2610,9 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     );
 }
 
-/// Spawn a new execution environment.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSpawnExecEnv<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) -> jlong {
-    if instance_handle == 0 {
-        return 0;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    runtime::spawn_exec_env(instance_ref) as jlong
-}
+// Spawn a new execution environment.
+jni_getter_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSpawnExecEnv,
+    WamrInstance, jlong, 0, |r: &WamrInstance| runtime::spawn_exec_env(r) as jlong);
 
 /// Destroy a spawned execution environment.
 #[no_mangle]
@@ -3019,20 +2688,11 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     }
 }
 
-/// Delete host object from externref table.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeExternrefObjDel<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-    extern_obj: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    runtime::externref_objdel(instance_ref, extern_obj as *mut std::os::raw::c_void);
-}
+// Delete host object from externref table.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeExternrefObjDel,
+    WamrInstance, extern_obj: jlong, |r: &WamrInstance, obj: jlong| {
+    runtime::externref_objdel(r, obj as *mut std::os::raw::c_void);
+});
 
 /// Attach shared heap to instance.
 #[no_mangle]
@@ -3049,19 +2709,9 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     if runtime::shared_heap_attach(instance_ref, heap_handle as *mut std::os::raw::c_void) { 1 } else { 0 }
 }
 
-/// Detach shared heap from instance.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDetachSharedHeap<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    runtime::shared_heap_detach(instance_ref);
-}
+// Detach shared heap from instance.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeDetachSharedHeap,
+    WamrInstance, runtime::shared_heap_detach);
 
 /// Allocate from shared heap.
 #[no_mangle]
@@ -3078,20 +2728,11 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     runtime::shared_heap_malloc(instance_ref, size as u64) as jlong
 }
 
-/// Free shared heap memory.
-#[no_mangle]
-pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSharedHeapFree<'local>(
-    _env: JNIEnv<'local>,
-    _class: JClass<'local>,
-    instance_handle: jlong,
-    ptr: jlong,
-) {
-    if instance_handle == 0 {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance_handle as *const WamrInstance) };
-    runtime::shared_heap_free(instance_ref, ptr as u64);
-}
+// Free shared heap memory.
+jni_void_fn!(Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSharedHeapFree,
+    WamrInstance, ptr: jlong, |r: &WamrInstance, p: jlong| {
+    runtime::shared_heap_free(r, p as u64);
+});
 
 // =============================================================================
 // Gap Coverage: WebAssemblyMemory additions

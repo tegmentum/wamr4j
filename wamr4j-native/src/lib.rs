@@ -16,6 +16,10 @@
 
 //! Shared native library for wamr4j JNI and Panama FFI bindings
 
+// Macros must be declared before modules that use them
+#[macro_use]
+pub mod macros;
+
 // Module declarations
 pub mod bindings;
 pub mod ffi;
