@@ -474,4 +474,45 @@ class WasiSupportTest {
             LOGGER.info("Panama configureWasi with full config: OK");
         }
     }
+
+    @Test
+    void testWasiConfigurationStdioFds() {
+        LOGGER.info("Testing WasiConfiguration stdio FD setters and hasCustomStdio");
+
+        final WasiConfiguration config = new WasiConfiguration();
+
+        // By default, no custom stdio should be set
+        assertFalse(config.hasCustomStdio(),
+            "Default WasiConfiguration should not have custom stdio");
+        LOGGER.info("hasCustomStdio() default: false (correct)");
+
+        // Set stdin FD
+        config.setStdinFd(0L);
+        LOGGER.info("After setStdinFd(0): hasCustomStdio() = " + config.hasCustomStdio());
+        assertTrue(config.hasCustomStdio(),
+            "hasCustomStdio should be true after setting stdin FD");
+
+        // Create a fresh config and set stdout
+        final WasiConfiguration config2 = new WasiConfiguration();
+        config2.setStdoutFd(1L);
+        LOGGER.info("After setStdoutFd(1): hasCustomStdio() = " + config2.hasCustomStdio());
+        assertTrue(config2.hasCustomStdio(),
+            "hasCustomStdio should be true after setting stdout FD");
+
+        // Create a fresh config and set stderr
+        final WasiConfiguration config3 = new WasiConfiguration();
+        config3.setStderrFd(2L);
+        LOGGER.info("After setStderrFd(2): hasCustomStdio() = " + config3.hasCustomStdio());
+        assertTrue(config3.hasCustomStdio(),
+            "hasCustomStdio should be true after setting stderr FD");
+
+        // Set all three on one config
+        final WasiConfiguration configAll = new WasiConfiguration()
+            .setStdinFd(10L)
+            .setStdoutFd(11L)
+            .setStderrFd(12L);
+        assertTrue(configAll.hasCustomStdio(),
+            "hasCustomStdio should be true after setting all stdio FDs");
+        LOGGER.info("All stdio FDs set: hasCustomStdio() = true (correct)");
+    }
 }
