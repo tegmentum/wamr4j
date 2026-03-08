@@ -373,33 +373,12 @@ pub extern "C" fn wamr_memory_get(instance: *mut c_void) -> *mut c_void {
     }
 }
 
-/// Get memory size in bytes
-#[no_mangle]
-pub extern "C" fn wamr_memory_size(memory: *mut c_void) -> c_long {
-    clear_last_error();
-    if memory.is_null() {
-        return -1;
-    }
+// Get memory size in bytes
+ffi_getter_fn!(wamr_memory_size, WamrMemory, c_long, -1, |r: &WamrMemory| r.size as c_long);
 
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        memory_ref.size as c_long
-    }
-}
-
-/// Get memory data pointer
-#[no_mangle]
-pub extern "C" fn wamr_memory_data(memory: *mut c_void) -> *mut c_void {
-    clear_last_error();
-    if memory.is_null() {
-        return ptr::null_mut();
-    }
-
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        memory_ref.data_ptr as *mut c_void
-    }
-}
+// Get memory data pointer
+ffi_getter_fn!(wamr_memory_data, WamrMemory, *mut c_void, ptr::null_mut(),
+    |r: &WamrMemory| r.data_ptr as *mut c_void);
 
 /// Grow memory by specified pages
 #[no_mangle]
@@ -418,44 +397,16 @@ pub extern "C" fn wamr_memory_grow(memory: *mut c_void, pages: c_long) -> c_int 
     }
 }
 
-/// Get current page count
-#[no_mangle]
-pub extern "C" fn wamr_memory_page_count(memory: *mut c_void) -> c_long {
-    clear_last_error();
-    if memory.is_null() {
-        return -1;
-    }
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        memory_page_count(memory_ref) as c_long
-    }
-}
+// Get current page count
+ffi_getter_fn!(wamr_memory_page_count, WamrMemory, c_long, -1,
+    |r: &WamrMemory| memory_page_count(r) as c_long);
 
-/// Get maximum page count
-#[no_mangle]
-pub extern "C" fn wamr_memory_max_page_count(memory: *mut c_void) -> c_long {
-    clear_last_error();
-    if memory.is_null() {
-        return -1;
-    }
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        memory_max_page_count(memory_ref) as c_long
-    }
-}
+// Get maximum page count
+ffi_getter_fn!(wamr_memory_max_page_count, WamrMemory, c_long, -1,
+    |r: &WamrMemory| memory_max_page_count(r) as c_long);
 
-/// Check if memory is shared
-#[no_mangle]
-pub extern "C" fn wamr_memory_is_shared(memory: *mut c_void) -> c_int {
-    clear_last_error();
-    if memory.is_null() {
-        return 0;
-    }
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        if memory_is_shared(memory_ref) { 1 } else { 0 }
-    }
-}
+// Check if memory is shared
+ffi_bool_fn!(wamr_memory_is_shared, WamrMemory, memory_is_shared, 0);
 
 /// Destroy a memory handle allocated by wamr_memory_get
 #[no_mangle]
@@ -468,31 +419,13 @@ pub extern "C" fn wamr_memory_destroy(memory: *mut c_void) {
     }
 }
 
-/// Get memory base address (native pointer)
-#[no_mangle]
-pub extern "C" fn wamr_memory_base_address(memory: *mut c_void) -> *mut c_void {
-    clear_last_error();
-    if memory.is_null() {
-        return ptr::null_mut();
-    }
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        memory_base_address(memory_ref)
-    }
-}
+// Get memory base address (native pointer)
+ffi_getter_fn!(wamr_memory_base_address, WamrMemory, *mut c_void, ptr::null_mut(),
+    |r: &WamrMemory| memory_base_address(r));
 
-/// Get bytes per page for a memory instance
-#[no_mangle]
-pub extern "C" fn wamr_memory_bytes_per_page(memory: *mut c_void) -> c_long {
-    clear_last_error();
-    if memory.is_null() {
-        return -1;
-    }
-    unsafe {
-        let memory_ref = &*(memory as *const WamrMemory);
-        memory_bytes_per_page(memory_ref) as c_long
-    }
-}
+// Get bytes per page for a memory instance
+ffi_getter_fn!(wamr_memory_bytes_per_page, WamrMemory, c_long, -1,
+    |r: &WamrMemory| memory_bytes_per_page(r) as c_long);
 
 /// Enlarge a specific memory instance by pages
 #[no_mangle]
@@ -669,20 +602,10 @@ pub extern "C" fn wamr_memory_get_by_index(
     }
 }
 
-/// Check if an instance has a default memory (without allocating a Box)
-#[no_mangle]
-pub extern "C" fn wamr_instance_has_memory(instance: *mut c_void) -> c_int {
-    clear_last_error();
-    if instance.is_null() {
-        return 0;
-    }
-
-    unsafe {
-        let instance_ref = &*(instance as *const WamrInstance);
-        let memory_handle = crate::bindings::wasm_runtime_get_default_memory(instance_ref.handle);
-        if memory_handle.is_null() { 0 } else { 1 }
-    }
-}
+// Check if an instance has a default memory (without allocating a Box)
+ffi_getter_fn!(wamr_instance_has_memory, WamrInstance, c_int, 0, |r: &WamrInstance| {
+    if crate::bindings::wasm_runtime_get_default_memory(r.handle).is_null() { 0 } else { 1 }
+});
 
 // =============================================================================
 // Runtime Configuration
@@ -715,18 +638,10 @@ pub extern "C" fn wamr_set_running_mode(instance: *mut c_void, mode: c_int) -> c
     }
 }
 
-/// Get the running mode for an instance
-#[no_mangle]
-pub extern "C" fn wamr_get_running_mode(instance: *mut c_void) -> c_int {
-    clear_last_error();
-    if instance.is_null() {
-        return -1;
-    }
-    unsafe {
-        let instance_ref = &*(instance as *const WamrInstance);
-        get_running_mode(instance_ref) as c_int
-    }
-}
+// Get the running mode for an instance
+ffi_getter_fn!(wamr_get_running_mode, WamrInstance, c_int, -1, |r: &WamrInstance| {
+    get_running_mode(r) as c_int
+});
 
 /// Set log verbosity level
 #[no_mangle]
@@ -748,18 +663,8 @@ pub extern "C" fn wamr_set_bounds_checks(instance: *mut c_void, enable: c_int) -
     }
 }
 
-/// Check if bounds checks are enabled for an instance
-#[no_mangle]
-pub extern "C" fn wamr_is_bounds_checks_enabled(instance: *mut c_void) -> c_int {
-    clear_last_error();
-    if instance.is_null() {
-        return -1;
-    }
-    unsafe {
-        let instance_ref = &*(instance as *const WamrInstance);
-        if is_bounds_checks_enabled(instance_ref) { 1 } else { 0 }
-    }
-}
+// Check if bounds checks are enabled for an instance
+ffi_bool_fn!(wamr_is_bounds_checks_enabled, WamrInstance, is_bounds_checks_enabled, -1);
 
 // =============================================================================
 // Module Management
@@ -860,18 +765,11 @@ pub extern "C" fn wamr_get_file_package_type(
     get_file_package_type(bytes) as c_int
 }
 
-/// Get the package type of a loaded module
-#[no_mangle]
-pub extern "C" fn wamr_get_module_package_type(module: *mut c_void) -> c_int {
-    clear_last_error();
-    if module.is_null() {
-        return crate::bindings::PACKAGE_TYPE_UNKNOWN as c_int;
-    }
-    unsafe {
-        let module_ref = &*(module as *const WamrModule);
-        get_module_package_type(module_ref) as c_int
-    }
-}
+// Get the package type of a loaded module
+ffi_getter_fn!(wamr_get_module_package_type, WamrModule, c_int,
+    crate::bindings::PACKAGE_TYPE_UNKNOWN as c_int, |r: &WamrModule| {
+    get_module_package_type(r) as c_int
+});
 
 /// Get the package version of a bytecode buffer
 #[no_mangle]
@@ -887,18 +785,10 @@ pub extern "C" fn wamr_get_file_package_version(
     get_file_package_version(bytes) as c_int
 }
 
-/// Get the package version of a loaded module
-#[no_mangle]
-pub extern "C" fn wamr_get_module_package_version(module: *mut c_void) -> c_int {
-    clear_last_error();
-    if module.is_null() {
-        return 0;
-    }
-    unsafe {
-        let module_ref = &*(module as *const WamrModule);
-        get_module_package_version(module_ref) as c_int
-    }
-}
+// Get the package version of a loaded module
+ffi_getter_fn!(wamr_get_module_package_version, WamrModule, c_int, 0, |r: &WamrModule| {
+    get_module_package_version(r) as c_int
+});
 
 /// Get the currently supported version for a package type
 #[no_mangle]
@@ -918,18 +808,8 @@ pub extern "C" fn wamr_is_xip_file(buf: *const c_uchar, size: c_int) -> c_int {
     if is_xip_file(bytes) { 1 } else { 0 }
 }
 
-/// Check if the underlying binary can be freed after loading
-#[no_mangle]
-pub extern "C" fn wamr_is_underlying_binary_freeable(module: *mut c_void) -> c_int {
-    clear_last_error();
-    if module.is_null() {
-        return 0;
-    }
-    unsafe {
-        let module_ref = &*(module as *const WamrModule);
-        if is_underlying_binary_freeable(module_ref) { 1 } else { 0 }
-    }
-}
+// Check if the underlying binary can be freed after loading
+ffi_bool_fn!(wamr_is_underlying_binary_freeable, WamrModule, is_underlying_binary_freeable, 0);
 
 // =============================================================================
 // Table Operations
@@ -981,44 +861,14 @@ pub extern "C" fn wamr_table_destroy(table: *mut c_void) {
     }
 }
 
-/// Get table current size
-#[no_mangle]
-pub extern "C" fn wamr_table_size(table: *mut c_void) -> c_int {
-    clear_last_error();
-    if table.is_null() {
-        return -1;
-    }
-    unsafe {
-        let table_ref = &*(table as *const WamrTable);
-        table_ref.table_inst.cur_size as c_int
-    }
-}
+// Get table current size
+ffi_getter_fn!(wamr_table_size, WamrTable, c_int, -1, |r: &WamrTable| r.table_inst.cur_size as c_int);
 
-/// Get table maximum size
-#[no_mangle]
-pub extern "C" fn wamr_table_max_size(table: *mut c_void) -> c_int {
-    clear_last_error();
-    if table.is_null() {
-        return -1;
-    }
-    unsafe {
-        let table_ref = &*(table as *const WamrTable);
-        table_ref.table_inst.max_size as c_int
-    }
-}
+// Get table maximum size
+ffi_getter_fn!(wamr_table_max_size, WamrTable, c_int, -1, |r: &WamrTable| r.table_inst.max_size as c_int);
 
-/// Get table element kind (returns WASM_FUNCREF=129, WASM_EXTERNREF=128, or -1 on error)
-#[no_mangle]
-pub extern "C" fn wamr_table_elem_kind(table: *mut c_void) -> c_int {
-    clear_last_error();
-    if table.is_null() {
-        return -1;
-    }
-    unsafe {
-        let table_ref = &*(table as *const WamrTable);
-        table_ref.table_inst.elem_kind as c_int
-    }
-}
+// Get table element kind (returns WASM_FUNCREF=129, WASM_EXTERNREF=128, or -1 on error)
+ffi_getter_fn!(wamr_table_elem_kind, WamrTable, c_int, -1, |r: &WamrTable| r.table_inst.elem_kind as c_int);
 
 /// Get a function from a table at the given index
 #[no_mangle]
@@ -1641,36 +1491,16 @@ pub extern "C" fn wamr_instance_set_exception(instance: *mut c_void, exception: 
     }
 }
 
-/// Clear the current exception on an instance.
-#[no_mangle]
-pub extern "C" fn wamr_instance_clear_exception(instance: *mut c_void) {
-    if instance.is_null() {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    instance_clear_exception(instance_ref);
-}
+// Clear the current exception on an instance.
+ffi_void_fn!(wamr_instance_clear_exception, WamrInstance, instance_clear_exception);
 
-/// Terminate execution of an instance.
-#[no_mangle]
-pub extern "C" fn wamr_instance_terminate(instance: *mut c_void) {
-    if instance.is_null() {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    instance_terminate(instance_ref);
-}
+// Terminate execution of an instance.
+ffi_void_fn!(wamr_instance_terminate, WamrInstance, instance_terminate);
 
-/// Set the instruction count limit for an instance's execution environment.
-/// Pass -1 to remove the limit.
-#[no_mangle]
-pub extern "C" fn wamr_instance_set_instruction_count_limit(instance: *mut c_void, limit: c_int) {
-    if instance.is_null() {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    set_instruction_count_limit(instance_ref, limit);
-}
+// Set the instruction count limit for an instance's execution environment.
+// Pass -1 to remove the limit.
+ffi_void_fn!(wamr_instance_set_instruction_count_limit, WamrInstance,
+    limit: c_int, |r: &WamrInstance, l| set_instruction_count_limit(r, l));
 
 // =============================================================================
 // WASI Support
@@ -1754,36 +1584,18 @@ pub extern "C" fn wamr_module_set_wasi_ns_lookup_pool(
     }
 }
 
-/// Check if a module instance is in WASI mode.
-#[no_mangle]
-pub extern "C" fn wamr_instance_is_wasi_mode(instance: *mut c_void) -> c_int {
-    if instance.is_null() {
-        return 0;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    if instance_is_wasi_mode(instance_ref) { 1 } else { 0 }
-}
+// Check if a module instance is in WASI mode.
+ffi_bool_fn!(wamr_instance_is_wasi_mode, WamrInstance, instance_is_wasi_mode, 0);
 
-/// Get the WASI exit code from a module instance.
-#[no_mangle]
-pub extern "C" fn wamr_instance_get_wasi_exit_code(instance: *mut c_void) -> c_int {
-    if instance.is_null() {
-        return 0;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    instance_get_wasi_exit_code(instance_ref) as c_int
-}
+// Get the WASI exit code from a module instance.
+ffi_getter_fn!(wamr_instance_get_wasi_exit_code, WamrInstance, c_int, 0, |r: &WamrInstance| {
+    instance_get_wasi_exit_code(r) as c_int
+});
 
-/// Check if WASI _start function exists in the module instance.
-#[no_mangle]
-pub extern "C" fn wamr_instance_has_wasi_start_function(instance: *mut c_void) -> c_int {
-    if instance.is_null() {
-        return 0;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    let func = instance_lookup_wasi_start_function(instance_ref);
-    if func.is_null() { 0 } else { 1 }
-}
+// Check if WASI _start function exists in the module instance.
+ffi_getter_fn!(wamr_instance_has_wasi_start_function, WamrInstance, c_int, 0, |r: &WamrInstance| {
+    if instance_lookup_wasi_start_function(r).is_null() { 0 } else { 1 }
+});
 
 /// Execute the WASI _start function.
 /// Returns 0 on success, -1 on failure.
@@ -1832,30 +1644,19 @@ pub extern "C" fn wamr_instance_execute_func(
     }
 }
 
-/// Helper: read a C string array into a Vec<String>.
 // =============================================================================
 // Custom Data (Panama FFI)
 // =============================================================================
 
-/// Set custom data on a module instance.
-#[no_mangle]
-pub extern "C" fn wamr_instance_set_custom_data(instance: *mut c_void, custom_data: u64) {
-    if instance.is_null() {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    instance_set_custom_data(instance_ref, custom_data);
-}
+// Set custom data on a module instance.
+ffi_void_fn!(wamr_instance_set_custom_data, WamrInstance, custom_data: u64, |r: &WamrInstance, d: u64| {
+    instance_set_custom_data(r, d);
+});
 
-/// Get custom data from a module instance.
-#[no_mangle]
-pub extern "C" fn wamr_instance_get_custom_data(instance: *mut c_void) -> u64 {
-    if instance.is_null() {
-        return 0;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    instance_get_custom_data(instance_ref)
-}
+// Get custom data from a module instance.
+ffi_getter_fn!(wamr_instance_get_custom_data, WamrInstance, u64, 0, |r: &WamrInstance| {
+    instance_get_custom_data(r)
+});
 
 // =============================================================================
 // Debugging & Profiling
@@ -1879,35 +1680,16 @@ pub extern "C" fn wamr_instance_get_call_stack(instance: *mut c_void) -> *mut c_
     }
 }
 
-/// Dump call stack to stdout.
-#[no_mangle]
-pub extern "C" fn wamr_instance_dump_call_stack(instance: *mut c_void) {
-    if instance.is_null() {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    instance_dump_call_stack(instance_ref);
-}
+// Dump call stack to stdout.
+ffi_void_fn!(wamr_instance_dump_call_stack, WamrInstance, instance_dump_call_stack);
 
-/// Dump performance profiling data to stdout.
-#[no_mangle]
-pub extern "C" fn wamr_instance_dump_perf_profiling(instance: *mut c_void) {
-    if instance.is_null() {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    instance_dump_perf_profiling(instance_ref);
-}
+// Dump performance profiling data to stdout.
+ffi_void_fn!(wamr_instance_dump_perf_profiling, WamrInstance, instance_dump_perf_profiling);
 
-/// Get total WASM execution time in milliseconds.
-#[no_mangle]
-pub extern "C" fn wamr_instance_sum_exec_time(instance: *mut c_void) -> f64 {
-    if instance.is_null() {
-        return 0.0;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    instance_sum_wasm_exec_time(instance_ref)
-}
+// Get total WASM execution time in milliseconds.
+ffi_getter_fn!(wamr_instance_sum_exec_time, WamrInstance, f64, 0.0, |r: &WamrInstance| {
+    instance_sum_wasm_exec_time(r)
+});
 
 /// Get execution time for a specific function in milliseconds.
 #[no_mangle]
@@ -1927,15 +1709,8 @@ pub extern "C" fn wamr_instance_get_func_exec_time(
     instance_get_wasm_func_exec_time(instance_ref, name_str)
 }
 
-/// Dump memory consumption to stdout.
-#[no_mangle]
-pub extern "C" fn wamr_instance_dump_mem_consumption(instance: *mut c_void) {
-    if instance.is_null() {
-        return;
-    }
-    let instance_ref = unsafe { &*(instance as *const crate::types::WamrInstance) };
-    instance_dump_mem_consumption(instance_ref);
-}
+// Dump memory consumption to stdout.
+ffi_void_fn!(wamr_instance_dump_mem_consumption, WamrInstance, instance_dump_mem_consumption);
 
 // =============================================================================
 // Threading
@@ -2221,44 +1996,16 @@ pub extern "C" fn wamr_instance_lookup_memory(
 // Phase 17: Blocking Operations & Stack Overflow Detection
 // =============================================================================
 
-/// Begin a blocking operation on an instance's exec env.
-/// Returns 1 on success, 0 on failure.
-#[no_mangle]
-pub extern "C" fn wamr_instance_begin_blocking_op(
-    instance_handle: *mut c_void,
-) -> c_int {
-    clear_last_error();
-    if instance_handle.is_null() {
-        return 0;
-    }
-    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
-    if instance_begin_blocking_op(instance) { 1 } else { 0 }
-}
+// Begin a blocking operation on an instance's exec env.
+// Returns 1 on success, 0 on failure.
+ffi_bool_fn!(wamr_instance_begin_blocking_op, WamrInstance, instance_begin_blocking_op, 0);
 
-/// End a blocking operation on an instance's exec env.
-#[no_mangle]
-pub extern "C" fn wamr_instance_end_blocking_op(
-    instance_handle: *mut c_void,
-) {
-    if instance_handle.is_null() {
-        return;
-    }
-    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
-    instance_end_blocking_op(instance);
-}
+// End a blocking operation on an instance's exec env.
+ffi_void_fn!(wamr_instance_end_blocking_op, WamrInstance, instance_end_blocking_op);
 
-/// Detect native stack overflow.
-/// Returns 1 if stack overflow detected, 0 if safe.
-#[no_mangle]
-pub extern "C" fn wamr_instance_detect_native_stack_overflow(
-    instance_handle: *mut c_void,
-) -> c_int {
-    if instance_handle.is_null() {
-        return 1;
-    }
-    let instance = unsafe { &*(instance_handle as *const WamrInstance) };
-    if instance_detect_native_stack_overflow(instance) { 1 } else { 0 }
-}
+// Detect native stack overflow.
+// Returns 1 if stack overflow detected, 0 if safe.
+ffi_bool_fn!(wamr_instance_detect_native_stack_overflow, WamrInstance, instance_detect_native_stack_overflow, 1);
 
 /// Detect native stack overflow with required size.
 /// Returns 1 if stack overflow detected, 0 if safe.
@@ -2532,14 +2279,7 @@ pub extern "C" fn wamr_shared_heap_attach(instance: *mut c_void, heap: *mut c_vo
     if shared_heap_attach(inst, heap) { 0 } else { -1 }
 }
 
-#[no_mangle]
-pub extern "C" fn wamr_shared_heap_detach(instance: *mut c_void) {
-    if instance.is_null() {
-        return;
-    }
-    let inst = unsafe { &*(instance as *const WamrInstance) };
-    shared_heap_detach(inst);
-}
+ffi_void_fn!(wamr_shared_heap_detach, WamrInstance, shared_heap_detach);
 
 #[no_mangle]
 pub extern "C" fn wamr_shared_heap_chain(head: *mut c_void, body: *mut c_void) -> *mut c_void {
@@ -2555,14 +2295,9 @@ pub extern "C" fn wamr_shared_heap_malloc(instance: *mut c_void, size: u64) -> u
     shared_heap_malloc(inst, size)
 }
 
-#[no_mangle]
-pub extern "C" fn wamr_shared_heap_free(instance: *mut c_void, ptr: u64) {
-    if instance.is_null() {
-        return;
-    }
-    let inst = unsafe { &*(instance as *const WamrInstance) };
-    shared_heap_free(inst, ptr);
-}
+ffi_void_fn!(wamr_shared_heap_free, WamrInstance, ptr: u64, |r: &WamrInstance, p: u64| {
+    shared_heap_free(r, p);
+});
 
 // =============================================================================
 // Module Find Registered
