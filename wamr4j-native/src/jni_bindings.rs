@@ -1972,6 +1972,9 @@ unsafe fn fast_call(
         return false;
     }
 
+    // Auto-initialize thread environment for the current thread if needed.
+    runtime::ensure_thread_env();
+
     let success = bindings::wasm_runtime_call_wasm_a(
         function_ref.exec_env,
         function_ref.handle,

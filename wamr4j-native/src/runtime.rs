@@ -396,6 +396,9 @@ pub fn instance_create(
         return Err(WamrError::CompilationFailed);
     }
 
+    // Auto-initialize thread environment for the current thread if needed.
+    ensure_thread_env();
+
     // Resolve import symbols. Module is loaded with no_resolve=true so that
     // host functions can be registered between compile and instantiate.
     // This call links any registered natives to the module's import slots.
@@ -581,6 +584,12 @@ pub fn function_call(
     if exec_env.is_null() {
         return Err(WamrError::ExecutionFailed("No execution environment".to_string()));
     }
+
+    // Auto-initialize thread environment for the current thread if needed.
+    // WAMR requires each thread to have its signal handlers installed for
+    // hardware bounds checking. Without this, calls from non-main threads
+    // (e.g. Java ExecutorService workers) fail with "thread signal env not inited".
+    ensure_thread_env();
 
     // Convert arguments to typed wasm_val_t array
     let mut wamr_args: Vec<bindings::WasmValT> = args.iter()
@@ -1965,6 +1974,14 @@ pub fn init_thread_env() -> bool {
     unsafe { bindings::wasm_runtime_init_thread_env() }
 }
 
+/// Ensure the thread environment is initialized for the current thread.
+/// This is a no-op if already initialized, making it safe to call on every invocation.
+pub fn ensure_thread_env() {
+    if !is_thread_env_inited() {
+        init_thread_env();
+    }
+}
+
 /// Destroy the thread environment for the current native thread.
 pub fn destroy_thread_env() {
     unsafe { bindings::wasm_runtime_destroy_thread_env() }
@@ -1994,6 +2011,9 @@ pub fn instance_create_ex(
     if module.handle.is_null() || !module.is_valid() {
         return Err(WamrError::CompilationFailed);
     }
+
+    // Auto-initialize thread environment for the current thread if needed.
+    ensure_thread_env();
 
     // Resolve import symbols
     let resolved = unsafe { bindings::wasm_runtime_resolve_symbols(module.handle) };
@@ -2405,6 +2425,9 @@ pub fn instance_create_ex2(
     if module.handle.is_null() {
         return Err(WamrError::CompilationFailed);
     }
+
+    // Auto-initialize thread environment for the current thread if needed.
+    ensure_thread_env();
 
     let mut args: *mut bindings::InstantiationArgs2 = std::ptr::null_mut();
     let created = unsafe { bindings::wasm_runtime_instantiation_args_create(&mut args) };
