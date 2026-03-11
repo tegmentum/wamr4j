@@ -107,7 +107,7 @@
                             <outputDirectory>${project.build.outputDirectory}/META-INF/native/${native.platform.classifier}</outputDirectory>
                             <resources>
                                 <resource>
-                                    <directory>${project.basedir}/target/release</directory>
+                                    <directory>${project.basedir}/target/rust-maven-plugin/${project.artifactId}/release</directory>
                                     <includes>
                                         <include>${native.library.name}</include>
                                     </includes>
