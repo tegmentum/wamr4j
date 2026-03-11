@@ -356,7 +356,7 @@ pub fn module_compile(runtime: &WamrRuntime, wasm_bytes: &[u8]) -> Result<WamrMo
             owned_bytes.as_mut_ptr(),
             owned_bytes.len() as u32,
             &load_args,
-            error_buf.as_mut_ptr() as *mut i8,
+            error_buf.as_mut_ptr() as *mut c_char,
             error_buf.len() as u32,
         )
     };
@@ -364,7 +364,7 @@ pub fn module_compile(runtime: &WamrRuntime, wasm_bytes: &[u8]) -> Result<WamrMo
     if module_handle.is_null() {
         // Extract error message from buffer
         let error_msg = unsafe {
-            let cstr = std::ffi::CStr::from_ptr(error_buf.as_ptr() as *const i8);
+            let cstr = std::ffi::CStr::from_ptr(error_buf.as_ptr() as *const c_char);
             cstr.to_string_lossy().into_owned()
         };
         set_last_error(format!("Module compilation failed: {}", error_msg));
@@ -417,15 +417,15 @@ pub fn instance_create(
             module.handle,
             stack_size as u32,
             heap_size as u32,
-            error_buf.as_mut_ptr() as *mut i8,
+            error_buf.as_mut_ptr() as *mut c_char,
             error_buf.len() as u32,
         )
     };
-    
+
     if instance_handle.is_null() {
         // Extract error message from buffer
         let error_msg = unsafe {
-            let cstr = std::ffi::CStr::from_ptr(error_buf.as_ptr() as *const i8);
+            let cstr = std::ffi::CStr::from_ptr(error_buf.as_ptr() as *const c_char);
             cstr.to_string_lossy().into_owned()
         };
         set_last_error(format!("Instance creation failed: {}", error_msg));
@@ -849,7 +849,7 @@ pub fn module_dup_data(instance: &WamrInstance, data: &[u8]) -> Result<u64, Wamr
     let app_offset = unsafe {
         bindings::wasm_runtime_module_dup_data(
             instance.handle,
-            data.as_ptr() as *const i8,
+            data.as_ptr() as *const c_char,
             data.len() as u64,
         )
     };
@@ -2442,12 +2442,12 @@ pub fn instance_create_ex2(
         bindings::wasm_runtime_instantiation_args_set_max_memory_pages(args, max_memory_pages);
     }
 
-    let mut error_buf = [0i8; ERROR_BUF_SIZE];
+    let mut error_buf = [0u8; ERROR_BUF_SIZE];
     let module_inst = unsafe {
         bindings::wasm_runtime_instantiate_ex2(
             module.handle as *const _,
             args as *const _,
-            error_buf.as_mut_ptr(),
+            error_buf.as_mut_ptr() as *mut c_char,
             ERROR_BUF_SIZE as u32,
         )
     };
@@ -2455,7 +2455,7 @@ pub fn instance_create_ex2(
     unsafe { bindings::wasm_runtime_instantiation_args_destroy(args) };
 
     if module_inst.is_null() {
-        let error_msg = unsafe { CStr::from_ptr(error_buf.as_ptr()) }
+        let error_msg = unsafe { CStr::from_ptr(error_buf.as_ptr() as *const c_char) }
             .to_str()
             .unwrap_or("Unknown error")
             .to_string();
@@ -2501,14 +2501,14 @@ pub fn copy_callstack(
     for _ in 0..32 {
         frames.push(unsafe { std::mem::zeroed() });
     }
-    let mut error_buf = [0i8; ERROR_BUF_SIZE];
+    let mut error_buf = [0u8; ERROR_BUF_SIZE];
     let count = unsafe {
         bindings::wasm_copy_callstack(
             instance.exec_env as *const _,
             frames.as_mut_ptr(),
             32,
             skip,
-            error_buf.as_mut_ptr(),
+            error_buf.as_mut_ptr() as *mut c_char,
             ERROR_BUF_SIZE as u32,
         )
     };
