@@ -1,0 +1,279 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Build native libraries on each platform
+  build-native:
+    name: Native (${{ matrix.platform }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            lib: libwamr4j_native.so
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            target: aarch64-unknown-linux-gnu
+            lib: libwamr4j_native.so
+          - os: macos-latest
+            platform: darwin-aarch64
+            target: aarch64-apple-darwin
+            lib: libwamr4j_native.dylib
+          - os: windows-latest
+            platform: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            lib: wamr4j_native.dll
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            wamr4j-native/.cargo-target
+          key: cargo-${{ matrix.platform }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+          restore-keys: cargo-${{ matrix.platform }}-
+
+      - name: Build native library
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: wamr4j-native/.cargo-target
+        run: |
+          cd wamr4j-native
+          cargo build --release --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: wamr4j-native/.cargo-target/${{ matrix.target }}/release/${{ matrix.lib }}
+          retention-days: 90
+          if-no-files-found: error
+
+  # Test on each platform with JNI (Java 17) and Panama (Java 23)
+  test:
+    name: Test Java ${{ matrix.java }} (${{ matrix.platform }})
+    needs: build-native
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            java: '17'
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            java: '23'
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            java: '17'
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            java: '23'
+          - os: macos-latest
+            platform: darwin-aarch64
+            java: '17'
+          - os: macos-latest
+            platform: darwin-aarch64
+            java: '23'
+          - os: windows-latest
+            platform: windows-x86_64
+            java: '17'
+          - os: windows-latest
+            platform: windows-x86_64
+            java: '23'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+
+      - name: Cache Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-test-${{ matrix.java }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: m2-test-
+
+      - name: Download native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: wamr4j-native/src/main/resources/META-INF/native/${{ matrix.platform }}/
+
+      - name: Copy native library to JNI and Panama modules
+        shell: bash
+        run: |
+          mkdir -p wamr4j-jni/src/main/resources/META-INF/native/${{ matrix.platform }}/
+          mkdir -p wamr4j-panama/src/main/resources/META-INF/native/${{ matrix.platform }}/
+          cp wamr4j-native/src/main/resources/META-INF/native/${{ matrix.platform }}/* \
+             wamr4j-jni/src/main/resources/META-INF/native/${{ matrix.platform }}/
+          cp wamr4j-native/src/main/resources/META-INF/native/${{ matrix.platform }}/* \
+             wamr4j-panama/src/main/resources/META-INF/native/${{ matrix.platform }}/
+
+      - name: Run tests
+        shell: bash
+        run: |
+          ./mvnw test -B -pl '!wamr4j-native,!wamr4j-benchmarks' \
+            -DargLine="--enable-native-access=ALL-UNNAMED" \
+            -Djacoco.skip=true -q
+
+  # Publish -- requires manual approval via GitHub environment
+  publish:
+    name: Publish
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
+
+      - name: Cache Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-publish-${{ hashFiles('**/pom.xml') }}
+          restore-keys: m2-publish-
+
+      # Download all native libraries into resource directories
+      - name: Download linux-x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux-x86_64
+          path: wamr4j-native/src/main/resources/META-INF/native/linux-x86_64/
+      - name: Download linux-aarch64
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux-aarch64
+          path: wamr4j-native/src/main/resources/META-INF/native/linux-aarch64/
+      - name: Download darwin-aarch64
+        uses: actions/download-artifact@v4
+        with:
+          name: native-darwin-aarch64
+          path: wamr4j-native/src/main/resources/META-INF/native/darwin-aarch64/
+      - name: Download windows-x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: native-windows-x86_64
+          path: wamr4j-native/src/main/resources/META-INF/native/windows-x86_64/
+
+      - name: Copy native libraries to JNI and Panama modules
+        run: |
+          for platform in linux-x86_64 linux-aarch64 darwin-aarch64 windows-x86_64; do
+            mkdir -p wamr4j-jni/src/main/resources/META-INF/native/$platform/
+            mkdir -p wamr4j-panama/src/main/resources/META-INF/native/$platform/
+            cp wamr4j-native/src/main/resources/META-INF/native/$platform/* \
+               wamr4j-jni/src/main/resources/META-INF/native/$platform/
+            cp wamr4j-native/src/main/resources/META-INF/native/$platform/* \
+               wamr4j-panama/src/main/resources/META-INF/native/$platform/
+          done
+
+      - name: Verify native libraries
+        run: |
+          echo "Native library layout:"
+          find wamr4j-native/src/main/resources/META-INF/native/ -type f
+          test -f wamr4j-native/src/main/resources/META-INF/native/linux-x86_64/libwamr4j_native.so
+          test -f wamr4j-native/src/main/resources/META-INF/native/linux-aarch64/libwamr4j_native.so
+          test -f wamr4j-native/src/main/resources/META-INF/native/darwin-aarch64/libwamr4j_native.dylib
+          test -f wamr4j-native/src/main/resources/META-INF/native/windows-x86_64/wamr4j_native.dll
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Maven Central
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          ./mvnw deploy -B -P release \
+            -pl '!wamr4j-native,!wamr4j-benchmarks,!wamr4j-tests' \
+            -DskipTests \
+            -Drevision=${{ steps.version.outputs.version }}
+
+      - name: Deploy to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings-github.xml <<'SETTINGS'
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${env.GITHUB_ACTOR}</username>
+                <password>${env.GITHUB_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          SETTINGS
+          ./mvnw deploy -B \
+            -pl '!wamr4j-native,!wamr4j-benchmarks,!wamr4j-tests' \
+            -DskipTests \
+            -Drevision=${{ steps.version.outputs.version }} \
+            -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }} \
+            -Dgpg.skip=true \
+            -s ~/.m2/settings-github.xml
+
+      - name: Package release artifacts
+        run: |
+          ./mvnw package -B -P release \
+            -pl '!wamr4j-native,!wamr4j-benchmarks,!wamr4j-tests' \
+            -DskipTests \
+            -Drevision=${{ steps.version.outputs.version }}
+
+      - name: Create checksums
+        run: |
+          for dir in wamr4j/target wamr4j-native/target wamr4j-jni/target wamr4j-panama/target; do
+            if [ -d "$dir" ]; then
+              for jar in "$dir"/*.jar; do
+                [ -f "$jar" ] && sha256sum "$jar" > "$jar.sha256"
+              done
+            fi
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            wamr4j/target/*.jar
+            wamr4j/target/*.jar.sha256
+            wamr4j-jni/target/*.jar
+            wamr4j-jni/target/*.jar.sha256
+            wamr4j-panama/target/*.jar
+            wamr4j-panama/target/*.jar.sha256
