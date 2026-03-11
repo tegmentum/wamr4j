@@ -55,7 +55,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             wamr4j-native/.cargo-target
-          key: cargo-${{ matrix.platform }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+          key: cargo-${{ matrix.platform }}-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock', 'wamr4j-native/build.rs') }}
           restore-keys: cargo-${{ matrix.platform }}-
 
       - name: Build native library
