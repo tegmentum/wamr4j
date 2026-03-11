@@ -56,7 +56,7 @@ jobs:
       - name: Build native library
         shell: bash
         env:
-          CARGO_TARGET_DIR: wamr4j-native/.cargo-target
+          CARGO_TARGET_DIR: ${{ github.workspace }}/wamr4j-native/.cargo-target
         run: |
           cd wamr4j-native
           cargo build --release --target ${{ matrix.target }}
