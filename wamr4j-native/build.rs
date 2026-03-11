@@ -128,23 +128,22 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
         .define("WAMR_BUILD_SIMD", "1")
         .define("WAMR_BUILD_FAST_JIT", "0");
 
-    // Enable LLVM JIT only when a full LLVM dev install is available.
-    // CI runners have cmake configs but lack the actual libraries.
-    let llvm_dir = find_llvm_dir();
-    let llvm_cmake = Path::new(&llvm_dir);
-    let llvm_lib_dir = llvm_cmake.parent().and_then(|p| p.parent());
-    let has_llvm_libs = llvm_lib_dir.map_or(false, |lib_dir| {
-        // Check for an actual LLVM library, not just the cmake config
-        lib_dir.join("libLLVMCore.a").exists()
-            || lib_dir.join("libLLVM.so").exists()
-            || lib_dir.join("libLLVM.dylib").exists()
-    });
-    if has_llvm_libs {
-        println!("cargo:warning=LLVM found at {}, enabling LLVM JIT", llvm_dir);
-        cmake.define("WAMR_BUILD_JIT", "1");
-        cmake.define("LLVM_DIR", &llvm_dir);
+    // Enable LLVM JIT only when explicitly requested via environment variable.
+    // LLVM JIT integration with WAMR's CMake is fragile across different LLVM
+    // installations, so it must be opted into deliberately.
+    let llvm_jit_enabled = env::var("WAMR4J_ENABLE_LLVM_JIT").unwrap_or_default() == "1";
+    if llvm_jit_enabled {
+        let llvm_dir = find_llvm_dir();
+        if !llvm_dir.is_empty() {
+            println!("cargo:warning=LLVM JIT enabled, LLVM at {}", llvm_dir);
+            cmake.define("WAMR_BUILD_JIT", "1");
+            cmake.define("LLVM_DIR", &llvm_dir);
+        } else {
+            println!("cargo:warning=WAMR4J_ENABLE_LLVM_JIT=1 but no LLVM found, disabling JIT");
+            cmake.define("WAMR_BUILD_JIT", "0");
+        }
     } else {
-        println!("cargo:warning=LLVM libraries not found, building without LLVM JIT");
+        println!("cargo:warning=Building without LLVM JIT (set WAMR4J_ENABLE_LLVM_JIT=1 to enable)");
         cmake.define("WAMR_BUILD_JIT", "0");
     }
 
@@ -172,6 +171,9 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
         },
         t if t.contains("windows") => {
             cmake.define("CMAKE_SYSTEM_NAME", "Windows");
+            // MSVC requires C11 standard for _Alignof/alignof used in WAMR headers
+            cmake.define("CMAKE_C_STANDARD", "11");
+            cmake.define("CMAKE_C_STANDARD_REQUIRED", "ON");
         },
         t if t.contains("darwin") => {
             cmake.define("CMAKE_SYSTEM_NAME", "Darwin");
@@ -191,7 +193,7 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
     println!("cargo:rustc-link-lib=static=iwasm");
     
     // Platform-specific system libraries
-    link_system_libraries(target);
+    link_system_libraries(target, llvm_jit_enabled);
 }
 
 /// Setup cross-compilation configuration
@@ -247,13 +249,15 @@ fn get_wamr_target(target: &str) -> &'static str {
 }
 
 /// Link platform-specific system libraries
-fn link_system_libraries(target: &str) {
+fn link_system_libraries(target: &str, llvm_jit: bool) {
     if target.contains("linux") {
         println!("cargo:rustc-link-lib=pthread");
         println!("cargo:rustc-link-lib=dl");
         println!("cargo:rustc-link-lib=m");
-        // C++ standard library needed for LLVM JIT C++ code
-        println!("cargo:rustc-link-lib=stdc++");
+        if llvm_jit {
+            // C++ standard library needed for LLVM JIT C++ code
+            println!("cargo:rustc-link-lib=stdc++");
+        }
     } else if target.contains("windows") {
         println!("cargo:rustc-link-lib=ws2_32");
         println!("cargo:rustc-link-lib=advapi32");
@@ -261,12 +265,16 @@ fn link_system_libraries(target: &str) {
     } else if target.contains("darwin") {
         println!("cargo:rustc-link-lib=framework=Security");
         println!("cargo:rustc-link-lib=framework=CoreFoundation");
-        // C++ standard library needed for LLVM JIT C++ code
-        println!("cargo:rustc-link-lib=c++");
+        if llvm_jit {
+            // C++ standard library needed for LLVM JIT C++ code
+            println!("cargo:rustc-link-lib=c++");
+        }
     }
 
-    // Link LLVM libraries required by WAMR JIT compilation
-    link_llvm_libraries();
+    if llvm_jit {
+        // Link LLVM libraries required by WAMR JIT compilation
+        link_llvm_libraries();
+    }
 }
 
 /// Link LLVM libraries needed for WAMR LLVM JIT support.
@@ -457,8 +465,8 @@ fn create_placeholder_build(target: &str, out_dir: &PathBuf) {
     
     println!("cargo:rustc-link-lib=static=vmlib");
     
-    // Platform-specific system libraries
-    link_system_libraries(target);
+    // Platform-specific system libraries (no LLVM JIT for placeholder builds)
+    link_system_libraries(target, false);
 }
 
 // Placeholder header content for development without WAMR source
