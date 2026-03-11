@@ -128,15 +128,23 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
         .define("WAMR_BUILD_SIMD", "1")
         .define("WAMR_BUILD_FAST_JIT", "0");
 
-    // Enable LLVM JIT only when LLVM is available on the build system.
-    // CI runners typically lack a full LLVM dev install, so this is opt-in.
+    // Enable LLVM JIT only when a full LLVM dev install is available.
+    // CI runners have cmake configs but lack the actual libraries.
     let llvm_dir = find_llvm_dir();
-    if Path::new(&llvm_dir).exists() {
+    let llvm_cmake = Path::new(&llvm_dir);
+    let llvm_lib_dir = llvm_cmake.parent().and_then(|p| p.parent());
+    let has_llvm_libs = llvm_lib_dir.map_or(false, |lib_dir| {
+        // Check for an actual LLVM library, not just the cmake config
+        lib_dir.join("libLLVMCore.a").exists()
+            || lib_dir.join("libLLVM.so").exists()
+            || lib_dir.join("libLLVM.dylib").exists()
+    });
+    if has_llvm_libs {
         println!("cargo:warning=LLVM found at {}, enabling LLVM JIT", llvm_dir);
         cmake.define("WAMR_BUILD_JIT", "1");
         cmake.define("LLVM_DIR", &llvm_dir);
     } else {
-        println!("cargo:warning=LLVM not found, building without LLVM JIT");
+        println!("cargo:warning=LLVM libraries not found, building without LLVM JIT");
         cmake.define("WAMR_BUILD_JIT", "0");
     }
 
