@@ -171,9 +171,11 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
         },
         t if t.contains("windows") => {
             cmake.define("CMAKE_SYSTEM_NAME", "Windows");
-            // MSVC requires C11 standard for _Alignof/alignof used in WAMR headers
-            cmake.define("CMAKE_C_STANDARD", "11");
-            cmake.define("CMAKE_C_STANDARD_REQUIRED", "ON");
+            // MSVC requires explicit C11 mode for _Alignof used in WAMR headers.
+            // CMAKE_C_STANDARD alone may not work if WAMR's CMakeLists overrides it.
+            if target.contains("msvc") {
+                cmake.cflag("/std:c11");
+            }
         },
         t if t.contains("darwin") => {
             cmake.define("CMAKE_SYSTEM_NAME", "Darwin");
