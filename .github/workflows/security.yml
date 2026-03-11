@@ -28,6 +28,7 @@ jobs:
 
       - name: Audit Rust dependencies
         run: cargo audit
+        working-directory: wamr4j-native
 
   # Maven dependency vulnerability check
   dependency-check:
@@ -84,7 +85,7 @@ jobs:
           languages: java
 
       - name: Build for CodeQL
-        run: ./mvnw compile -B -pl wamr4j,wamr4j-jni -DskipTests
+        run: ./mvnw compile -B -pl wamr4j,wamr4j-jni -P skip-native -DskipTests
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
