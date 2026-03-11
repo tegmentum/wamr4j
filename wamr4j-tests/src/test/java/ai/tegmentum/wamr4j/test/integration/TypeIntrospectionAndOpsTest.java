@@ -97,6 +97,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes)) {
 
@@ -122,6 +125,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes)) {
 
@@ -140,6 +146,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes)) {
 
@@ -164,6 +173,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes)) {
 
@@ -184,6 +196,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WamrRuntimeExtensions rt =
                      (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
 
@@ -201,6 +216,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WamrRuntimeExtensions rt =
                      (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
 
@@ -223,6 +241,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes);
                  final WamrInstanceExtensions instance =
@@ -253,6 +274,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes);
                  final WamrInstanceExtensions instance =
@@ -282,6 +306,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes);
                  final WamrInstanceExtensions instance =
@@ -300,8 +327,12 @@ class TypeIntrospectionAndOpsTest {
         }
 
         assertNotNull(jniResult, "JNI result should not be null");
-        assertNotNull(panamaResult, "Panama result should not be null");
-        LOGGER.info("JNI/Panama parity: both returned overflow=" + jniResult + "/" + panamaResult);
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            assertNotNull(panamaResult, "Panama result should not be null");
+            LOGGER.info("JNI/Panama parity: both returned overflow=" + jniResult + "/" + panamaResult);
+        } else {
+            LOGGER.info("JNI result: overflow=" + jniResult + " (Panama not available, skipped)");
+        }
     }
 
     @Test
@@ -312,6 +343,9 @@ class TypeIntrospectionAndOpsTest {
 
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes);
                  final WamrInstanceExtensions instance =
