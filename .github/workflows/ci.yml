@@ -64,7 +64,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/wamr4j-native/.cargo-target
         run: |
           cd wamr4j-native
-          cargo build --release --target ${{ matrix.target }}
+          cargo build --release --target ${{ matrix.target }} -vv 2>&1 | tail -100
 
       - uses: actions/upload-artifact@v4
         with:
