@@ -69,7 +69,7 @@ out/
 *.dylib
 
 # Rust (for native module)
-**/Cargo.lock
+!wamr4j-native/Cargo.lock
 **/target/
 **/*.pdb
 
