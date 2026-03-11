@@ -25,7 +25,7 @@ default = []
 bindgen = ["dep:bindgen"]
 
 [profile.release]
-lto = "fat"
+lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = true
