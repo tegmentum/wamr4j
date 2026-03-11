@@ -126,9 +126,21 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
         .define("WAMR_BUILD_BULK_MEMORY", "1")
         .define("WAMR_BUILD_REF_TYPES", "1")
         .define("WAMR_BUILD_SIMD", "1")
-        .define("WAMR_BUILD_JIT", "1")
-        .define("WAMR_BUILD_FAST_JIT", "0")
-        .define("LLVM_DIR", find_llvm_dir())
+        .define("WAMR_BUILD_FAST_JIT", "0");
+
+    // Enable LLVM JIT only when LLVM is available on the build system.
+    // CI runners typically lack a full LLVM dev install, so this is opt-in.
+    let llvm_dir = find_llvm_dir();
+    if Path::new(&llvm_dir).exists() {
+        println!("cargo:warning=LLVM found at {}, enabling LLVM JIT", llvm_dir);
+        cmake.define("WAMR_BUILD_JIT", "1");
+        cmake.define("LLVM_DIR", &llvm_dir);
+    } else {
+        println!("cargo:warning=LLVM not found, building without LLVM JIT");
+        cmake.define("WAMR_BUILD_JIT", "0");
+    }
+
+    cmake
         .define("WAMR_BUILD_DUMP_CALL_STACK", "1")
         .define("WAMR_BUILD_PERF_PROFILING", "1")
         .define("WAMR_BUILD_MEMORY_PROFILING", "1")
