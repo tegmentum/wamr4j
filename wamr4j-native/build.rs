@@ -23,7 +23,55 @@
 //! 4. Cross-compilation support
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// Locate the LLVM CMake directory for LLVM JIT compilation.
+/// Checks LLVM_DIR env var, then tries llvm-config, then common install paths.
+fn find_llvm_dir() -> String {
+    // 1. Check explicit LLVM_DIR environment variable
+    if let Ok(dir) = env::var("LLVM_DIR") {
+        if Path::new(&dir).exists() {
+            return dir;
+        }
+    }
+
+    // 2. Try llvm-config --cmakedir
+    if let Ok(output) = Command::new("llvm-config").arg("--cmakedir").output() {
+        if output.status.success() {
+            let dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if Path::new(&dir).exists() {
+                return dir;
+            }
+        }
+    }
+
+    // 3. Check common Homebrew paths (macOS), preferring versioned LLVM <= 18
+    let homebrew_paths = [
+        "/opt/homebrew/opt/llvm@18/lib/cmake/llvm",
+        "/usr/local/opt/llvm@18/lib/cmake/llvm",
+        "/opt/homebrew/opt/llvm@17/lib/cmake/llvm",
+        "/usr/local/opt/llvm@17/lib/cmake/llvm",
+        "/opt/homebrew/opt/llvm/lib/cmake/llvm",
+        "/usr/local/opt/llvm/lib/cmake/llvm",
+    ];
+    for path in &homebrew_paths {
+        if Path::new(path).exists() {
+            return path.to_string();
+        }
+    }
+
+    // 4. Check common Linux paths
+    for ver in &["20", "19", "18", "17", "16", "15"] {
+        let path = format!("/usr/lib/llvm-{}/lib/cmake/llvm", ver);
+        if Path::new(&path).exists() {
+            return path;
+        }
+    }
+
+    // Fallback: let CMake find it
+    String::new()
+}
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
@@ -78,7 +126,9 @@ fn build_wamr(target: &str, out_dir: &PathBuf, wamr_dir: &PathBuf) {
         .define("WAMR_BUILD_BULK_MEMORY", "1")
         .define("WAMR_BUILD_REF_TYPES", "1")
         .define("WAMR_BUILD_SIMD", "1")
-        .define("WAMR_BUILD_JIT", "0")
+        .define("WAMR_BUILD_JIT", "1")
+        .define("WAMR_BUILD_FAST_JIT", "0")
+        .define("LLVM_DIR", find_llvm_dir())
         .define("WAMR_BUILD_DUMP_CALL_STACK", "1")
         .define("WAMR_BUILD_PERF_PROFILING", "1")
         .define("WAMR_BUILD_MEMORY_PROFILING", "1")
@@ -182,6 +232,8 @@ fn link_system_libraries(target: &str) {
         println!("cargo:rustc-link-lib=pthread");
         println!("cargo:rustc-link-lib=dl");
         println!("cargo:rustc-link-lib=m");
+        // C++ standard library needed for LLVM JIT C++ code
+        println!("cargo:rustc-link-lib=stdc++");
     } else if target.contains("windows") {
         println!("cargo:rustc-link-lib=ws2_32");
         println!("cargo:rustc-link-lib=advapi32");
@@ -189,7 +241,92 @@ fn link_system_libraries(target: &str) {
     } else if target.contains("darwin") {
         println!("cargo:rustc-link-lib=framework=Security");
         println!("cargo:rustc-link-lib=framework=CoreFoundation");
+        // C++ standard library needed for LLVM JIT C++ code
+        println!("cargo:rustc-link-lib=c++");
     }
+
+    // Link LLVM libraries required by WAMR JIT compilation
+    link_llvm_libraries();
+}
+
+/// Link LLVM libraries needed for WAMR LLVM JIT support.
+/// Uses llvm-config to discover library paths and names dynamically.
+fn link_llvm_libraries() {
+    // Try to get LLVM lib directory from llvm-config
+    let llvm_lib_dir = find_llvm_lib_dir();
+    if llvm_lib_dir.is_empty() {
+        println!("cargo:warning=Could not find LLVM lib directory for JIT linking");
+        return;
+    }
+
+    println!("cargo:rustc-link-search=native={}", llvm_lib_dir);
+
+    // Try to get the LLVM shared library name from llvm-config
+    if let Some(llvm_lib) = find_llvm_shared_lib(&llvm_lib_dir) {
+        println!("cargo:rustc-link-lib=dylib={}", llvm_lib);
+    } else {
+        println!("cargo:warning=Could not determine LLVM shared library name");
+    }
+}
+
+/// Find the LLVM library directory for linking.
+fn find_llvm_lib_dir() -> String {
+    // Try llvm-config --libdir first
+    if let Ok(output) = Command::new("llvm-config").arg("--libdir").output() {
+        if output.status.success() {
+            let dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if Path::new(&dir).exists() {
+                return dir;
+            }
+        }
+    }
+
+    // Derive from LLVM_DIR (cmake dir is typically <prefix>/lib/cmake/llvm)
+    let llvm_dir = find_llvm_dir();
+    if !llvm_dir.is_empty() {
+        let cmake_path = Path::new(&llvm_dir);
+        // Go up from lib/cmake/llvm to lib
+        if let Some(lib_dir) = cmake_path.parent().and_then(|p| p.parent()) {
+            if lib_dir.exists() {
+                return lib_dir.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    String::new()
+}
+
+/// Find the LLVM shared library name (e.g., "LLVM-18" or "LLVM").
+fn find_llvm_shared_lib(lib_dir: &str) -> Option<String> {
+    // Try llvm-config --libs to get the library name
+    if let Ok(output) = Command::new("llvm-config").arg("--libs").output() {
+        if output.status.success() {
+            let libs = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            // Parse -lLLVM-18 style output
+            for lib in libs.split_whitespace() {
+                if lib.starts_with("-lLLVM") {
+                    return Some(lib[2..].to_string());
+                }
+            }
+        }
+    }
+
+    // Fallback: look for libLLVM-*.dylib or libLLVM-*.so in the lib dir
+    if let Ok(entries) = std::fs::read_dir(lib_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("libLLVM-") && (name.ends_with(".dylib") || name.ends_with(".so")) {
+                // Extract library name: libLLVM-18.dylib -> LLVM-18
+                let lib_name = name
+                    .trim_start_matches("lib")
+                    .trim_end_matches(".dylib")
+                    .trim_end_matches(".so");
+                return Some(lib_name.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 /// Generate FFI bindings from WAMR headers
