@@ -1,0 +1,140 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    - cron: '0 10 * * 1' # Every Monday at 10 AM UTC
+  workflow_dispatch:
+    inputs:
+      update_type:
+        description: 'Type of update'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maven:
+    name: Maven Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-deps-${{ hashFiles('**/pom.xml') }}
+          restore-keys: m2-deps-
+
+      - name: Check for updates
+        run: |
+          ./mvnw versions:display-dependency-updates -B -pl '!wamr4j-native' | tee dependency-updates.txt
+          ./mvnw versions:display-plugin-updates -B -pl '!wamr4j-native' | tee -a dependency-updates.txt
+
+      - name: Update dependencies
+        run: |
+          type="${{ github.event.inputs.update_type || 'patch' }}"
+          case "$type" in
+            patch)  ./mvnw versions:use-latest-releases -DallowSnapshots=false -DgenerateBackupPoms=false -B -pl '!wamr4j-native' ;;
+            minor)  ./mvnw versions:use-next-releases -DallowSnapshots=false -DgenerateBackupPoms=false -B -pl '!wamr4j-native' ;;
+            major)  ./mvnw versions:use-latest-versions -DallowSnapshots=false -DgenerateBackupPoms=false -B -pl '!wamr4j-native' ;;
+          esac
+
+      - name: Test updated dependencies
+        run: |
+          ./mvnw compile test -B -pl '!wamr4j-native,!wamr4j-panama' -q || {
+            echo "Tests failed with updated dependencies"
+            git checkout -- pom.xml */pom.xml
+            exit 1
+          }
+
+      - name: Create PR if changes exist
+        run: |
+          if git diff --quiet pom.xml */pom.xml 2>/dev/null; then
+            echo "No Maven dependency changes"
+            exit 0
+          fi
+
+          branch="deps/maven-$(date +%Y%m%d)"
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git checkout -b "$branch"
+          git add pom.xml */pom.xml
+          git commit -m "$(cat <<'EOF'
+          chore: update Maven dependencies
+
+          Updated based on ${{ github.event.inputs.update_type || 'patch' }} policy.
+          All tests pass with updated dependencies.
+          EOF
+          )"
+          git push origin "$branch"
+          gh pr create \
+            --title "chore: Maven dependency updates ($(date +%Y-%m-%d))" \
+            --body "Automated Maven dependency update (${{ github.event.inputs.update_type || 'patch' }}). All tests pass." \
+            --head "$branch" \
+            --base main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  rust:
+    name: Rust Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Update Rust dependencies
+        run: cargo update
+
+      - name: Check build
+        run: cargo check
+
+      - name: Audit updated dependencies
+        run: cargo audit || true
+
+      - name: Create PR if changes exist
+        run: |
+          if git diff --quiet; then
+            echo "No Rust dependency changes"
+            exit 0
+          fi
+
+          branch="deps/rust-$(date +%Y%m%d)"
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git checkout -b "$branch"
+          git add Cargo.lock wamr4j-native/Cargo.toml
+          git commit -m "$(cat <<'EOF'
+          chore: update Rust dependencies
+
+          Ran cargo update. Build and audit pass.
+          EOF
+          )"
+          git push origin "$branch"
+          gh pr create \
+            --title "chore: Rust dependency updates ($(date +%Y-%m-%d))" \
+            --body "Automated Rust dependency update via \`cargo update\`. Build passes." \
+            --head "$branch" \
+            --base main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

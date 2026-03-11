@@ -9,13 +9,13 @@
 
 ## Key Features
 
-- **🎯 Unified API**: Single interface for both JNI and Panama implementations
-- **⚡ Multi-Runtime**: Automatic JNI/Panama selection based on Java version
-- **🛡️ Defensive Programming**: JVM crash prevention with comprehensive validation
-- **🚀 High Performance**: Optimized native bindings with minimal overhead
-- **🔄 Cross-Platform**: Support for Linux, macOS, and Windows (x86_64, ARM64)
-- **📦 Zero Dependencies**: No external runtime dependencies
-- **✨ Post-MVP Features**: Bulk Memory, Reference Types, and SIMD support
+- **Unified API**: Single interface for both JNI and Panama implementations
+- **Multi-Runtime**: Automatic JNI/Panama selection based on Java version
+- **Defensive Programming**: JVM crash prevention with comprehensive validation
+- **High Performance**: Optimized native bindings with minimal overhead
+- **Cross-Platform**: Support for Linux, macOS, and Windows (x86_64, ARM64)
+- **Zero Dependencies**: No external runtime dependencies
+- **Post-MVP Features**: Bulk Memory, Reference Types, and SIMD support
 
 ## Quick Start
 
@@ -244,12 +244,12 @@ java -jar wamr4j-benchmarks/target/benchmarks.jar -wi 10 -i 20 -f 3
 
 | Platform | Architecture | JNI Support | Panama Support | Status |
 |----------|-------------|-------------|----------------|---------|
-| Linux    | x86_64      | ✅          | ✅             | Stable  |
-| Linux    | ARM64       | ✅          | ✅             | Stable  |
-| macOS    | x86_64      | ✅          | ✅             | Stable  |
-| macOS    | ARM64 (M1+) | ✅          | ✅             | Stable  |
-| Windows  | x86_64      | ✅          | ✅             | Beta    |
-| Windows  | ARM64       | 🚧          | 🚧             | Planned |
+| Linux    | x86_64      | Yes         | Yes             | Stable  |
+| Linux    | ARM64       | Yes         | Yes             | Stable  |
+| macOS    | x86_64      | Yes         | Yes             | Stable  |
+| macOS    | ARM64 (M1+) | Yes         | Yes             | Stable  |
+| Windows  | x86_64      | Yes         | Yes             | Beta    |
+| Windows  | ARM64       | --          | --             | Planned |
 
 ## Testing
 
@@ -304,11 +304,11 @@ See [`wamr4j-tests/TEST_COVERAGE_REPORT.md`](wamr4j-tests/TEST_COVERAGE_REPORT.m
 
 ### Test Quality
 
-- ✅ **No Mocks**: All tests use real WAMR engine
-- ✅ **Deterministic**: Consistent, reproducible results
-- ✅ **Fast**: Complete suite runs in ~12 seconds
-- ✅ **Isolated**: Proper resource cleanup
-- ✅ **Comprehensive**: Happy paths, edge cases, error conditions
+- **No Mocks**: All tests use real WAMR engine
+- **Deterministic**: Consistent, reproducible results
+- **Fast**: Complete suite runs in ~12 seconds
+- **Isolated**: Proper resource cleanup
+- **Comprehensive**: Happy paths, edge cases, error conditions
 
 ## Documentation
 
