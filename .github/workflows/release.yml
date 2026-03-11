@@ -135,12 +135,7 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          if [[ "${{ matrix.java }}" == "23" ]]; then
-            MODULES='!wamr4j-benchmarks'
-          else
-            MODULES='!wamr4j-benchmarks,!wamr4j-panama'
-          fi
-          ./mvnw test -B -pl "$MODULES" -P skip-native \
+          ./mvnw test -B -pl '!wamr4j-benchmarks' -P skip-native \
             -DargLine="--enable-native-access=ALL-UNNAMED" \
             -Djacoco.skip=true -q
 
