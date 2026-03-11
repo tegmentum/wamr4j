@@ -69,23 +69,25 @@ class VersionAndSignatureTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime()) {
-            panamaVersion = panamaRuntime.getVersion();
-            LOGGER.info("Panama version: " + panamaVersion);
-            assertNotNull(panamaVersion, "Panama version should not be null");
-            assertNotEquals("unknown", panamaVersion, "Panama version should not be 'unknown'");
-            assertTrue(panamaVersion.matches("\\d+\\.\\d+\\.\\d+"),
-                "Panama version should be in major.minor.patch format, got: " + panamaVersion);
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping comparison: " + e.getMessage());
-            return;
-        } finally {
-            System.clearProperty("wamr4j.runtime");
-        }
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime()) {
+                panamaVersion = panamaRuntime.getVersion();
+                LOGGER.info("Panama version: " + panamaVersion);
+                assertNotNull(panamaVersion, "Panama version should not be null");
+                assertNotEquals("unknown", panamaVersion, "Panama version should not be 'unknown'");
+                assertTrue(panamaVersion.matches("\\d+\\.\\d+\\.\\d+"),
+                    "Panama version should be in major.minor.patch format, got: " + panamaVersion);
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping comparison: " + e.getMessage());
+                return;
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
 
-        assertEquals(jniVersion, panamaVersion,
-            "JNI and Panama should report the same WAMR version");
+            assertEquals(jniVersion, panamaVersion,
+                "JNI and Panama should report the same WAMR version");
+        }
     }
 
     @Test
@@ -128,30 +130,32 @@ class VersionAndSignatureTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WamrRuntimeExtensions panamaRuntime =
-                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
-            final int panamaMajor = panamaRuntime.getMajorVersion();
-            final int panamaMinor = panamaRuntime.getMinorVersion();
-            final int panamaPatch = panamaRuntime.getPatchVersion();
-            final String panamaVersion = panamaRuntime.getVersion();
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WamrRuntimeExtensions panamaRuntime =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
+                final int panamaMajor = panamaRuntime.getMajorVersion();
+                final int panamaMinor = panamaRuntime.getMinorVersion();
+                final int panamaPatch = panamaRuntime.getPatchVersion();
+                final String panamaVersion = panamaRuntime.getVersion();
 
-            LOGGER.info(String.format("Panama version parts: %d.%d.%d (string: %s)",
-                panamaMajor, panamaMinor, panamaPatch, panamaVersion));
+                LOGGER.info(String.format("Panama version parts: %d.%d.%d (string: %s)",
+                    panamaMajor, panamaMinor, panamaPatch, panamaVersion));
 
-            // Verify parts are consistent with the string
-            final String expectedFromParts = panamaMajor + "." + panamaMinor + "." + panamaPatch;
-            assertEquals(expectedFromParts, panamaVersion,
-                "Panama version string should match assembled parts");
+                // Verify parts are consistent with the string
+                final String expectedFromParts = panamaMajor + "." + panamaMinor + "." + panamaPatch;
+                assertEquals(expectedFromParts, panamaVersion,
+                    "Panama version string should match assembled parts");
 
-            // Verify JNI and Panama agree
-            assertEquals(jniMajor, panamaMajor, "Major version should match between JNI and Panama");
-            assertEquals(jniMinor, panamaMinor, "Minor version should match between JNI and Panama");
-            assertEquals(jniPatch, panamaPatch, "Patch version should match between JNI and Panama");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping comparison: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                // Verify JNI and Panama agree
+                assertEquals(jniMajor, panamaMajor, "Major version should match between JNI and Panama");
+                assertEquals(jniMinor, panamaMinor, "Minor version should match between JNI and Panama");
+                assertEquals(jniPatch, panamaPatch, "Patch version should match between JNI and Panama");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping comparison: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -244,41 +248,43 @@ class VersionAndSignatureTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            final FunctionSignature panamaAddSig = module.getExportFunctionSignature("add");
-            final FunctionSignature panamaI64Sig = module.getExportFunctionSignature("identity_i64");
-            final FunctionSignature panamaVoidSig = module.getExportFunctionSignature("void_func");
+                final FunctionSignature panamaAddSig = module.getExportFunctionSignature("add");
+                final FunctionSignature panamaI64Sig = module.getExportFunctionSignature("identity_i64");
+                final FunctionSignature panamaVoidSig = module.getExportFunctionSignature("void_func");
 
-            LOGGER.info("Panama add signature: " + panamaAddSig);
-            LOGGER.info("Panama identity_i64 signature: " + panamaI64Sig);
-            LOGGER.info("Panama void_func signature: " + panamaVoidSig);
+                LOGGER.info("Panama add signature: " + panamaAddSig);
+                LOGGER.info("Panama identity_i64 signature: " + panamaI64Sig);
+                LOGGER.info("Panama void_func signature: " + panamaVoidSig);
 
-            assertNotNull(panamaAddSig,
-                "Panama should find 'add' function signature (was null before Phase 1)");
-            assertNotNull(panamaI64Sig,
-                "Panama should find 'identity_i64' function signature");
-            assertNotNull(panamaVoidSig,
-                "Panama should find 'void_func' function signature");
+                assertNotNull(panamaAddSig,
+                    "Panama should find 'add' function signature (was null before Phase 1)");
+                assertNotNull(panamaI64Sig,
+                    "Panama should find 'identity_i64' function signature");
+                assertNotNull(panamaVoidSig,
+                    "Panama should find 'void_func' function signature");
 
-            // Compare JNI and Panama signatures
-            assertEquals(jniAddSig, panamaAddSig,
-                "JNI and Panama 'add' signatures should match");
-            assertEquals(jniI64Sig, panamaI64Sig,
-                "JNI and Panama 'identity_i64' signatures should match");
-            assertEquals(jniVoidSig, panamaVoidSig,
-                "JNI and Panama 'void_func' signatures should match");
+                // Compare JNI and Panama signatures
+                assertEquals(jniAddSig, panamaAddSig,
+                    "JNI and Panama 'add' signatures should match");
+                assertEquals(jniI64Sig, panamaI64Sig,
+                    "JNI and Panama 'identity_i64' signatures should match");
+                assertEquals(jniVoidSig, panamaVoidSig,
+                    "JNI and Panama 'void_func' signatures should match");
 
-            // Non-existent function should return null
-            assertNull(module.getExportFunctionSignature("nonexistent"),
-                "Panama should return null for non-existent function");
+                // Non-existent function should return null
+                assertNull(module.getExportFunctionSignature("nonexistent"),
+                    "Panama should return null for non-existent function");
 
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping comparison: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping comparison: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 }

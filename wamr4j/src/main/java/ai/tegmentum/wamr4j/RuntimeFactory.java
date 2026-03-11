@@ -146,6 +146,27 @@ public final class RuntimeFactory {
         return createSpecificRuntime(providers, providerName.trim());
     }
 
+    /**
+     * Checks if a runtime provider with the given name is available.
+     *
+     * <p>This can be used to conditionally skip tests or features that require a specific runtime.
+     *
+     * @param providerName the name of the runtime provider to check (case-insensitive)
+     * @return true if a provider with the given name is available, false otherwise
+     */
+    public static boolean isProviderAvailable(final String providerName) {
+        if (providerName == null || providerName.trim().isEmpty()) {
+            return false;
+        }
+        final List<RuntimeProvider> providers = getAvailableProviders();
+        for (final RuntimeProvider provider : providers) {
+            if (provider.getName().equalsIgnoreCase(providerName.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Returns the names of all available runtime providers (used for error messages).
     static List<String> getAvailableRuntimeNames() {
         final List<RuntimeProvider> providers = getAvailableProviders();

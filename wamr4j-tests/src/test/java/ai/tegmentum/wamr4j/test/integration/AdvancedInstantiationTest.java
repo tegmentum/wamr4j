@@ -85,20 +85,22 @@ class AdvancedInstantiationTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiateEx(
-                 16 * 1024, 16 * 1024 * 1024, 256)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiateEx(
+                     16 * 1024, 16 * 1024 * 1024, 256)) {
 
-            assertNotNull(instance, "Panama: instantiateEx should return a valid instance");
-            LOGGER.info("Panama: instantiateEx succeeded");
+                assertNotNull(instance, "Panama: instantiateEx should return a valid instance");
+                LOGGER.info("Panama: instantiateEx succeeded");
 
-            final WebAssemblyFunction addFn = instance.getFunction("add");
-            assertNotNull(addFn, "Panama: should find 'add' function");
-            final Object result = addFn.invoke(3, 4);
-            assertEquals(7, ((Number) result).intValue(), "Panama: add(3,4) should return 7");
-            LOGGER.info("Panama: Function call on instantiateEx instance works: add(3,4) = " + result);
+                final WebAssemblyFunction addFn = instance.getFunction("add");
+                assertNotNull(addFn, "Panama: should find 'add' function");
+                final Object result = addFn.invoke(3, 4);
+                assertEquals(7, ((Number) result).intValue(), "Panama: add(3,4) should return 7");
+                LOGGER.info("Panama: Function call on instantiateEx instance works: add(3,4) = " + result);
+            }
         }
     }
 
@@ -120,14 +122,16 @@ class AdvancedInstantiationTest {
         }
 
         // Panama - small stack
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiateEx(
-                 4 * 1024, 4 * 1024 * 1024, 128)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiateEx(
+                     4 * 1024, 4 * 1024 * 1024, 128)) {
 
-            assertNotNull(instance, "Panama: instantiateEx with small stack should succeed");
-            LOGGER.info("Panama: instantiateEx with 4KB stack succeeded");
+                assertNotNull(instance, "Panama: instantiateEx with small stack should succeed");
+                LOGGER.info("Panama: instantiateEx with 4KB stack succeeded");
+            }
         }
     }
 
@@ -155,20 +159,22 @@ class AdvancedInstantiationTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            assertThrows(IllegalArgumentException.class,
-                () -> module.instantiateEx(-1, 1024, 256),
-                "Panama: negative stackSize should throw");
-            assertThrows(IllegalArgumentException.class,
-                () -> module.instantiateEx(1024, -1, 256),
-                "Panama: negative heapSize should throw");
-            assertThrows(IllegalArgumentException.class,
-                () -> module.instantiateEx(1024, 1024, -1),
-                "Panama: negative maxMemoryPages should throw");
-            LOGGER.info("Panama: All negative param checks threw IllegalArgumentException");
+                assertThrows(IllegalArgumentException.class,
+                    () -> module.instantiateEx(-1, 1024, 256),
+                    "Panama: negative stackSize should throw");
+                assertThrows(IllegalArgumentException.class,
+                    () -> module.instantiateEx(1024, -1, 256),
+                    "Panama: negative heapSize should throw");
+                assertThrows(IllegalArgumentException.class,
+                    () -> module.instantiateEx(1024, 1024, -1),
+                    "Panama: negative maxMemoryPages should throw");
+                LOGGER.info("Panama: All negative param checks threw IllegalArgumentException");
+            }
         }
     }
 
@@ -191,16 +197,18 @@ class AdvancedInstantiationTest {
         jniRuntime.close();
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime();
-        final WebAssemblyModule panamaModule = panamaRuntime.compile(moduleBytes);
-        panamaModule.close();
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime();
+            final WebAssemblyModule panamaModule = panamaRuntime.compile(moduleBytes);
+            panamaModule.close();
 
-        assertThrows(IllegalStateException.class,
-            () -> panamaModule.instantiateEx(16384, 16384, 256),
-            "Panama: instantiateEx on closed module should throw");
-        LOGGER.info("Panama: instantiateEx on closed module threw IllegalStateException");
-        panamaRuntime.close();
+            assertThrows(IllegalStateException.class,
+                () -> panamaModule.instantiateEx(16384, 16384, 256),
+                "Panama: instantiateEx on closed module should throw");
+            LOGGER.info("Panama: instantiateEx on closed module threw IllegalStateException");
+            panamaRuntime.close();
+        }
     }
 
     @Test
@@ -220,13 +228,15 @@ class AdvancedInstantiationTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            final byte[] panamaResult = module.getCustomSection("nonexistent");
-            LOGGER.info("Panama getCustomSection('nonexistent'): " + panamaResult);
-            assertNull(panamaResult, "Panama: non-existent custom section should return null");
+                final byte[] panamaResult = module.getCustomSection("nonexistent");
+                LOGGER.info("Panama getCustomSection('nonexistent'): " + panamaResult);
+                assertNull(panamaResult, "Panama: non-existent custom section should return null");
+            }
         }
     }
 
@@ -248,14 +258,16 @@ class AdvancedInstantiationTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            assertThrows(IllegalArgumentException.class,
-                () -> module.getCustomSection(null),
-                "Panama: null name should throw IllegalArgumentException");
-            LOGGER.info("Panama: null name getCustomSection threw IllegalArgumentException");
+                assertThrows(IllegalArgumentException.class,
+                    () -> module.getCustomSection(null),
+                    "Panama: null name should throw IllegalArgumentException");
+                LOGGER.info("Panama: null name getCustomSection threw IllegalArgumentException");
+            }
         }
     }
 
@@ -278,15 +290,17 @@ class AdvancedInstantiationTest {
         jniRuntime.close();
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime();
-        final WebAssemblyModule panamaModule = panamaRuntime.compile(moduleBytes);
-        panamaModule.close();
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime();
+            final WebAssemblyModule panamaModule = panamaRuntime.compile(moduleBytes);
+            panamaModule.close();
 
-        assertThrows(IllegalStateException.class,
-            () -> panamaModule.getCustomSection("test"),
-            "Panama: getCustomSection on closed module should throw");
-        LOGGER.info("Panama: getCustomSection on closed module threw IllegalStateException");
-        panamaRuntime.close();
+            assertThrows(IllegalStateException.class,
+                () -> panamaModule.getCustomSection("test"),
+                "Panama: getCustomSection on closed module should throw");
+            LOGGER.info("Panama: getCustomSection on closed module threw IllegalStateException");
+            panamaRuntime.close();
+        }
     }
 }

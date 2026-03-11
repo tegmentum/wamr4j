@@ -153,37 +153,39 @@ class TableOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiate()) {
 
-            final WebAssemblyTable table = instance.getTable("__indirect_function_table");
-            assertNotNull(table, "Panama: getTable() should not return null");
+                final WebAssemblyTable table = instance.getTable("__indirect_function_table");
+                assertNotNull(table, "Panama: getTable() should not return null");
 
-            final int panamaSize = table.getSize();
-            LOGGER.info("Panama table size: " + panamaSize);
-            assertEquals(jniSize, panamaSize,
-                "JNI and Panama should agree on table size");
+                final int panamaSize = table.getSize();
+                LOGGER.info("Panama table size: " + panamaSize);
+                assertEquals(jniSize, panamaSize,
+                    "JNI and Panama should agree on table size");
 
-            final int panamaMaxSize = table.getMaxSize();
-            LOGGER.info("Panama table max size: " + panamaMaxSize);
-            assertEquals(jniMaxSize, panamaMaxSize,
-                "JNI and Panama should agree on table max size");
+                final int panamaMaxSize = table.getMaxSize();
+                LOGGER.info("Panama table max size: " + panamaMaxSize);
+                assertEquals(jniMaxSize, panamaMaxSize,
+                    "JNI and Panama should agree on table max size");
 
-            final ElementKind panamaKind = table.getElementKind();
-            LOGGER.info("Panama table element kind: " + panamaKind);
-            assertEquals(jniKind, panamaKind,
-                "JNI and Panama should agree on element kind");
+                final ElementKind panamaKind = table.getElementKind();
+                LOGGER.info("Panama table element kind: " + panamaKind);
+                assertEquals(jniKind, panamaKind,
+                    "JNI and Panama should agree on element kind");
 
-            assertEquals(jniTableName, table.getName(),
-                "JNI and Panama should agree on table name");
+                assertEquals(jniTableName, table.getName(),
+                    "JNI and Panama should agree on table name");
 
-            assertTrue(table.isValid(), "Panama: table should be valid");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                assertTrue(table.isValid(), "Panama: table should be valid");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -222,20 +224,22 @@ class TableOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiate()) {
 
-            final String[] panamaNames = instance.getTableNames();
-            LOGGER.info("Panama table names: " + java.util.Arrays.toString(panamaNames));
-            assertNotNull(panamaNames, "Panama: getTableNames() should not return null");
-            assertArrayEquals(jniNames, panamaNames,
-                "JNI and Panama should return identical table names");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                final String[] panamaNames = instance.getTableNames();
+                LOGGER.info("Panama table names: " + java.util.Arrays.toString(panamaNames));
+                assertNotNull(panamaNames, "Panama: getTableNames() should not return null");
+                assertArrayEquals(jniNames, panamaNames,
+                    "JNI and Panama should return identical table names");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -277,30 +281,32 @@ class TableOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiate()) {
 
-            final WebAssemblyTable table = instance.getTable("__indirect_function_table");
+                final WebAssemblyTable table = instance.getTable("__indirect_function_table");
 
-            final WebAssemblyFunction fn0 = table.getFunctionAtIndex(0);
-            assertNotNull(fn0, "Panama: function at index 0 should not be null");
-            final Object panamaResult0 = fn0.invoke(5);
-            LOGGER.info("Panama: fn0(5) = " + panamaResult0);
-            assertEquals(jniResult0, panamaResult0,
-                "JNI and Panama should agree on double(5) result");
+                final WebAssemblyFunction fn0 = table.getFunctionAtIndex(0);
+                assertNotNull(fn0, "Panama: function at index 0 should not be null");
+                final Object panamaResult0 = fn0.invoke(5);
+                LOGGER.info("Panama: fn0(5) = " + panamaResult0);
+                assertEquals(jniResult0, panamaResult0,
+                    "JNI and Panama should agree on double(5) result");
 
-            final WebAssemblyFunction fn1 = table.getFunctionAtIndex(1);
-            assertNotNull(fn1, "Panama: function at index 1 should not be null");
-            final Object panamaResult1 = fn1.invoke(5);
-            LOGGER.info("Panama: fn1(5) = " + panamaResult1);
-            assertEquals(jniResult1, panamaResult1,
-                "JNI and Panama should agree on square(5) result");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                final WebAssemblyFunction fn1 = table.getFunctionAtIndex(1);
+                assertNotNull(fn1, "Panama: function at index 1 should not be null");
+                final Object panamaResult1 = fn1.invoke(5);
+                LOGGER.info("Panama: fn1(5) = " + panamaResult1);
+                assertEquals(jniResult1, panamaResult1,
+                    "JNI and Panama should agree on square(5) result");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -338,26 +344,28 @@ class TableOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiate()) {
 
-            final WebAssemblyTable table = instance.getTable("__indirect_function_table");
+                final WebAssemblyTable table = instance.getTable("__indirect_function_table");
 
-            final Object panamaDouble5 = table.callIndirect(0, new Object[]{5}, new int[]{0});
-            LOGGER.info("Panama: callIndirect(0, [5]) = " + panamaDouble5);
-            assertEquals(jniDouble5, panamaDouble5,
-                "JNI and Panama should agree on indirect double(5)");
+                final Object panamaDouble5 = table.callIndirect(0, new Object[]{5}, new int[]{0});
+                LOGGER.info("Panama: callIndirect(0, [5]) = " + panamaDouble5);
+                assertEquals(jniDouble5, panamaDouble5,
+                    "JNI and Panama should agree on indirect double(5)");
 
-            final Object panamaSquare5 = table.callIndirect(1, new Object[]{5}, new int[]{0});
-            LOGGER.info("Panama: callIndirect(1, [5]) = " + panamaSquare5);
-            assertEquals(jniSquare5, panamaSquare5,
-                "JNI and Panama should agree on indirect square(5)");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                final Object panamaSquare5 = table.callIndirect(1, new Object[]{5}, new int[]{0});
+                LOGGER.info("Panama: callIndirect(1, [5]) = " + panamaSquare5);
+                assertEquals(jniSquare5, panamaSquare5,
+                    "JNI and Panama should agree on indirect square(5)");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -385,19 +393,21 @@ class TableOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiate()) {
 
-            assertThrows(WasmRuntimeException.class,
-                () -> instance.getTable("nonexistent_table"),
-                "Panama: getTable() should throw for nonexistent table");
-            LOGGER.info("Panama: correctly threw WasmRuntimeException for nonexistent table");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                assertThrows(WasmRuntimeException.class,
+                    () -> instance.getTable("nonexistent_table"),
+                    "Panama: getTable() should throw for nonexistent table");
+                LOGGER.info("Panama: correctly threw WasmRuntimeException for nonexistent table");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 

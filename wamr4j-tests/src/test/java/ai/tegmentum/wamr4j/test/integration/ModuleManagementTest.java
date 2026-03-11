@@ -92,29 +92,31 @@ class ModuleManagementTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            final String panamaNameBefore = module.getName();
-            LOGGER.info("Panama getName() before set: '" + panamaNameBefore + "'");
-            assertNotNull(panamaNameBefore, "Panama: getName() should not return null");
+                final String panamaNameBefore = module.getName();
+                LOGGER.info("Panama getName() before set: '" + panamaNameBefore + "'");
+                assertNotNull(panamaNameBefore, "Panama: getName() should not return null");
 
-            final boolean panamaSetResult = module.setName(testName);
-            LOGGER.info("Panama setName('" + testName + "'): " + panamaSetResult);
-            assertTrue(panamaSetResult, "Panama: setName() should succeed");
+                final boolean panamaSetResult = module.setName(testName);
+                LOGGER.info("Panama setName('" + testName + "'): " + panamaSetResult);
+                assertTrue(panamaSetResult, "Panama: setName() should succeed");
 
-            assertEquals(jniSetResult, panamaSetResult,
-                "JNI and Panama should agree on setName() result");
+                assertEquals(jniSetResult, panamaSetResult,
+                    "JNI and Panama should agree on setName() result");
 
-            final String panamaNameAfter = module.getName();
-            LOGGER.info("Panama getName() after set: '" + panamaNameAfter + "'");
-            assertEquals(testName, panamaNameAfter,
-                "Panama: getName() should return the name that was set");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                final String panamaNameAfter = module.getName();
+                LOGGER.info("Panama getName() after set: '" + panamaNameAfter + "'");
+                assertEquals(testName, panamaNameAfter,
+                    "Panama: getName() should return the name that was set");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -156,33 +158,35 @@ class ModuleManagementTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WamrRuntimeExtensions runtime =
-                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WamrRuntimeExtensions runtime =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            final PackageType panamaFileType = runtime.getFilePackageType(moduleBytes);
-            LOGGER.info("Panama getFilePackageType(): " + panamaFileType);
-            assertEquals(PackageType.WASM, panamaFileType,
-                "Panama: WASM bytecode should be detected as WASM package type");
-            assertEquals(jniFileType, panamaFileType,
-                "JNI and Panama should agree on file package type");
+                final PackageType panamaFileType = runtime.getFilePackageType(moduleBytes);
+                LOGGER.info("Panama getFilePackageType(): " + panamaFileType);
+                assertEquals(PackageType.WASM, panamaFileType,
+                    "Panama: WASM bytecode should be detected as WASM package type");
+                assertEquals(jniFileType, panamaFileType,
+                    "JNI and Panama should agree on file package type");
 
-            final PackageType panamaModuleType = module.getPackageType();
-            LOGGER.info("Panama module.getPackageType(): " + panamaModuleType);
-            assertEquals(PackageType.WASM, panamaModuleType,
-                "Panama: Compiled WASM module should report WASM package type");
-            assertEquals(jniModuleType, panamaModuleType,
-                "JNI and Panama should agree on module package type");
+                final PackageType panamaModuleType = module.getPackageType();
+                LOGGER.info("Panama module.getPackageType(): " + panamaModuleType);
+                assertEquals(PackageType.WASM, panamaModuleType,
+                    "Panama: Compiled WASM module should report WASM package type");
+                assertEquals(jniModuleType, panamaModuleType,
+                    "JNI and Panama should agree on module package type");
 
-            final PackageType unknownType = runtime.getFilePackageType(new byte[]{0, 0, 0, 0});
-            LOGGER.info("Panama getFilePackageType(invalid): " + unknownType);
-            assertEquals(PackageType.UNKNOWN, unknownType,
-                "Panama: Invalid bytes should be detected as UNKNOWN");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                final PackageType unknownType = runtime.getFilePackageType(new byte[]{0, 0, 0, 0});
+                LOGGER.info("Panama getFilePackageType(invalid): " + unknownType);
+                assertEquals(PackageType.UNKNOWN, unknownType,
+                    "Panama: Invalid bytes should be detected as UNKNOWN");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -218,24 +222,26 @@ class ModuleManagementTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WamrRuntimeExtensions runtime =
-                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WamrRuntimeExtensions runtime =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            final int panamaModuleVersion = module.getPackageVersion();
-            LOGGER.info("Panama module.getPackageVersion(): " + panamaModuleVersion);
-            assertEquals(jniModuleVersion, panamaModuleVersion,
-                "JNI and Panama should agree on module package version");
+                final int panamaModuleVersion = module.getPackageVersion();
+                LOGGER.info("Panama module.getPackageVersion(): " + panamaModuleVersion);
+                assertEquals(jniModuleVersion, panamaModuleVersion,
+                    "JNI and Panama should agree on module package version");
 
-            final int panamaCurrentVersion = runtime.getCurrentPackageVersion(PackageType.WASM);
-            LOGGER.info("Panama getCurrentPackageVersion(WASM): " + panamaCurrentVersion);
-            assertEquals(jniCurrentVersion, panamaCurrentVersion,
-                "JNI and Panama should agree on current WASM package version");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                final int panamaCurrentVersion = runtime.getCurrentPackageVersion(PackageType.WASM);
+                LOGGER.info("Panama getCurrentPackageVersion(WASM): " + panamaCurrentVersion);
+                assertEquals(jniCurrentVersion, panamaCurrentVersion,
+                    "JNI and Panama should agree on current WASM package version");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -262,18 +268,20 @@ class ModuleManagementTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            final boolean panamaFreeable = module.isUnderlyingBinaryFreeable();
-            LOGGER.info("Panama isUnderlyingBinaryFreeable(): " + panamaFreeable);
-            assertEquals(jniFreeable, panamaFreeable,
-                "JNI and Panama should agree on isUnderlyingBinaryFreeable()");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                final boolean panamaFreeable = module.isUnderlyingBinaryFreeable();
+                LOGGER.info("Panama isUnderlyingBinaryFreeable(): " + panamaFreeable);
+                assertEquals(jniFreeable, panamaFreeable,
+                    "JNI and Panama should agree on isUnderlyingBinaryFreeable()");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -319,6 +327,9 @@ class ModuleManagementTest {
         final byte[] moduleBytes = buildMinimalModule();
 
         for (final String runtime : new String[]{"jni", "panama"}) {
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             System.setProperty("wamr4j.runtime", runtime);
             try (final WamrRuntimeExtensions rt =
                      (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
@@ -345,6 +356,9 @@ class ModuleManagementTest {
         int jniVersion = -1;
 
         for (final String runtime : new String[]{"jni", "panama"}) {
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             System.setProperty("wamr4j.runtime", runtime);
             try (final WamrRuntimeExtensions rt =
                      (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
