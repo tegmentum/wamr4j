@@ -125,6 +125,18 @@
                 <configuration>
                     <classesDirectory>${project.build.outputDirectory}</classesDirectory>
                 </configuration>
+                <executions>
+                    <!-- Also produce a classified JAR for platform-specific dependency resolution -->
+                    <execution>
+                        <id>native-classified</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>${native.platform.classifier}</classifier>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- Skip Javadoc generation for native module -->
@@ -149,6 +161,41 @@
 
     <!-- Platform-Specific Build Profiles -->
     <profiles>
+        <!-- Skip Rust compilation (use pre-built native libraries from resources) -->
+        <profile>
+            <id>skip-native-compilation</id>
+            <activation>
+                <property>
+                    <name>native.compile.skip</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.questdb</groupId>
+                        <artifactId>rust-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>rust-compile</id>
+                                <phase>none</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-native-libraries</id>
+                                <phase>none</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
         <!-- Cross-compilation profile for all supported platforms -->
         <profile>
             <id>native-all-platforms</id>

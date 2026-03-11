@@ -191,7 +191,7 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          ./mvnw test -B -pl '!wamr4j-native,!wamr4j-benchmarks' \
+          ./mvnw test -B -pl '!wamr4j-benchmarks' -P skip-native \
             -DargLine="--enable-native-access=ALL-UNNAMED" \
             -Djacoco.skip=true -q
 
