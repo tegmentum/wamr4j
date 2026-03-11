@@ -62,6 +62,10 @@ class AdvancedApiTest {
         LOGGER.info("Testing getMemAllocInfo on both runtimes");
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
                 final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
                 final int[] info = ext.getMemAllocInfo();
@@ -80,6 +84,10 @@ class AdvancedApiTest {
         LOGGER.info("Testing createContextKey/destroyContextKey on both runtimes");
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
                 final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
                 final long key = ext.createContextKey();
@@ -102,6 +110,10 @@ class AdvancedApiTest {
         final byte[] wasm = buildSimpleModule();
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
                 final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
                 final long key = ext.createContextKey();
@@ -139,6 +151,10 @@ class AdvancedApiTest {
         final byte[] wasm = buildSimpleModule();
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(wasm)) {
 
@@ -170,6 +186,10 @@ class AdvancedApiTest {
         final byte[] wasm = buildSimpleModule();
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(wasm)) {
 
@@ -191,6 +211,10 @@ class AdvancedApiTest {
         final byte[] wasm = buildSimpleModule();
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(wasm);
                  final WamrInstanceExtensions instance =
@@ -223,6 +247,10 @@ class AdvancedApiTest {
         final byte[] wasm = buildSimpleModule();
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
                 final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
                 final long key = ext.createContextKey();
@@ -261,6 +289,10 @@ class AdvancedApiTest {
         LOGGER.info("Testing findRegisteredModule on both runtimes");
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
                 final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
                 final long handle = ext.findRegisteredModule("never_registered_module");
@@ -284,6 +316,10 @@ class AdvancedApiTest {
         final byte[] wasm = buildSimpleModule();
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(wasm);
                  final WamrInstanceExtensions instance =
@@ -318,6 +354,10 @@ class AdvancedApiTest {
         final byte[] wasm = buildSimpleModule();
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(wasm);
                  final WamrInstanceExtensions instance =
@@ -346,6 +386,10 @@ class AdvancedApiTest {
         LOGGER.info("Testing destroyContextKey(0) is a no-op");
         for (final String runtime : new String[]{"jni", "panama"}) {
             System.setProperty("wamr4j.runtime", runtime);
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                System.clearProperty("wamr4j.runtime");
+                continue;
+            }
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
                 final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;
                 ext.destroyContextKey(0);
