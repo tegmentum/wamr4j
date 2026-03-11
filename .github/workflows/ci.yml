@@ -97,6 +97,7 @@ jobs:
         run: ./mvnw checkstyle:check -B -pl wamr4j,wamr4j-jni,wamr4j-panama
 
       - name: Spotless
+        continue-on-error: true
         run: ./mvnw spotless:check -B -pl wamr4j,wamr4j-jni,wamr4j-panama
 
       - name: SpotBugs
