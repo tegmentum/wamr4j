@@ -391,27 +391,13 @@ fn generate_bindings(out_dir: &PathBuf, wamr_dir: &PathBuf) {
     }
 }
 
-/// Configure linking for different targets
-fn configure_linking(target: &str, _out_dir: &PathBuf) {
-    // Enable link-time optimization for release builds
-    if env::var("PROFILE").unwrap_or_default() == "release" {
-        if target.contains("windows") {
-            println!("cargo:rustc-link-arg=/LTCG");
-        } else {
-            println!("cargo:rustc-link-arg=-flto");
-        }
-    }
-    
-    // Platform-specific linking flags
-    match target {
-        t if t.contains("linux") => {
-            println!("cargo:rustc-link-arg=-Wl,--gc-sections");
-        },
-        t if t.contains("darwin") => {
-            println!("cargo:rustc-link-arg=-Wl,-dead_strip");
-        },
-        _ => {}
-    }
+/// Configure linking for different targets.
+/// Note: LTO, stripping, and panic strategy are handled by Cargo.toml profile
+/// settings (lto = "fat", strip = true, panic = "abort"). Adding redundant
+/// linker flags here (e.g., -flto, --gc-sections) can conflict with Cargo's
+/// own flags and cause cdylib output to be dropped on Linux.
+fn configure_linking(_target: &str, _out_dir: &PathBuf) {
+    // Intentionally minimal — Cargo.toml [profile.release] handles optimization.
 }
 
 /// Create placeholder WAMR directory structure for development
