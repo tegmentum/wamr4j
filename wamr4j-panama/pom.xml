@@ -95,6 +95,15 @@
                 <jdk>(,23)</jdk>
             </activation>
             <build>
+                <resources>
+                    <resource>
+                        <directory>src/main/resources</directory>
+                        <excludes>
+                            <!-- Exclude SPI config to prevent ServiceConfigurationError -->
+                            <exclude>META-INF/services/**</exclude>
+                        </excludes>
+                    </resource>
+                </resources>
                 <plugins>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
