@@ -85,27 +85,29 @@ class RuntimeConfigurationTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
-            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
-            for (final RunningMode mode : RunningMode.values()) {
-                panamaResults[mode.ordinal()] = ext.isRunningModeSupported(mode);
-                LOGGER.info("Panama isRunningModeSupported(" + mode + "): " + panamaResults[mode.ordinal()]);
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+                final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
+                for (final RunningMode mode : RunningMode.values()) {
+                    panamaResults[mode.ordinal()] = ext.isRunningModeSupported(mode);
+                    LOGGER.info("Panama isRunningModeSupported(" + mode + "): " + panamaResults[mode.ordinal()]);
+                }
+
+                assertTrue(ext.isRunningModeSupported(RunningMode.INTERP),
+                    "Panama: Interpreter mode should always be supported");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping comparison: " + e.getMessage());
+                return;
+            } finally {
+                System.clearProperty("wamr4j.runtime");
             }
 
-            assertTrue(ext.isRunningModeSupported(RunningMode.INTERP),
-                "Panama: Interpreter mode should always be supported");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping comparison: " + e.getMessage());
-            return;
-        } finally {
-            System.clearProperty("wamr4j.runtime");
-        }
-
-        // Compare results
-        for (final RunningMode mode : RunningMode.values()) {
-            assertEquals(jniResults[mode.ordinal()], panamaResults[mode.ordinal()],
-                "JNI and Panama should agree on " + mode + " support");
+            // Compare results
+            for (final RunningMode mode : RunningMode.values()) {
+                assertEquals(jniResults[mode.ordinal()], panamaResults[mode.ordinal()],
+                    "JNI and Panama should agree on " + mode + " support");
+            }
         }
     }
 
@@ -131,21 +133,23 @@ class RuntimeConfigurationTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
-            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
-            panamaResult = ext.setDefaultRunningMode(RunningMode.INTERP);
-            LOGGER.info("Panama setDefaultRunningMode(INTERP): " + panamaResult);
-            assertTrue(panamaResult, "Panama: Setting interpreter as default should succeed");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-            return;
-        } finally {
-            System.clearProperty("wamr4j.runtime");
-        }
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+                final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
+                panamaResult = ext.setDefaultRunningMode(RunningMode.INTERP);
+                LOGGER.info("Panama setDefaultRunningMode(INTERP): " + panamaResult);
+                assertTrue(panamaResult, "Panama: Setting interpreter as default should succeed");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+                return;
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
 
-        assertEquals(jniResult, panamaResult,
-            "JNI and Panama should agree on setDefaultRunningMode(INTERP)");
+            assertEquals(jniResult, panamaResult,
+                "JNI and Panama should agree on setDefaultRunningMode(INTERP)");
+        }
     }
 
     @Test
@@ -168,17 +172,19 @@ class RuntimeConfigurationTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
-            final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
-            assertDoesNotThrow(() -> ext.setLogLevel(0), "Panama: setLogLevel(0) should not throw");
-            assertDoesNotThrow(() -> ext.setLogLevel(3), "Panama: setLogLevel(3) should not throw");
-            assertDoesNotThrow(() -> ext.setLogLevel(5), "Panama: setLogLevel(5) should not throw");
-            LOGGER.info("Panama: setLogLevel tested at levels 0, 3, 5");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+                final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) runtime;
+                assertDoesNotThrow(() -> ext.setLogLevel(0), "Panama: setLogLevel(0) should not throw");
+                assertDoesNotThrow(() -> ext.setLogLevel(3), "Panama: setLogLevel(3) should not throw");
+                assertDoesNotThrow(() -> ext.setLogLevel(5), "Panama: setLogLevel(5) should not throw");
+                LOGGER.info("Panama: setLogLevel tested at levels 0, 3, 5");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -217,31 +223,33 @@ class RuntimeConfigurationTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiate()) {
 
-            final WamrInstanceExtensions instExt = (WamrInstanceExtensions) instance;
-            final RunningMode panamaMode = instExt.getRunningMode();
-            LOGGER.info("Panama initial running mode: " + panamaMode);
-            assertNotNull(panamaMode, "Panama: getRunningMode() should return a non-null value");
+                final WamrInstanceExtensions instExt = (WamrInstanceExtensions) instance;
+                final RunningMode panamaMode = instExt.getRunningMode();
+                LOGGER.info("Panama initial running mode: " + panamaMode);
+                assertNotNull(panamaMode, "Panama: getRunningMode() should return a non-null value");
 
-            assertEquals(jniMode, panamaMode,
-                "JNI and Panama should report the same initial running mode");
+                assertEquals(jniMode, panamaMode,
+                    "JNI and Panama should report the same initial running mode");
 
-            final boolean setResult = instExt.setRunningMode(RunningMode.INTERP);
-            LOGGER.info("Panama setRunningMode(INTERP): " + setResult);
-            assertTrue(setResult, "Panama: setRunningMode(INTERP) should succeed");
+                final boolean setResult = instExt.setRunningMode(RunningMode.INTERP);
+                LOGGER.info("Panama setRunningMode(INTERP): " + setResult);
+                assertTrue(setResult, "Panama: setRunningMode(INTERP) should succeed");
 
-            final RunningMode afterSet = instExt.getRunningMode();
-            LOGGER.info("Panama running mode after set: " + afterSet);
-            assertEquals(RunningMode.INTERP, afterSet,
-                "Panama: Running mode should be INTERP after set");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                final RunningMode afterSet = instExt.getRunningMode();
+                LOGGER.info("Panama running mode after set: " + afterSet);
+                assertEquals(RunningMode.INTERP, afterSet,
+                    "Panama: Running mode should be INTERP after set");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -291,32 +299,34 @@ class RuntimeConfigurationTest {
         }
 
         // Panama runtime — verify identical behavior
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiate()) {
 
-            final WamrInstanceExtensions instExt = (WamrInstanceExtensions) instance;
-            final boolean panamaInitialBounds = instExt.isBoundsChecksEnabled();
-            LOGGER.info("Panama initial bounds checks: " + panamaInitialBounds);
-            assertEquals(jniInitialBounds, panamaInitialBounds,
-                "JNI and Panama should agree on initial bounds checks state");
+                final WamrInstanceExtensions instExt = (WamrInstanceExtensions) instance;
+                final boolean panamaInitialBounds = instExt.isBoundsChecksEnabled();
+                LOGGER.info("Panama initial bounds checks: " + panamaInitialBounds);
+                assertEquals(jniInitialBounds, panamaInitialBounds,
+                    "JNI and Panama should agree on initial bounds checks state");
 
-            instExt.setBoundsChecks(false);
-            final boolean panamaAfterDisable = instExt.isBoundsChecksEnabled();
-            LOGGER.info("Panama bounds checks after disable: " + panamaAfterDisable);
-            assertEquals(jniAfterDisable, panamaAfterDisable,
-                "JNI and Panama should agree on bounds checks after disable");
+                instExt.setBoundsChecks(false);
+                final boolean panamaAfterDisable = instExt.isBoundsChecksEnabled();
+                LOGGER.info("Panama bounds checks after disable: " + panamaAfterDisable);
+                assertEquals(jniAfterDisable, panamaAfterDisable,
+                    "JNI and Panama should agree on bounds checks after disable");
 
-            instExt.setBoundsChecks(true);
-            final boolean panamaAfterReenable = instExt.isBoundsChecksEnabled();
-            LOGGER.info("Panama bounds checks after re-enable: " + panamaAfterReenable);
-            assertEquals(jniAfterReenable, panamaAfterReenable,
-                "JNI and Panama should agree on bounds checks after re-enable");
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                instExt.setBoundsChecks(true);
+                final boolean panamaAfterReenable = instExt.isBoundsChecksEnabled();
+                LOGGER.info("Panama bounds checks after re-enable: " + panamaAfterReenable);
+                assertEquals(jniAfterReenable, panamaAfterReenable,
+                    "JNI and Panama should agree on bounds checks after re-enable");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 

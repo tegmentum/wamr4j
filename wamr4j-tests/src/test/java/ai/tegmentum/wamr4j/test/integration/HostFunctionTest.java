@@ -81,7 +81,9 @@ class HostFunctionTest {
         testOnRuntime("jni", moduleBytes, imports, "call_add", new Object[]{10, 32}, 42);
 
         // Test on Panama
-        testOnRuntime("panama", moduleBytes, imports, "call_add", new Object[]{10, 32}, 42);
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            testOnRuntime("panama", moduleBytes, imports, "call_add", new Object[]{10, 32}, 42);
+        }
     }
 
     /**
@@ -122,9 +124,11 @@ class HostFunctionTest {
         assertEquals(99, notifyValue.get(), "JNI: notify host function should have been called with 99");
 
         // Test on Panama
-        notifyValue.set(0);
-        testOnRuntime("panama", moduleBytes, imports, "do_notify", new Object[]{99}, 1);
-        assertEquals(99, notifyValue.get(), "Panama: notify host function should have been called with 99");
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            notifyValue.set(0);
+            testOnRuntime("panama", moduleBytes, imports, "do_notify", new Object[]{99}, 1);
+            assertEquals(99, notifyValue.get(), "Panama: notify host function should have been called with 99");
+        }
     }
 
     /**
@@ -160,7 +164,9 @@ class HostFunctionTest {
 
         // call_add_mul(a, b) = add_host(a, b) + mul_host(a, b) = (3+4) + (3*4) = 7+12 = 19
         testOnRuntime("jni", moduleBytes, imports, "call_add_mul", new Object[]{3, 4}, 19);
-        testOnRuntime("panama", moduleBytes, imports, "call_add_mul", new Object[]{3, 4}, 19);
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            testOnRuntime("panama", moduleBytes, imports, "call_add_mul", new Object[]{3, 4}, 19);
+        }
     }
 
     /**
@@ -192,23 +198,25 @@ class HostFunctionTest {
             }
         }, "JNI: Instantiation should fail without required imports");
 
-        assertThrows(Exception.class, () -> {
-            final String originalProp = System.getProperty("wamr4j.runtime");
-            try {
-                System.setProperty("wamr4j.runtime", "panama");
-                try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-                     final WebAssemblyModule module = runtime.compile(moduleBytes);
-                     final WebAssemblyInstance instance = module.instantiate()) {
-                    fail("Panama: Should have thrown exception for missing imports");
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            assertThrows(Exception.class, () -> {
+                final String originalProp = System.getProperty("wamr4j.runtime");
+                try {
+                    System.setProperty("wamr4j.runtime", "panama");
+                    try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                         final WebAssemblyModule module = runtime.compile(moduleBytes);
+                         final WebAssemblyInstance instance = module.instantiate()) {
+                        fail("Panama: Should have thrown exception for missing imports");
+                    }
+                } finally {
+                    if (originalProp != null) {
+                        System.setProperty("wamr4j.runtime", originalProp);
+                    } else {
+                        System.clearProperty("wamr4j.runtime");
+                    }
                 }
-            } finally {
-                if (originalProp != null) {
-                    System.setProperty("wamr4j.runtime", originalProp);
-                } else {
-                    System.clearProperty("wamr4j.runtime");
-                }
-            }
-        }, "Panama: Instantiation should fail without required imports");
+            }, "Panama: Instantiation should fail without required imports");
+        }
     }
 
     /**
@@ -236,7 +244,9 @@ class HostFunctionTest {
         final long a = 1000000000L;
         final long b = 2000000000L;
         testOnRuntime("jni", moduleBytes, imports, "call_add_i64", new Object[]{a, b}, a + b);
-        testOnRuntime("panama", moduleBytes, imports, "call_add_i64", new Object[]{a, b}, a + b);
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            testOnRuntime("panama", moduleBytes, imports, "call_add_i64", new Object[]{a, b}, a + b);
+        }
     }
 
     // --- Helper methods ---

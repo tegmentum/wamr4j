@@ -80,15 +80,17 @@ class CustomDataTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final long panamaResult = instance.getCustomData();
-            LOGGER.info("Panama getCustomData() default: " + panamaResult);
-            assertEquals(0L, panamaResult, "Panama: Default custom data should be 0");
+                final long panamaResult = instance.getCustomData();
+                LOGGER.info("Panama getCustomData() default: " + panamaResult);
+                assertEquals(0L, panamaResult, "Panama: Default custom data should be 0");
+            }
         }
     }
 
@@ -113,16 +115,18 @@ class CustomDataTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            instance.setCustomData(testValue);
-            final long panamaResult = instance.getCustomData();
-            LOGGER.info("Panama setCustomData(" + testValue + ") -> getCustomData(): " + panamaResult);
-            assertEquals(testValue, panamaResult, "Panama: Custom data round-trip failed");
+                instance.setCustomData(testValue);
+                final long panamaResult = instance.getCustomData();
+                LOGGER.info("Panama setCustomData(" + testValue + ") -> getCustomData(): " + panamaResult);
+                assertEquals(testValue, panamaResult, "Panama: Custom data round-trip failed");
+            }
         }
     }
 
@@ -148,17 +152,19 @@ class CustomDataTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            instance.setCustomData(largeValue);
-            final long panamaResult = instance.getCustomData();
-            LOGGER.info("Panama custom data with Long.MAX_VALUE: " + panamaResult);
-            assertEquals(largeValue, panamaResult,
-                "Panama: Custom data should handle Long.MAX_VALUE");
+                instance.setCustomData(largeValue);
+                final long panamaResult = instance.getCustomData();
+                LOGGER.info("Panama custom data with Long.MAX_VALUE: " + panamaResult);
+                assertEquals(largeValue, panamaResult,
+                    "Panama: Custom data should handle Long.MAX_VALUE");
+            }
         }
     }
 
@@ -188,22 +194,24 @@ class CustomDataTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            instance.setCustomData(100L);
-            assertEquals(100L, instance.getCustomData(), "Panama: First set failed");
+                instance.setCustomData(100L);
+                assertEquals(100L, instance.getCustomData(), "Panama: First set failed");
 
-            instance.setCustomData(200L);
-            final long panamaResult = instance.getCustomData();
-            LOGGER.info("Panama custom data after overwrite: " + panamaResult);
-            assertEquals(200L, panamaResult, "Panama: Overwrite failed");
+                instance.setCustomData(200L);
+                final long panamaResult = instance.getCustomData();
+                LOGGER.info("Panama custom data after overwrite: " + panamaResult);
+                assertEquals(200L, panamaResult, "Panama: Overwrite failed");
 
-            instance.setCustomData(0L);
-            assertEquals(0L, instance.getCustomData(), "Panama: Reset to 0 failed");
+                instance.setCustomData(0L);
+                assertEquals(0L, instance.getCustomData(), "Panama: Reset to 0 failed");
+            }
         }
     }
 
@@ -231,19 +239,21 @@ class CustomDataTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            instance.setCustomData(testValue);
-            final WebAssemblyFunction addFunc = instance.getFunction("add");
-            addFunc.invoke(1, 2);  // Call a function
-            final long panamaResult = instance.getCustomData();
-            LOGGER.info("Panama custom data after function call: " + panamaResult);
-            assertEquals(testValue, panamaResult,
-                "Panama: Custom data should persist across function calls");
+                instance.setCustomData(testValue);
+                final WebAssemblyFunction addFunc = instance.getFunction("add");
+                addFunc.invoke(1, 2);  // Call a function
+                final long panamaResult = instance.getCustomData();
+                LOGGER.info("Panama custom data after function call: " + panamaResult);
+                assertEquals(testValue, panamaResult,
+                    "Panama: Custom data should persist across function calls");
+            }
         }
     }
 
@@ -269,19 +279,21 @@ class CustomDataTest {
         LOGGER.info("JNI: Closed instance correctly threw IllegalStateException");
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        final WamrInstanceExtensions panamaInstance;
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
-            panamaInstance = (WamrInstanceExtensions) module.instantiate();
-            panamaInstance.close();
-        }
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            final WamrInstanceExtensions panamaInstance;
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+                panamaInstance = (WamrInstanceExtensions) module.instantiate();
+                panamaInstance.close();
+            }
 
-        assertThrows(IllegalStateException.class, () -> panamaInstance.setCustomData(1L),
-            "Panama: setCustomData on closed instance should throw");
-        assertThrows(IllegalStateException.class, () -> panamaInstance.getCustomData(),
-            "Panama: getCustomData on closed instance should throw");
-        LOGGER.info("Panama: Closed instance correctly threw IllegalStateException");
+            assertThrows(IllegalStateException.class, () -> panamaInstance.setCustomData(1L),
+                "Panama: setCustomData on closed instance should throw");
+            assertThrows(IllegalStateException.class, () -> panamaInstance.getCustomData(),
+                "Panama: getCustomData on closed instance should throw");
+            LOGGER.info("Panama: Closed instance correctly threw IllegalStateException");
+        }
     }
 
     @Test
@@ -310,22 +322,24 @@ class CustomDataTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance1 =
-                 (WamrInstanceExtensions) module.instantiate();
-             final WamrInstanceExtensions instance2 =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance1 =
+                     (WamrInstanceExtensions) module.instantiate();
+                 final WamrInstanceExtensions instance2 =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            instance1.setCustomData(111L);
-            instance2.setCustomData(222L);
+                instance1.setCustomData(111L);
+                instance2.setCustomData(222L);
 
-            assertEquals(111L, instance1.getCustomData(),
-                "Panama: Instance 1 custom data should be isolated");
-            assertEquals(222L, instance2.getCustomData(),
-                "Panama: Instance 2 custom data should be isolated");
-            LOGGER.info("Panama: Custom data correctly isolated between instances");
+                assertEquals(111L, instance1.getCustomData(),
+                    "Panama: Instance 1 custom data should be isolated");
+                assertEquals(222L, instance2.getCustomData(),
+                    "Panama: Instance 2 custom data should be isolated");
+                LOGGER.info("Panama: Custom data correctly isolated between instances");
+            }
         }
     }
 }

@@ -83,17 +83,19 @@ class DebuggingProfilingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final String panamaCallStack = instance.getCallStack();
-            LOGGER.info("Panama getCallStack() outside execution: "
-                + (panamaCallStack == null ? "null" : "'" + panamaCallStack + "'"));
-            assertTrue(panamaCallStack == null || panamaCallStack.isEmpty(),
-                "Panama: Call stack outside execution should be null or empty");
+                final String panamaCallStack = instance.getCallStack();
+                LOGGER.info("Panama getCallStack() outside execution: "
+                    + (panamaCallStack == null ? "null" : "'" + panamaCallStack + "'"));
+                assertTrue(panamaCallStack == null || panamaCallStack.isEmpty(),
+                    "Panama: Call stack outside execution should be null or empty");
+            }
         }
     }
 
@@ -116,15 +118,17 @@ class DebuggingProfilingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            assertDoesNotThrow(() -> instance.dumpCallStack(),
-                "Panama: dumpCallStack should not throw");
-            LOGGER.info("Panama: dumpCallStack completed without crash");
+                assertDoesNotThrow(() -> instance.dumpCallStack(),
+                    "Panama: dumpCallStack should not throw");
+                LOGGER.info("Panama: dumpCallStack completed without crash");
+            }
         }
     }
 
@@ -150,18 +154,20 @@ class DebuggingProfilingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final WebAssemblyFunction addFunc = instance.getFunction("add");
-            addFunc.invoke(1, 2);
+                final WebAssemblyFunction addFunc = instance.getFunction("add");
+                addFunc.invoke(1, 2);
 
-            assertDoesNotThrow(() -> instance.dumpPerfProfiling(),
-                "Panama: dumpPerfProfiling should not throw");
-            LOGGER.info("Panama: dumpPerfProfiling completed without crash");
+                assertDoesNotThrow(() -> instance.dumpPerfProfiling(),
+                    "Panama: dumpPerfProfiling should not throw");
+                LOGGER.info("Panama: dumpPerfProfiling completed without crash");
+            }
         }
     }
 
@@ -194,23 +200,25 @@ class DebuggingProfilingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final double panamaBefore = instance.sumWasmExecTime();
-            LOGGER.info("Panama sumWasmExecTime() before execution: " + panamaBefore);
-            assertTrue(panamaBefore >= 0.0, "Panama: Exec time should be >= 0");
+                final double panamaBefore = instance.sumWasmExecTime();
+                LOGGER.info("Panama sumWasmExecTime() before execution: " + panamaBefore);
+                assertTrue(panamaBefore >= 0.0, "Panama: Exec time should be >= 0");
 
-            final WebAssemblyFunction addFunc = instance.getFunction("add");
-            for (int i = 0; i < 100; i++) {
-                addFunc.invoke(i, i + 1);
+                final WebAssemblyFunction addFunc = instance.getFunction("add");
+                for (int i = 0; i < 100; i++) {
+                    addFunc.invoke(i, i + 1);
+                }
+                final double panamaAfter = instance.sumWasmExecTime();
+                LOGGER.info("Panama sumWasmExecTime() after 100 calls: " + panamaAfter);
+                assertTrue(panamaAfter >= 0.0, "Panama: Exec time after calls should be >= 0");
             }
-            final double panamaAfter = instance.sumWasmExecTime();
-            LOGGER.info("Panama sumWasmExecTime() after 100 calls: " + panamaAfter);
-            assertTrue(panamaAfter >= 0.0, "Panama: Exec time after calls should be >= 0");
         }
     }
 
@@ -242,25 +250,27 @@ class DebuggingProfilingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final WebAssemblyFunction addFunc = instance.getFunction("add");
-            addFunc.invoke(1, 2);
+                final WebAssemblyFunction addFunc = instance.getFunction("add");
+                addFunc.invoke(1, 2);
 
-            final double panamaTime = instance.getWasmFuncExecTime("add");
-            LOGGER.info("Panama getWasmFuncExecTime('add'): " + panamaTime);
-            assertTrue(panamaTime >= 0.0, "Panama: Function exec time should be >= 0");
+                final double panamaTime = instance.getWasmFuncExecTime("add");
+                LOGGER.info("Panama getWasmFuncExecTime('add'): " + panamaTime);
+                assertTrue(panamaTime >= 0.0, "Panama: Function exec time should be >= 0");
 
-            // Non-existent function returns -1.0 from WAMR
-            final double panamaNone = instance.getWasmFuncExecTime("nonexistent");
-            LOGGER.info("Panama getWasmFuncExecTime('nonexistent'): " + panamaNone);
-            assertTrue(panamaNone <= 0.0,
-                "Panama: Non-existent function exec time should be <= 0, got: "
-                    + panamaNone);
+                // Non-existent function returns -1.0 from WAMR
+                final double panamaNone = instance.getWasmFuncExecTime("nonexistent");
+                LOGGER.info("Panama getWasmFuncExecTime('nonexistent'): " + panamaNone);
+                assertTrue(panamaNone <= 0.0,
+                    "Panama: Non-existent function exec time should be <= 0, got: "
+                        + panamaNone);
+            }
         }
     }
 
@@ -284,16 +294,18 @@ class DebuggingProfilingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            assertThrows(IllegalArgumentException.class,
-                () -> instance.getWasmFuncExecTime(null),
-                "Panama: getWasmFuncExecTime(null) should throw");
-            LOGGER.info("Panama: null funcName correctly threw IllegalArgumentException");
+                assertThrows(IllegalArgumentException.class,
+                    () -> instance.getWasmFuncExecTime(null),
+                    "Panama: getWasmFuncExecTime(null) should throw");
+                LOGGER.info("Panama: null funcName correctly threw IllegalArgumentException");
+            }
         }
     }
 
@@ -316,15 +328,17 @@ class DebuggingProfilingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            assertDoesNotThrow(() -> instance.dumpMemConsumption(),
-                "Panama: dumpMemConsumption should not throw");
-            LOGGER.info("Panama: dumpMemConsumption completed without crash");
+                assertDoesNotThrow(() -> instance.dumpMemConsumption(),
+                    "Panama: dumpMemConsumption should not throw");
+                LOGGER.info("Panama: dumpMemConsumption completed without crash");
+            }
         }
     }
 
@@ -359,29 +373,31 @@ class DebuggingProfilingTest {
         LOGGER.info("JNI: All closed instance methods correctly threw IllegalStateException");
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        final WamrInstanceExtensions panamaInstance;
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
-            panamaInstance = (WamrInstanceExtensions) module.instantiate();
-            panamaInstance.close();
-        }
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            final WamrInstanceExtensions panamaInstance;
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+                panamaInstance = (WamrInstanceExtensions) module.instantiate();
+                panamaInstance.close();
+            }
 
-        assertThrows(IllegalStateException.class, () -> panamaInstance.getCallStack(),
-            "Panama: getCallStack on closed instance should throw");
-        assertThrows(IllegalStateException.class, () -> panamaInstance.dumpCallStack(),
-            "Panama: dumpCallStack on closed instance should throw");
-        assertThrows(IllegalStateException.class, () -> panamaInstance.dumpPerfProfiling(),
-            "Panama: dumpPerfProfiling on closed instance should throw");
-        assertThrows(IllegalStateException.class, () -> panamaInstance.sumWasmExecTime(),
-            "Panama: sumWasmExecTime on closed instance should throw");
-        assertThrows(IllegalStateException.class,
-            () -> panamaInstance.getWasmFuncExecTime("add"),
-            "Panama: getWasmFuncExecTime on closed instance should throw");
-        assertThrows(IllegalStateException.class, () -> panamaInstance.dumpMemConsumption(),
-            "Panama: dumpMemConsumption on closed instance should throw");
-        LOGGER.info(
-            "Panama: All closed instance methods correctly threw IllegalStateException");
+            assertThrows(IllegalStateException.class, () -> panamaInstance.getCallStack(),
+                "Panama: getCallStack on closed instance should throw");
+            assertThrows(IllegalStateException.class, () -> panamaInstance.dumpCallStack(),
+                "Panama: dumpCallStack on closed instance should throw");
+            assertThrows(IllegalStateException.class, () -> panamaInstance.dumpPerfProfiling(),
+                "Panama: dumpPerfProfiling on closed instance should throw");
+            assertThrows(IllegalStateException.class, () -> panamaInstance.sumWasmExecTime(),
+                "Panama: sumWasmExecTime on closed instance should throw");
+            assertThrows(IllegalStateException.class,
+                () -> panamaInstance.getWasmFuncExecTime("add"),
+                "Panama: getWasmFuncExecTime on closed instance should throw");
+            assertThrows(IllegalStateException.class, () -> panamaInstance.dumpMemConsumption(),
+                "Panama: dumpMemConsumption on closed instance should throw");
+            LOGGER.info(
+                "Panama: All closed instance methods correctly threw IllegalStateException");
+        }
     }
 
     @Test
@@ -391,6 +407,9 @@ class DebuggingProfilingTest {
         final byte[] moduleBytes = buildSimpleModule();
 
         for (final String runtime : new String[]{"jni", "panama"}) {
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime();
                  final WebAssemblyModule module = rt.compile(moduleBytes);
@@ -428,6 +447,9 @@ class DebuggingProfilingTest {
         LOGGER.info("Testing getLastError() on both runtimes");
 
         for (final String runtime : new String[]{"jni", "panama"}) {
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
                 final WamrRuntimeExtensions ext = (WamrRuntimeExtensions) rt;

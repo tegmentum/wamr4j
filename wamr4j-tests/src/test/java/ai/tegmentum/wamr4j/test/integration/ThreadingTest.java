@@ -53,13 +53,15 @@ class ThreadingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WamrRuntimeExtensions runtime =
-                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
-            final boolean panamaResult = runtime.isThreadEnvInited();
-            LOGGER.info("Panama isThreadEnvInited() on main thread: " + panamaResult);
-            assertNotNull(Boolean.valueOf(panamaResult),
-                "Panama: isThreadEnvInited should return a valid boolean");
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WamrRuntimeExtensions runtime =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
+                final boolean panamaResult = runtime.isThreadEnvInited();
+                LOGGER.info("Panama isThreadEnvInited() on main thread: " + panamaResult);
+                assertNotNull(Boolean.valueOf(panamaResult),
+                    "Panama: isThreadEnvInited should return a valid boolean");
+            }
         }
     }
 
@@ -86,17 +88,19 @@ class ThreadingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WamrRuntimeExtensions runtime =
-                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
-            final boolean panamaInit = runtime.initThreadEnv();
-            LOGGER.info("Panama initThreadEnv(): " + panamaInit);
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WamrRuntimeExtensions runtime =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
+                final boolean panamaInit = runtime.initThreadEnv();
+                LOGGER.info("Panama initThreadEnv(): " + panamaInit);
 
-            assertDoesNotThrow(() -> runtime.destroyThreadEnv(),
-                "Panama: destroyThreadEnv should not throw");
-            LOGGER.info("Panama: destroyThreadEnv completed without crash");
+                assertDoesNotThrow(() -> runtime.destroyThreadEnv(),
+                    "Panama: destroyThreadEnv should not throw");
+                LOGGER.info("Panama: destroyThreadEnv completed without crash");
 
-            runtime.initThreadEnv();
+                runtime.initThreadEnv();
+            }
         }
     }
 
@@ -118,16 +122,18 @@ class ThreadingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WamrRuntimeExtensions runtime =
-                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
-            assertDoesNotThrow(() -> runtime.setMaxThreadNum(4),
-                "Panama: setMaxThreadNum(4) should not throw");
-            assertDoesNotThrow(() -> runtime.setMaxThreadNum(1),
-                "Panama: setMaxThreadNum(1) should not throw");
-            assertDoesNotThrow(() -> runtime.setMaxThreadNum(0),
-                "Panama: setMaxThreadNum(0) should not throw");
-            LOGGER.info("Panama: setMaxThreadNum completed without crash");
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WamrRuntimeExtensions runtime =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
+                assertDoesNotThrow(() -> runtime.setMaxThreadNum(4),
+                    "Panama: setMaxThreadNum(4) should not throw");
+                assertDoesNotThrow(() -> runtime.setMaxThreadNum(1),
+                    "Panama: setMaxThreadNum(1) should not throw");
+                assertDoesNotThrow(() -> runtime.setMaxThreadNum(0),
+                    "Panama: setMaxThreadNum(0) should not throw");
+                LOGGER.info("Panama: setMaxThreadNum completed without crash");
+            }
         }
     }
 
@@ -146,13 +152,15 @@ class ThreadingTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WamrRuntimeExtensions runtime =
-                 (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
-            assertThrows(IllegalArgumentException.class,
-                () -> runtime.setMaxThreadNum(-1),
-                "Panama: setMaxThreadNum(-1) should throw");
-            LOGGER.info("Panama: setMaxThreadNum(-1) correctly threw IllegalArgumentException");
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WamrRuntimeExtensions runtime =
+                     (WamrRuntimeExtensions) RuntimeFactory.createRuntime()) {
+                assertThrows(IllegalArgumentException.class,
+                    () -> runtime.setMaxThreadNum(-1),
+                    "Panama: setMaxThreadNum(-1) should throw");
+                LOGGER.info("Panama: setMaxThreadNum(-1) correctly threw IllegalArgumentException");
+            }
         }
     }
 
@@ -177,20 +185,22 @@ class ThreadingTest {
         LOGGER.info("JNI: All closed runtime threading methods threw IllegalStateException");
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        final WamrRuntimeExtensions panamaRuntime =
-            (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
-        panamaRuntime.close();
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            final WamrRuntimeExtensions panamaRuntime =
+                (WamrRuntimeExtensions) RuntimeFactory.createRuntime();
+            panamaRuntime.close();
 
-        assertThrows(IllegalStateException.class, () -> panamaRuntime.initThreadEnv(),
-            "Panama: initThreadEnv on closed runtime should throw");
-        assertThrows(IllegalStateException.class, () -> panamaRuntime.destroyThreadEnv(),
-            "Panama: destroyThreadEnv on closed runtime should throw");
-        assertThrows(IllegalStateException.class, () -> panamaRuntime.isThreadEnvInited(),
-            "Panama: isThreadEnvInited on closed runtime should throw");
-        assertThrows(IllegalStateException.class, () -> panamaRuntime.setMaxThreadNum(4),
-            "Panama: setMaxThreadNum on closed runtime should throw");
-        LOGGER.info(
-            "Panama: All closed runtime threading methods threw IllegalStateException");
+            assertThrows(IllegalStateException.class, () -> panamaRuntime.initThreadEnv(),
+                "Panama: initThreadEnv on closed runtime should throw");
+            assertThrows(IllegalStateException.class, () -> panamaRuntime.destroyThreadEnv(),
+                "Panama: destroyThreadEnv on closed runtime should throw");
+            assertThrows(IllegalStateException.class, () -> panamaRuntime.isThreadEnvInited(),
+                "Panama: isThreadEnvInited on closed runtime should throw");
+            assertThrows(IllegalStateException.class, () -> panamaRuntime.setMaxThreadNum(4),
+                "Panama: setMaxThreadNum on closed runtime should throw");
+            LOGGER.info(
+                "Panama: All closed runtime threading methods threw IllegalStateException");
+        }
     }
 }

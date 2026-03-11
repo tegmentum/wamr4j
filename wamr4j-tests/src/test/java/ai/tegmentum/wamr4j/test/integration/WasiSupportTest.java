@@ -80,15 +80,17 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final boolean panamaResult = instance.isWasiMode();
-            LOGGER.info("Panama isWasiMode() on non-WASI module: " + panamaResult);
-            assertFalse(panamaResult, "Panama: Non-WASI module should not be in WASI mode");
+                final boolean panamaResult = instance.isWasiMode();
+                LOGGER.info("Panama isWasiMode() on non-WASI module: " + panamaResult);
+                assertFalse(panamaResult, "Panama: Non-WASI module should not be in WASI mode");
+            }
         }
     }
 
@@ -111,15 +113,17 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final int panamaCode = instance.getWasiExitCode();
-            LOGGER.info("Panama getWasiExitCode() default: " + panamaCode);
-            assertEquals(0, panamaCode, "Panama: Default WASI exit code should be 0");
+                final int panamaCode = instance.getWasiExitCode();
+                LOGGER.info("Panama getWasiExitCode() default: " + panamaCode);
+                assertEquals(0, panamaCode, "Panama: Default WASI exit code should be 0");
+            }
         }
     }
 
@@ -142,15 +146,17 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final boolean panamaResult = instance.hasWasiStartFunction();
-            LOGGER.info("Panama hasWasiStartFunction() on non-WASI module: " + panamaResult);
-            assertFalse(panamaResult, "Panama: Non-WASI module should not have _start function");
+                final boolean panamaResult = instance.hasWasiStartFunction();
+                LOGGER.info("Panama hasWasiStartFunction() on non-WASI module: " + panamaResult);
+                assertFalse(panamaResult, "Panama: Non-WASI module should not have _start function");
+            }
         }
     }
 
@@ -181,17 +187,19 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            assertDoesNotThrow(() -> module.configureWasi(config),
-                "Panama: configureWasi should not throw on regular module");
-            LOGGER.info("Panama configureWasi() on regular module: succeeded without crash");
+                assertDoesNotThrow(() -> module.configureWasi(config),
+                    "Panama: configureWasi should not throw on regular module");
+                LOGGER.info("Panama configureWasi() on regular module: succeeded without crash");
 
-            try (final WebAssemblyInstance instance = module.instantiate()) {
-                LOGGER.info("Panama: Module still instantiates after configureWasi");
-                assertNotNull(instance, "Panama: Instance should still be creatable");
+                try (final WebAssemblyInstance instance = module.instantiate()) {
+                    LOGGER.info("Panama: Module still instantiates after configureWasi");
+                    assertNotNull(instance, "Panama: Instance should still be creatable");
+                }
             }
         }
     }
@@ -213,13 +221,15 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            assertThrows(IllegalArgumentException.class, () -> module.configureWasi(null),
-                "Panama: configureWasi(null) should throw IllegalArgumentException");
-            LOGGER.info("Panama configureWasi(null): correctly threw IllegalArgumentException");
+                assertThrows(IllegalArgumentException.class, () -> module.configureWasi(null),
+                    "Panama: configureWasi(null) should throw IllegalArgumentException");
+                LOGGER.info("Panama configureWasi(null): correctly threw IllegalArgumentException");
+            }
         }
     }
 
@@ -310,15 +320,17 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final boolean panamaResult = instance.executeFunc("add", new String[]{"10", "20"});
-            LOGGER.info("Panama executeFunc('add', ['10', '20']): " + panamaResult);
-            assertTrue(panamaResult, "Panama: executeFunc should succeed for exported function");
+                final boolean panamaResult = instance.executeFunc("add", new String[]{"10", "20"});
+                LOGGER.info("Panama executeFunc('add', ['10', '20']): " + panamaResult);
+                assertTrue(panamaResult, "Panama: executeFunc should succeed for exported function");
+            }
         }
     }
 
@@ -342,16 +354,18 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            assertThrows(IllegalArgumentException.class,
-                () -> instance.executeFunc(null, new String[0]),
-                "Panama: executeFunc(null, ...) should throw IllegalArgumentException");
-            LOGGER.info("Panama executeFunc(null): correctly threw IllegalArgumentException");
+                assertThrows(IllegalArgumentException.class,
+                    () -> instance.executeFunc(null, new String[0]),
+                    "Panama: executeFunc(null, ...) should throw IllegalArgumentException");
+                LOGGER.info("Panama executeFunc(null): correctly threw IllegalArgumentException");
+            }
         }
     }
 
@@ -385,26 +399,28 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            final WamrInstanceExtensions instance =
-                (WamrInstanceExtensions) module.instantiate();
-            instance.close();
+                final WamrInstanceExtensions instance =
+                    (WamrInstanceExtensions) module.instantiate();
+                instance.close();
 
-            assertThrows(IllegalStateException.class, instance::isWasiMode,
-                "Panama: isWasiMode() on closed instance should throw");
-            assertThrows(IllegalStateException.class, instance::getWasiExitCode,
-                "Panama: getWasiExitCode() on closed instance should throw");
-            assertThrows(IllegalStateException.class, instance::hasWasiStartFunction,
-                "Panama: hasWasiStartFunction() on closed instance should throw");
-            assertThrows(IllegalStateException.class, () -> instance.executeMain(new String[0]),
-                "Panama: executeMain() on closed instance should throw");
-            assertThrows(IllegalStateException.class,
-                () -> instance.executeFunc("add", new String[0]),
-                "Panama: executeFunc() on closed instance should throw");
-            LOGGER.info("Panama: All WASI methods correctly throw on closed instance");
+                assertThrows(IllegalStateException.class, instance::isWasiMode,
+                    "Panama: isWasiMode() on closed instance should throw");
+                assertThrows(IllegalStateException.class, instance::getWasiExitCode,
+                    "Panama: getWasiExitCode() on closed instance should throw");
+                assertThrows(IllegalStateException.class, instance::hasWasiStartFunction,
+                    "Panama: hasWasiStartFunction() on closed instance should throw");
+                assertThrows(IllegalStateException.class, () -> instance.executeMain(new String[0]),
+                    "Panama: executeMain() on closed instance should throw");
+                assertThrows(IllegalStateException.class,
+                    () -> instance.executeFunc("add", new String[0]),
+                    "Panama: executeFunc() on closed instance should throw");
+                LOGGER.info("Panama: All WASI methods correctly throw on closed instance");
+            }
         }
     }
 
@@ -428,15 +444,17 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime()) {
 
-            final WebAssemblyModule module = runtime.compile(moduleBytes);
-            module.close();
+                final WebAssemblyModule module = runtime.compile(moduleBytes);
+                module.close();
 
-            assertThrows(IllegalStateException.class, () -> module.configureWasi(config),
-                "Panama: configureWasi() on closed module should throw");
-            LOGGER.info("Panama: configureWasi on closed module correctly threw IllegalStateException");
+                assertThrows(IllegalStateException.class, () -> module.configureWasi(config),
+                    "Panama: configureWasi() on closed module should throw");
+                LOGGER.info("Panama: configureWasi on closed module correctly threw IllegalStateException");
+            }
         }
     }
 
@@ -465,13 +483,15 @@ class WasiSupportTest {
         }
 
         // Panama
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes)) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes)) {
 
-            assertDoesNotThrow(() -> module.configureWasi(config),
-                "Panama: configureWasi with full config should not throw");
-            LOGGER.info("Panama configureWasi with full config: OK");
+                assertDoesNotThrow(() -> module.configureWasi(config),
+                    "Panama: configureWasi with full config should not throw");
+                LOGGER.info("Panama configureWasi with full config: OK");
+            }
         }
     }
 

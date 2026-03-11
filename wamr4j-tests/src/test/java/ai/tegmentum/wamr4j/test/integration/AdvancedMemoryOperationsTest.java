@@ -100,30 +100,32 @@ class AdvancedMemoryOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final long panamaOffset = instance.moduleMalloc(256);
-            LOGGER.info("Panama moduleMalloc(256) returned offset: " + panamaOffset);
-            assertTrue(panamaOffset > 0,
-                "Panama: moduleMalloc should return a positive offset, got: " + panamaOffset);
+                final long panamaOffset = instance.moduleMalloc(256);
+                LOGGER.info("Panama moduleMalloc(256) returned offset: " + panamaOffset);
+                assertTrue(panamaOffset > 0,
+                    "Panama: moduleMalloc should return a positive offset, got: " + panamaOffset);
 
-            // Both offsets should be non-zero positive values (exact values may differ)
-            LOGGER.info("JNI offset: " + jniOffset + ", Panama offset: " + panamaOffset);
+                // Both offsets should be non-zero positive values (exact values may differ)
+                LOGGER.info("JNI offset: " + jniOffset + ", Panama offset: " + panamaOffset);
 
-            assertTrue(instance.validateAppAddr(panamaOffset, 256),
-                "Panama: allocated address should be valid");
+                assertTrue(instance.validateAppAddr(panamaOffset, 256),
+                    "Panama: allocated address should be valid");
 
-            instance.moduleFree(panamaOffset);
-            LOGGER.info("Panama: moduleFree succeeded");
+                instance.moduleFree(panamaOffset);
+                LOGGER.info("Panama: moduleFree succeeded");
 
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -192,30 +194,32 @@ class AdvancedMemoryOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final long panamaOffset = instance.moduleDupData(testData);
-            LOGGER.info("Panama moduleDupData returned offset: " + panamaOffset);
-            assertTrue(panamaOffset > 0,
-                "Panama: moduleDupData should return a positive offset, got: " + panamaOffset);
+                final long panamaOffset = instance.moduleDupData(testData);
+                LOGGER.info("Panama moduleDupData returned offset: " + panamaOffset);
+                assertTrue(panamaOffset > 0,
+                    "Panama: moduleDupData should return a positive offset, got: " + panamaOffset);
 
-            final WebAssemblyMemory memory = instance.getMemory();
-            final byte[] readBack = memory.read((int) panamaOffset, testData.length);
-            LOGGER.info("Panama: read back data: ["
-                + String.format("0x%02X, 0x%02X, 0x%02X, 0x%02X",
-                    readBack[0], readBack[1], readBack[2], readBack[3]) + "]");
-            assertArrayEquals(testData, readBack,
-                "Panama: data read back should match original");
+                final WebAssemblyMemory memory = instance.getMemory();
+                final byte[] readBack = memory.read((int) panamaOffset, testData.length);
+                LOGGER.info("Panama: read back data: ["
+                    + String.format("0x%02X, 0x%02X, 0x%02X, 0x%02X",
+                        readBack[0], readBack[1], readBack[2], readBack[3]) + "]");
+                assertArrayEquals(testData, readBack,
+                    "Panama: data read back should match original");
 
-            instance.moduleFree(panamaOffset);
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+                instance.moduleFree(panamaOffset);
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -284,29 +288,31 @@ class AdvancedMemoryOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final boolean panamaValid = instance.validateAppAddr(0, 100);
-            LOGGER.info("Panama validateAppAddr(0, 100): " + panamaValid);
-            assertEquals(jniValid, panamaValid,
-                "JNI and Panama should agree on validateAppAddr(0, 100)");
+                final boolean panamaValid = instance.validateAppAddr(0, 100);
+                LOGGER.info("Panama validateAppAddr(0, 100): " + panamaValid);
+                assertEquals(jniValid, panamaValid,
+                    "JNI and Panama should agree on validateAppAddr(0, 100)");
 
-            final long panamaTotalMemory = (long) instance.getMemory().pageCount() * 65536L;
-            final long panamaInvalidOffset = panamaTotalMemory + 1000;
-            final boolean panamaInvalid = instance.validateAppAddr(panamaInvalidOffset, 100);
-            LOGGER.info("Panama validateAppAddr(" + panamaInvalidOffset + ", 100): "
-                + panamaInvalid);
-            assertEquals(jniInvalid, panamaInvalid,
-                "JNI and Panama should agree on validateAppAddr(100000, 100)");
+                final long panamaTotalMemory = (long) instance.getMemory().pageCount() * 65536L;
+                final long panamaInvalidOffset = panamaTotalMemory + 1000;
+                final boolean panamaInvalid = instance.validateAppAddr(panamaInvalidOffset, 100);
+                LOGGER.info("Panama validateAppAddr(" + panamaInvalidOffset + ", 100): "
+                    + panamaInvalid);
+                assertEquals(jniInvalid, panamaInvalid,
+                    "JNI and Panama should agree on validateAppAddr(100000, 100)");
 
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -341,24 +347,26 @@ class AdvancedMemoryOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final WebAssemblyMemory memory = instance.getMemory();
-            memory.write(0, new byte[]{0x48, 0x69, 0x00});
+                final WebAssemblyMemory memory = instance.getMemory();
+                memory.write(0, new byte[]{0x48, 0x69, 0x00});
 
-            final boolean panamaValidStr = instance.validateAppStrAddr(0);
-            LOGGER.info("Panama validateAppStrAddr(0) after writing 'Hi\\0': " + panamaValidStr);
-            assertEquals(jniValidStr, panamaValidStr,
-                "JNI and Panama should agree on validateAppStrAddr");
+                final boolean panamaValidStr = instance.validateAppStrAddr(0);
+                LOGGER.info("Panama validateAppStrAddr(0) after writing 'Hi\\0': " + panamaValidStr);
+                assertEquals(jniValidStr, panamaValidStr,
+                    "JNI and Panama should agree on validateAppStrAddr");
 
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -409,29 +417,31 @@ class AdvancedMemoryOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WamrInstanceExtensions instance =
-                 (WamrInstanceExtensions) module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WamrInstanceExtensions instance =
+                     (WamrInstanceExtensions) module.instantiate()) {
 
-            final WebAssemblyMemory memory = instance.getMemoryByIndex(0);
-            assertNotNull(memory, "Panama: getMemoryByIndex(0) should not return null");
+                final WebAssemblyMemory memory = instance.getMemoryByIndex(0);
+                assertNotNull(memory, "Panama: getMemoryByIndex(0) should not return null");
 
-            final int panamaPageCount = memory.pageCount();
-            LOGGER.info("Panama memory[0] pageCount: " + panamaPageCount);
-            assertEquals(jniPageCount, panamaPageCount,
-                "JNI and Panama should agree on pageCount");
+                final int panamaPageCount = memory.pageCount();
+                LOGGER.info("Panama memory[0] pageCount: " + panamaPageCount);
+                assertEquals(jniPageCount, panamaPageCount,
+                    "JNI and Panama should agree on pageCount");
 
-            final int panamaSize = memory.size();
-            LOGGER.info("Panama memory[0] size: " + panamaSize);
-            assertEquals(jniSize, panamaSize,
-                "JNI and Panama should agree on memory size");
+                final int panamaSize = memory.size();
+                LOGGER.info("Panama memory[0] size: " + panamaSize);
+                assertEquals(jniSize, panamaSize,
+                    "JNI and Panama should agree on memory size");
 
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -464,25 +474,27 @@ class AdvancedMemoryOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiate()) {
 
-            final WebAssemblyMemory memory = instance.getMemory();
-            final long panamaBaseAddr = memory.getBaseAddress();
-            LOGGER.info("Panama base address: " + panamaBaseAddr + " (0x"
-                + Long.toHexString(panamaBaseAddr) + ")");
-            assertTrue(panamaBaseAddr != 0,
-                "Panama: base address should be non-zero, got: " + panamaBaseAddr);
+                final WebAssemblyMemory memory = instance.getMemory();
+                final long panamaBaseAddr = memory.getBaseAddress();
+                LOGGER.info("Panama base address: " + panamaBaseAddr + " (0x"
+                    + Long.toHexString(panamaBaseAddr) + ")");
+                assertTrue(panamaBaseAddr != 0,
+                    "Panama: base address should be non-zero, got: " + panamaBaseAddr);
 
-            // Both should be non-zero but will differ (different allocations)
-            LOGGER.info("Both runtimes returned valid non-zero base addresses");
+                // Both should be non-zero but will differ (different allocations)
+                LOGGER.info("Both runtimes returned valid non-zero base addresses");
 
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -514,21 +526,23 @@ class AdvancedMemoryOperationsTest {
         }
 
         // Panama runtime
-        System.setProperty("wamr4j.runtime", "panama");
-        try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
-             final WebAssemblyModule module = runtime.compile(moduleBytes);
-             final WebAssemblyInstance instance = module.instantiate()) {
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            System.setProperty("wamr4j.runtime", "panama");
+            try (final WebAssemblyRuntime runtime = RuntimeFactory.createRuntime();
+                 final WebAssemblyModule module = runtime.compile(moduleBytes);
+                 final WebAssemblyInstance instance = module.instantiate()) {
 
-            final WebAssemblyMemory memory = instance.getMemory();
-            final long panamaBytesPerPage = memory.getBytesPerPage();
-            LOGGER.info("Panama bytesPerPage: " + panamaBytesPerPage);
-            assertEquals(jniBytesPerPage, panamaBytesPerPage,
-                "JNI and Panama should agree on bytesPerPage");
+                final WebAssemblyMemory memory = instance.getMemory();
+                final long panamaBytesPerPage = memory.getBytesPerPage();
+                LOGGER.info("Panama bytesPerPage: " + panamaBytesPerPage);
+                assertEquals(jniBytesPerPage, panamaBytesPerPage,
+                    "JNI and Panama should agree on bytesPerPage");
 
-        } catch (final Exception e) {
-            LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
-        } finally {
-            System.clearProperty("wamr4j.runtime");
+            } catch (final Exception e) {
+                LOGGER.warning("Panama runtime not available, skipping: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 
@@ -627,6 +641,9 @@ class AdvancedMemoryOperationsTest {
         final byte[] moduleBytes = buildMemoryModule();
 
         for (final String runtime : new String[]{"jni", "panama"}) {
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
             System.setProperty("wamr4j.runtime", runtime);
             try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
                 final WamrRuntimeExtensions rtExt = (WamrRuntimeExtensions) rt;
