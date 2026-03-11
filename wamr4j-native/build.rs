@@ -254,10 +254,8 @@ fn link_system_libraries(target: &str, llvm_jit: bool) {
         println!("cargo:rustc-link-lib=pthread");
         println!("cargo:rustc-link-lib=dl");
         println!("cargo:rustc-link-lib=m");
-        if llvm_jit {
-            // C++ standard library needed for LLVM JIT C++ code
-            println!("cargo:rustc-link-lib=stdc++");
-        }
+        // C++ standard library needed for WAMR AOT compiler internals
+        println!("cargo:rustc-link-lib=stdc++");
     } else if target.contains("windows") {
         println!("cargo:rustc-link-lib=ws2_32");
         println!("cargo:rustc-link-lib=advapi32");
@@ -265,10 +263,8 @@ fn link_system_libraries(target: &str, llvm_jit: bool) {
     } else if target.contains("darwin") {
         println!("cargo:rustc-link-lib=framework=Security");
         println!("cargo:rustc-link-lib=framework=CoreFoundation");
-        if llvm_jit {
-            // C++ standard library needed for LLVM JIT C++ code
-            println!("cargo:rustc-link-lib=c++");
-        }
+        // C++ standard library needed for WAMR AOT compiler internals
+        println!("cargo:rustc-link-lib=c++");
     }
 
     if llvm_jit {
