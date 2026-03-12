@@ -77,6 +77,8 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <!-- No test sources in this module; skip to prevent surefire fork hang -->
+                    <skip>true</skip>
                     <argLine>@{argLine} --enable-native-access=ALL-UNNAMED</argLine>
                     <systemPropertyVariables>
                         <java.library.path>${project.build.directory}/native-libs</java.library.path>
