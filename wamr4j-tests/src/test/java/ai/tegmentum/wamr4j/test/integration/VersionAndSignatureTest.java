@@ -287,4 +287,76 @@ class VersionAndSignatureTest {
             }
         }
     }
+
+    @Test
+    void testFunctionSignatureIsCompatible() {
+        LOGGER.info("Testing FunctionSignature.isCompatible() with various argument types");
+
+        // Signature: (i32, i32) -> i32
+        final FunctionSignature addSig = new FunctionSignature(
+            new ValueType[]{ValueType.I32, ValueType.I32},
+            new ValueType[]{ValueType.I32}
+        );
+
+        // Compatible: correct count and types
+        assertTrue(addSig.isCompatible(new Object[]{1, 2}),
+            "Two Integer args should be compatible with (i32, i32)");
+        LOGGER.info("isCompatible([1, 2]) for (i32, i32): true");
+
+        // Incompatible: wrong argument count
+        assertFalse(addSig.isCompatible(new Object[]{1}),
+            "One arg should not be compatible with (i32, i32)");
+        LOGGER.info("isCompatible([1]) for (i32, i32): false (wrong count)");
+
+        assertFalse(addSig.isCompatible(new Object[]{1, 2, 3}),
+            "Three args should not be compatible with (i32, i32)");
+        LOGGER.info("isCompatible([1, 2, 3]) for (i32, i32): false (wrong count)");
+
+        // Incompatible: wrong type
+        assertFalse(addSig.isCompatible(new Object[]{1, "hello"}),
+            "String arg should not be compatible with i32");
+        LOGGER.info("isCompatible([1, 'hello']) for (i32, i32): false (wrong type)");
+
+        assertFalse(addSig.isCompatible(new Object[]{1.0f, 2}),
+            "Float arg should not be compatible with i32");
+        LOGGER.info("isCompatible([1.0f, 2]) for (i32, i32): false (wrong type)");
+
+        // Null args treated as empty array
+        assertFalse(addSig.isCompatible(null),
+            "Null args should not be compatible with (i32, i32)");
+        LOGGER.info("isCompatible(null) for (i32, i32): false");
+
+        // Empty args
+        assertFalse(addSig.isCompatible(new Object[]{}),
+            "Empty args should not be compatible with (i32, i32)");
+        LOGGER.info("isCompatible([]) for (i32, i32): false");
+
+        // Void function: () -> ()
+        final FunctionSignature voidSig = new FunctionSignature(
+            new ValueType[]{}, new ValueType[]{}
+        );
+        assertTrue(voidSig.isCompatible(new Object[]{}),
+            "Empty args should be compatible with ()");
+        assertTrue(voidSig.isCompatible(null),
+            "Null args should be compatible with ()");
+        assertFalse(voidSig.isCompatible(new Object[]{1}),
+            "One arg should not be compatible with ()");
+        LOGGER.info("Void signature compatibility checks passed");
+
+        // Mixed types: (i32, i64, f32, f64) -> ()
+        final FunctionSignature mixedSig = new FunctionSignature(
+            new ValueType[]{ValueType.I32, ValueType.I64, ValueType.F32, ValueType.F64},
+            new ValueType[]{}
+        );
+        assertTrue(mixedSig.isCompatible(new Object[]{1, 2L, 3.0f, 4.0}),
+            "Correct types should be compatible with (i32, i64, f32, f64)");
+        assertFalse(mixedSig.isCompatible(new Object[]{"a", 2L, 3.0f, 4.0}),
+            "String where i32 expected should not be compatible");
+        LOGGER.info("Mixed type signature compatibility checks passed");
+
+        // Null value in args
+        assertFalse(addSig.isCompatible(new Object[]{1, null}),
+            "Null value should not be compatible with i32");
+        LOGGER.info("isCompatible([1, null]) for (i32, i32): false");
+    }
 }

@@ -537,4 +537,51 @@ class WasiSupportTest {
             "hasCustomStdio should be true after setting all stdio FDs");
         LOGGER.info("All stdio FDs set: hasCustomStdio() = true (correct)");
     }
+
+    @Test
+    void testWasiConfigurationStdioFdGetters() {
+        LOGGER.info("Testing WasiConfiguration stdio FD getter round-trip");
+
+        // Default values should be -1
+        final WasiConfiguration defaults = new WasiConfiguration();
+        assertEquals(-1L, defaults.getStdinFd(),
+            "Default stdinFd should be -1");
+        assertEquals(-1L, defaults.getStdoutFd(),
+            "Default stdoutFd should be -1");
+        assertEquals(-1L, defaults.getStderrFd(),
+            "Default stderrFd should be -1");
+        LOGGER.info("Default FDs: stdin=" + defaults.getStdinFd()
+            + " stdout=" + defaults.getStdoutFd()
+            + " stderr=" + defaults.getStderrFd());
+
+        // Set and read back each FD
+        final WasiConfiguration config = new WasiConfiguration()
+            .setStdinFd(0L)
+            .setStdoutFd(1L)
+            .setStderrFd(2L);
+        assertEquals(0L, config.getStdinFd(),
+            "stdinFd should be 0 after setStdinFd(0)");
+        assertEquals(1L, config.getStdoutFd(),
+            "stdoutFd should be 1 after setStdoutFd(1)");
+        assertEquals(2L, config.getStderrFd(),
+            "stderrFd should be 2 after setStderrFd(2)");
+        LOGGER.info("Set FDs: stdin=" + config.getStdinFd()
+            + " stdout=" + config.getStdoutFd()
+            + " stderr=" + config.getStderrFd());
+
+        // Test with non-standard FD values
+        final WasiConfiguration custom = new WasiConfiguration()
+            .setStdinFd(42L)
+            .setStdoutFd(100L)
+            .setStderrFd(255L);
+        assertEquals(42L, custom.getStdinFd(),
+            "stdinFd should be 42");
+        assertEquals(100L, custom.getStdoutFd(),
+            "stdoutFd should be 100");
+        assertEquals(255L, custom.getStderrFd(),
+            "stderrFd should be 255");
+        LOGGER.info("Custom FDs: stdin=" + custom.getStdinFd()
+            + " stdout=" + custom.getStdoutFd()
+            + " stderr=" + custom.getStderrFd());
+    }
 }
