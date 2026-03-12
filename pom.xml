@@ -34,6 +34,7 @@
         <module>wamr4j-native</module>
         <module>wamr4j-benchmarks</module>
         <module>wamr4j-tests</module>
+        <module>wamr4j-tests/fuzz</module>
     </modules>
 
     <!-- Properties -->
@@ -67,6 +68,10 @@
         <spotbugs.version>4.8.2</spotbugs.version>
         <findsecbugs-plugin.version>1.12.0</findsecbugs-plugin.version>
         <jacoco-plugin.version>0.8.11</jacoco-plugin.version>
+
+        <!-- Mutation Testing -->
+        <pitest.plugin.version>1.22.0</pitest.plugin.version>
+        <pitest.junit5.version>1.2.1</pitest.junit5.version>
 
         <!-- Testing Dependencies -->
         <junit.version>5.10.1</junit.version>
@@ -469,6 +474,68 @@
                     </executions>
                 </plugin>
 
+                <!-- PIT Mutation Testing -->
+                <plugin>
+                    <groupId>org.pitest</groupId>
+                    <artifactId>pitest-maven</artifactId>
+                    <version>${pitest.plugin.version}</version>
+                    <dependencies>
+                        <dependency>
+                            <groupId>org.pitest</groupId>
+                            <artifactId>pitest-junit5-plugin</artifactId>
+                            <version>${pitest.junit5.version}</version>
+                        </dependency>
+                    </dependencies>
+                    <configuration>
+                        <!-- Target classes for mutation (high-priority semantic packages) -->
+                        <targetClasses>
+                            <param>ai.tegmentum.wamr4j.*</param>
+                            <param>ai.tegmentum.wamr4j.exception.*</param>
+                        </targetClasses>
+                        <targetTests>
+                            <param>ai.tegmentum.wamr4j.*</param>
+                        </targetTests>
+                        <!-- Mutation operators -->
+                        <mutators>
+                            <mutator>DEFAULTS</mutator>
+                            <mutator>CONSTRUCTOR_CALLS</mutator>
+                            <mutator>INLINE_CONSTS</mutator>
+                            <mutator>REMOVE_CONDITIONALS_EQUAL_IF</mutator>
+                            <mutator>REMOVE_CONDITIONALS_EQUAL_ELSE</mutator>
+                            <mutator>REMOVE_CONDITIONALS_ORDER_IF</mutator>
+                            <mutator>REMOVE_CONDITIONALS_ORDER_ELSE</mutator>
+                            <mutator>REMOVE_INCREMENTS</mutator>
+                        </mutators>
+                        <!-- Excluded classes -->
+                        <excludedClasses>
+                            <param>*Generated*</param>
+                            <param>*Constants</param>
+                            <param>*Builder</param>
+                        </excludedClasses>
+                        <!-- Exclude methods hard to test meaningfully -->
+                        <excludedMethods>
+                            <param>toString</param>
+                            <param>hashCode</param>
+                            <param>equals</param>
+                        </excludedMethods>
+                        <!-- Performance -->
+                        <threads>4</threads>
+                        <timeoutConstant>10000</timeoutConstant>
+                        <timeoutFactor>1.5</timeoutFactor>
+                        <!-- Output -->
+                        <outputFormats>
+                            <outputFormat>HTML</outputFormat>
+                            <outputFormat>XML</outputFormat>
+                        </outputFormats>
+                        <timestampedReports>false</timestampedReports>
+                        <!-- Thresholds -->
+                        <mutationThreshold>45</mutationThreshold>
+                        <coverageThreshold>60</coverageThreshold>
+                        <failWhenNoMutations>false</failWhenNoMutations>
+                        <verbose>false</verbose>
+                    </configuration>
+                </plugin>
+
             </plugins>
         </pluginManagement>
 
@@ -742,6 +809,181 @@
             <properties>
                 <native.compile.skip>true</native.compile.skip>
             </properties>
+        </profile>
+
+        <!-- Mutation Testing Profile -->
+        <!-- Usage: ./mvnw test -P mutation-tests -pl wamr4j -->
+        <profile>
+            <id>mutation-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <executions>
+                            <execution>
+                                <id>mutation-testing</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>mutationCoverage</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Quick Mutation Testing Profile (faster, reduced mutators) -->
+        <!-- Usage: ./mvnw test -P mutation-tests-quick -pl wamr4j -->
+        <profile>
+            <id>mutation-tests-quick</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <configuration>
+                            <mutators>
+                                <mutator>CONDITIONALS_BOUNDARY</mutator>
+                                <mutator>NEGATE_CONDITIONALS</mutator>
+                                <mutator>MATH</mutator>
+                                <mutator>VOID_METHOD_CALLS</mutator>
+                                <mutator>FALSE_RETURNS</mutator>
+                                <mutator>TRUE_RETURNS</mutator>
+                                <mutator>EMPTY_RETURNS</mutator>
+                                <mutator>NULL_RETURNS</mutator>
+                                <mutator>PRIMITIVE_RETURNS</mutator>
+                            </mutators>
+                            <mutationThreshold>50</mutationThreshold>
+                            <coverageThreshold>60</coverageThreshold>
+                            <timeoutConstant>5000</timeoutConstant>
+                            <threads>4</threads>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>quick-mutation-testing</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>mutationCoverage</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Thorough Mutation Testing Profile (all mutators, strict thresholds) -->
+        <!-- Usage: ./mvnw test -P mutation-tests-thorough -->
+        <profile>
+            <id>mutation-tests-thorough</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <configuration>
+                            <targetClasses>
+                                <param>ai.tegmentum.wamr4j.*</param>
+                                <param>ai.tegmentum.wamr4j.exception.*</param>
+                                <param>ai.tegmentum.wamr4j.spi.*</param>
+                            </targetClasses>
+                            <mutators>
+                                <mutator>ALL</mutator>
+                            </mutators>
+                            <mutationThreshold>70</mutationThreshold>
+                            <coverageThreshold>80</coverageThreshold>
+                            <failWhenNoMutations>true</failWhenNoMutations>
+                            <timeoutConstant>15000</timeoutConstant>
+                            <timeoutFactor>2.0</timeoutFactor>
+                            <threads>2</threads>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>thorough-mutation-testing</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>mutationCoverage</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- JNI Mutation Testing Profile -->
+        <!-- Usage: ./mvnw test -P mutation-tests-jni -pl wamr4j-jni -->
+        <profile>
+            <id>mutation-tests-jni</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <configuration>
+                            <targetClasses>
+                                <param>ai.tegmentum.wamr4j.jni.*</param>
+                                <param>ai.tegmentum.wamr4j.jni.impl.*</param>
+                                <param>ai.tegmentum.wamr4j.jni.internal.*</param>
+                            </targetClasses>
+                            <targetTests>
+                                <param>ai.tegmentum.wamr4j.jni.*</param>
+                            </targetTests>
+                            <mutationThreshold>60</mutationThreshold>
+                            <coverageThreshold>70</coverageThreshold>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>jni-mutation-testing</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>mutationCoverage</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Panama Mutation Testing Profile -->
+        <!-- Usage: ./mvnw test -P mutation-tests-panama -pl wamr4j-panama -->
+        <profile>
+            <id>mutation-tests-panama</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <configuration>
+                            <targetClasses>
+                                <param>ai.tegmentum.wamr4j.panama.*</param>
+                                <param>ai.tegmentum.wamr4j.panama.impl.*</param>
+                                <param>ai.tegmentum.wamr4j.panama.internal.*</param>
+                            </targetClasses>
+                            <targetTests>
+                                <param>ai.tegmentum.wamr4j.panama.*</param>
+                            </targetTests>
+                            <mutationThreshold>60</mutationThreshold>
+                            <coverageThreshold>70</coverageThreshold>
+                            <jvmArgs>
+                                <jvmArg>--enable-native-access=ALL-UNNAMED</jvmArg>
+                            </jvmArgs>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>panama-mutation-testing</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>mutationCoverage</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
 
         <!-- Release profile for Maven Central publishing -->

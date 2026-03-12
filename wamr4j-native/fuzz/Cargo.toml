@@ -1,0 +1,55 @@
+[package]
+name = "wamr4j-native-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1.3", features = ["derive"] }
+
+[dependencies.wamr4j-native]
+path = ".."
+
+[dependencies.libc]
+version = "0.2"
+
+[[bin]]
+name = "module_parse"
+path = "fuzz_targets/module_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "func_call"
+path = "fuzz_targets/func_call.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "memory_access"
+path = "fuzz_targets/memory_access.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "error_message"
+path = "fuzz_targets/error_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ffi_roundtrip"
+path = "fuzz_targets/ffi_roundtrip.rs"
+test = false
+doc = false
+bench = false
