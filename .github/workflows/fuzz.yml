@@ -1,0 +1,259 @@
+name: Fuzz Testing
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Daily at 2 AM UTC
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Rust fuzz duration per target in seconds'
+        required: false
+        default: '3600'
+        type: string
+      target:
+        description: 'Specific Rust target to fuzz (or "all")'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - module_parse
+          - func_call
+          - memory_access
+          - error_message
+          - ffi_roundtrip
+      java_duration:
+        description: 'Java fuzz duration in seconds'
+        required: false
+        default: '1800'
+        type: string
+  push:
+    paths:
+      - 'wamr4j-native/fuzz/**'
+      - 'wamr4j-tests/fuzz/**'
+      - '.github/workflows/fuzz.yml'
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Quick smoke test on push to fuzz-related files
+  smoke-test:
+    if: github.event_name == 'push'
+    name: Rust Fuzz Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz and cmake
+        run: |
+          cargo install cargo-fuzz
+          sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Compile and run quick fuzz (60s each)
+        working-directory: wamr4j-native
+        run: |
+          for target in module_parse func_call memory_access error_message ffi_roundtrip; do
+            echo "::group::Fuzzing $target"
+            cargo +nightly fuzz run $target -- -max_total_time=60 || true
+            echo "::endgroup::"
+          done
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-smoke
+          path: wamr4j-native/fuzz/artifacts/
+          if-no-files-found: ignore
+
+  # Java fuzz smoke test on push
+  java-fuzz-smoke:
+    if: github.event_name == 'push'
+    name: Java Fuzz Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cmake
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Build project
+        run: ./mvnw compile test-compile -B -DskipTests -Djacoco.skip=true
+
+      - name: Run Java fuzz tests (60s)
+        run: ./mvnw verify -P fuzz -pl wamr4j-tests/fuzz -Dfuzz.duration=60 -Djacoco.skip=true
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-fuzz-crashes-smoke
+          path: wamr4j-tests/fuzz/**/hs_err_*.log
+          if-no-files-found: ignore
+
+  # Full Rust fuzz testing (scheduled or manual)
+  fuzz:
+    if: github.event_name != 'push'
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - module_parse
+          - func_call
+          - memory_access
+          - error_message
+          - ffi_roundtrip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz and cmake
+        run: |
+          cargo install cargo-fuzz
+          sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Cache fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: wamr4j-native/fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.sha }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      - name: Determine fuzz duration
+        id: duration
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "seconds=3600" >> "$GITHUB_OUTPUT"
+          else
+            echo "seconds=${{ inputs.duration || '300' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run fuzzer
+        working-directory: wamr4j-native
+        run: |
+          echo "Fuzzing ${{ matrix.target }} for ${{ steps.duration.outputs.seconds }}s"
+          cargo +nightly fuzz run ${{ matrix.target }} \
+            fuzz/corpus/${{ matrix.target }} \
+            -- -max_total_time=${{ steps.duration.outputs.seconds }}
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: wamr4j-native/fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+
+      - name: Upload updated corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: wamr4j-native/fuzz/corpus/${{ matrix.target }}/
+          if-no-files-found: ignore
+
+  # Full Java fuzz testing (scheduled or manual)
+  java-fuzz:
+    if: github.event_name != 'push'
+    name: Java Fuzz Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cmake
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Build project
+        run: ./mvnw compile test-compile -B -DskipTests -Djacoco.skip=true
+
+      - name: Determine fuzz duration
+        id: duration
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "seconds=1800" >> "$GITHUB_OUTPUT"
+          else
+            echo "seconds=${{ inputs.java_duration || '1800' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Java fuzz tests
+        run: ./mvnw verify -P fuzz -pl wamr4j-tests/fuzz -Dfuzz.duration=${{ steps.duration.outputs.seconds }} -Djacoco.skip=true
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-fuzz-crashes
+          path: wamr4j-tests/fuzz/**/hs_err_*.log
+          if-no-files-found: ignore
+
+  # Create issue on crash during scheduled runs
+  notify-crashes:
+    if: github.event_name == 'schedule' && failure()
+    needs: [fuzz, java-fuzz]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create issue for crashes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const today = new Date().toISOString().split('T')[0];
+            const title = `Fuzz testing found crashes - ${today}`;
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'fuzz-crash',
+              per_page: 10
+            });
+
+            if (issues.some(i => i.title.includes(today))) return;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: [
+                '## Fuzz Testing Crash Report',
+                '',
+                `**Run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                `**Date:** ${new Date().toISOString()}`,
+                '',
+                '### Next steps',
+                '1. Download crash artifacts from the workflow run',
+                '2. Reproduce: `cargo +nightly fuzz run <target> <crash_file>`',
+                '3. Minimize: `cargo +nightly fuzz tmin <target> <crash_file>`',
+                '4. Fix the bug and verify the regression input no longer crashes',
+              ].join('\n'),
+              labels: ['fuzz-crash', 'bug']
+            });

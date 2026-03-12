@@ -141,7 +141,7 @@ jobs:
         timeout-minutes: 25
         run: |
           # Run Maven in background with watchdog for surefire fork hang (known issue on Java 23)
-          ./mvnw test -B -pl '!wamr4j-benchmarks' -P skip-native \
+          ./mvnw test -B -pl '!wamr4j-benchmarks,!wamr4j-tests/fuzz' -P skip-native \
             -DargLine="--enable-native-access=ALL-UNNAMED" \
             -Djacoco.skip=true &
           MVN_PID=$!
