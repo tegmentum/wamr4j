@@ -37,6 +37,8 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class WasiSupportTest {
 
+    private static final String TEMP_DIR = System.getProperty("java.io.tmpdir");
+
     private static final Logger LOGGER =
         Logger.getLogger(WasiSupportTest.class.getName());
 
@@ -168,8 +170,8 @@ class WasiSupportTest {
 
         final WasiConfiguration config = new WasiConfiguration()
             .setArgs("test_program", "--verbose")
-            .setEnvVars("HOME=/tmp", "PATH=/usr/bin")
-            .setPreopens("/tmp");
+            .setEnvVars("HOME=" + TEMP_DIR, "PATH=/usr/bin")
+            .setPreopens(TEMP_DIR);
 
         // JNI
         System.setProperty("wamr4j.runtime", "jni");
@@ -466,9 +468,9 @@ class WasiSupportTest {
 
         final WasiConfiguration config = new WasiConfiguration()
             .setArgs("program_name", "--flag")
-            .setEnvVars("HOME=/tmp", "USER=test")
-            .setPreopens("/tmp")
-            .setMappedDirs("/virtual::/real")
+            .setEnvVars("HOME=" + TEMP_DIR, "USER=test")
+            .setPreopens(TEMP_DIR)
+            .setMappedDirs("/virtual::" + TEMP_DIR)
             .setAddrPool("127.0.0.1")
             .setNsLookupPool("localhost");
 
