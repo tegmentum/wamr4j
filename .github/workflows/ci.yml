@@ -192,16 +192,11 @@ jobs:
           cp wamr4j-native/src/main/resources/META-INF/native/${{ matrix.platform }}/* \
              wamr4j-panama/src/main/resources/META-INF/native/${{ matrix.platform }}/
 
-      - name: Compile
-        shell: bash
-        run: |
-          ./mvnw compile -B -pl '!wamr4j-benchmarks' -P skip-native -q
-
       - name: Run tests
         shell: bash
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
-          ./mvnw surefire:test -B -pl wamr4j,wamr4j-jni,wamr4j-tests \
+          ./mvnw test -B -pl wamr4j,wamr4j-jni,wamr4j-tests -am -P skip-native \
             -DargLine="--enable-native-access=ALL-UNNAMED" \
             -Djacoco.skip=true
 
