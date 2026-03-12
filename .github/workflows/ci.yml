@@ -194,9 +194,9 @@ jobs:
 
       - name: Run tests
         shell: bash
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: |
-          ./mvnw test -B -pl wamr4j,wamr4j-jni,wamr4j-tests -am -P skip-native \
+          ./mvnw test -B -pl '!wamr4j-benchmarks' -P skip-native \
             -DargLine="--enable-native-access=ALL-UNNAMED" \
             -Djacoco.skip=true
 

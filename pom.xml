@@ -161,6 +161,7 @@
                         <useSystemClassLoader>false</useSystemClassLoader>
                         <forkCount>1C</forkCount>
                         <reuseForks>true</reuseForks>
+                        <forkedProcessExitTimeoutInSeconds>30</forkedProcessExitTimeoutInSeconds>
                         <argLine>@{argLine} -Xmx1024m</argLine>
                         <systemPropertyVariables>
                             <java.util.logging.config.file>src/test/resources/logging.properties</java.util.logging.config.file>
