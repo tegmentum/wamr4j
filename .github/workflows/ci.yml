@@ -204,7 +204,7 @@ jobs:
           ( sleep 1200 && kill $MVN_PID 2>/dev/null ) &
           WD=$!
           wait $MVN_PID 2>/dev/null; EC=$?
-          kill $WD 2>/dev/null; wait $WD 2>/dev/null
+          kill $WD 2>/dev/null; wait $WD 2>/dev/null || true
           # If killed by watchdog, verify tests actually passed via surefire reports
           if [ $EC -eq 143 ] || [ $EC -eq 137 ]; then
             echo "Maven killed by watchdog (surefire fork hang)"
