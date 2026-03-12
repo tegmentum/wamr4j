@@ -23,6 +23,7 @@ import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import ai.tegmentum.wamr4j.test.framework.WasmModuleBuilder;
 import org.junit.jupiter.api.Test;
 import java.util.logging.Logger;
@@ -363,5 +364,96 @@ class RuntimeConfigurationTest {
         } finally {
             System.clearProperty("wamr4j.runtime");
         }
+    }
+
+    @Test
+    void testCreateRuntimeByName() {
+        LOGGER.info("Testing RuntimeFactory.createRuntime(String) with explicit provider names");
+
+        // Test JNI by name
+        try (final WebAssemblyRuntime jniRuntime = RuntimeFactory.createRuntime("jni")) {
+            assertNotNull(jniRuntime, "createRuntime('jni') should return a valid runtime");
+            LOGGER.info("createRuntime('jni') succeeded: " + jniRuntime.getClass().getSimpleName());
+        } catch (final Exception e) {
+            fail("createRuntime('jni') should not throw: " + e.getMessage());
+        }
+
+        // Test case-insensitive lookup
+        try (final WebAssemblyRuntime jniRuntime = RuntimeFactory.createRuntime("JNI")) {
+            assertNotNull(jniRuntime, "createRuntime('JNI') should work case-insensitively");
+            LOGGER.info("createRuntime('JNI') case-insensitive succeeded");
+        } catch (final Exception e) {
+            fail("createRuntime('JNI') should not throw: " + e.getMessage());
+        }
+
+        // Test Panama by name (if available)
+        if (RuntimeFactory.isProviderAvailable("panama")) {
+            try (final WebAssemblyRuntime panamaRuntime = RuntimeFactory.createRuntime("panama")) {
+                assertNotNull(panamaRuntime, "createRuntime('panama') should return a valid runtime");
+                LOGGER.info("createRuntime('panama') succeeded: "
+                    + panamaRuntime.getClass().getSimpleName());
+            } catch (final Exception e) {
+                fail("createRuntime('panama') should not throw: " + e.getMessage());
+            }
+        }
+
+        // Test null provider name
+        assertThrows(IllegalArgumentException.class,
+            () -> RuntimeFactory.createRuntime(null),
+            "createRuntime(null) should throw IllegalArgumentException");
+        LOGGER.info("createRuntime(null) correctly threw IllegalArgumentException");
+
+        // Test empty provider name
+        assertThrows(IllegalArgumentException.class,
+            () -> RuntimeFactory.createRuntime(""),
+            "createRuntime('') should throw IllegalArgumentException");
+        LOGGER.info("createRuntime('') correctly threw IllegalArgumentException");
+
+        // Test blank provider name
+        assertThrows(IllegalArgumentException.class,
+            () -> RuntimeFactory.createRuntime("   "),
+            "createRuntime('   ') should throw IllegalArgumentException");
+        LOGGER.info("createRuntime('   ') correctly threw IllegalArgumentException");
+
+        // Test nonexistent provider name
+        assertThrows(WasmRuntimeException.class,
+            () -> RuntimeFactory.createRuntime("nonexistent"),
+            "createRuntime('nonexistent') should throw WasmRuntimeException");
+        LOGGER.info("createRuntime('nonexistent') correctly threw WasmRuntimeException");
+    }
+
+    @Test
+    void testIsProviderAvailable() {
+        LOGGER.info("Testing RuntimeFactory.isProviderAvailable()");
+
+        // JNI should always be available
+        assertTrue(RuntimeFactory.isProviderAvailable("jni"),
+            "JNI provider should be available");
+        LOGGER.info("isProviderAvailable('jni'): true");
+
+        // Case-insensitive
+        assertTrue(RuntimeFactory.isProviderAvailable("JNI"),
+            "isProviderAvailable should be case-insensitive");
+        LOGGER.info("isProviderAvailable('JNI'): true (case-insensitive)");
+
+        // Nonexistent provider
+        assertFalse(RuntimeFactory.isProviderAvailable("nonexistent"),
+            "Nonexistent provider should not be available");
+        LOGGER.info("isProviderAvailable('nonexistent'): false");
+
+        // Null should return false, not throw
+        assertFalse(RuntimeFactory.isProviderAvailable(null),
+            "isProviderAvailable(null) should return false");
+        LOGGER.info("isProviderAvailable(null): false");
+
+        // Empty should return false
+        assertFalse(RuntimeFactory.isProviderAvailable(""),
+            "isProviderAvailable('') should return false");
+        LOGGER.info("isProviderAvailable(''): false");
+
+        // Whitespace-padded name should still work
+        assertTrue(RuntimeFactory.isProviderAvailable("  jni  "),
+            "isProviderAvailable should trim whitespace");
+        LOGGER.info("isProviderAvailable('  jni  '): true (trimmed)");
     }
 }
