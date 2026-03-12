@@ -194,10 +194,11 @@ jobs:
 
       - name: Run tests
         shell: bash
+        timeout-minutes: 15
         run: |
           ./mvnw test -B -pl '!wamr4j-benchmarks' -P skip-native \
             -DargLine="--enable-native-access=ALL-UNNAMED" \
-            -Djacoco.skip=true -q
+            -Djacoco.skip=true
 
       - name: Upload test results
         if: always()
