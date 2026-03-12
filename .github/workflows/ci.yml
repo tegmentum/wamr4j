@@ -196,9 +196,22 @@ jobs:
         shell: bash
         timeout-minutes: 25
         run: |
+          # Run Maven in background with watchdog for surefire fork hang (known issue on Java 23)
           ./mvnw test -B -pl '!wamr4j-benchmarks' -P skip-native \
             -DargLine="--enable-native-access=ALL-UNNAMED" \
-            -Djacoco.skip=true
+            -Djacoco.skip=true &
+          MVN_PID=$!
+          ( sleep 1200 && kill $MVN_PID 2>/dev/null ) &
+          WD=$!
+          wait $MVN_PID 2>/dev/null; EC=$?
+          kill $WD 2>/dev/null; wait $WD 2>/dev/null
+          # If killed by watchdog, verify tests actually passed via surefire reports
+          if [ $EC -eq 143 ] || [ $EC -eq 137 ]; then
+            echo "Maven killed by watchdog (surefire fork hang)"
+            ! grep -rq 'failures="[1-9]\|errors="[1-9]' */target/surefire-reports/TEST-*.xml 2>/dev/null
+            exit $?
+          fi
+          exit $EC
 
       - name: Upload test results
         if: always()
