@@ -58,6 +58,7 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyRuntime_n
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jlong {
+    crate::utils::clear_last_error();
     match runtime::runtime_init() {
         Ok(rt) => Box::into_raw(Box::new(rt)) as jlong,
         Err(_) => 0,
@@ -1986,7 +1987,8 @@ unsafe fn fast_call(
 
     if !success {
         let error_msg = runtime::get_and_clear_exception(function_ref.instance_handle);
-        let _ = throw_wasm_exception(env, &error_msg);
+        let wrapped = format!("Function execution failed: {}", error_msg);
+        let _ = throw_wasm_exception(env, &wrapped);
         return false;
     }
 
