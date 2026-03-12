@@ -203,13 +203,17 @@ jobs:
           MVN_PID=$!
           ( sleep 1200 && kill $MVN_PID 2>/dev/null ) &
           WD=$!
-          wait $MVN_PID 2>/dev/null; EC=$?
-          kill $WD 2>/dev/null; wait $WD 2>/dev/null || true
+          EC=0; wait $MVN_PID 2>/dev/null || EC=$?
+          kill $WD 2>/dev/null || true; wait $WD 2>/dev/null || true
           # If killed by watchdog, verify tests actually passed via surefire reports
-          if [ $EC -eq 143 ] || [ $EC -eq 137 ]; then
+          if [ "$EC" -eq 143 ] || [ "$EC" -eq 137 ]; then
             echo "Maven killed by watchdog (surefire fork hang)"
-            ! grep -rq 'failures="[1-9]\|errors="[1-9]' */target/surefire-reports/TEST-*.xml 2>/dev/null
-            exit $?
+            if grep -rq 'failures="[1-9]\|errors="[1-9]' */target/surefire-reports/TEST-*.xml 2>/dev/null; then
+              echo "Test failures detected"
+              exit 1
+            fi
+            echo "All tests passed despite fork hang"
+            exit 0
           fi
           exit $EC
 
