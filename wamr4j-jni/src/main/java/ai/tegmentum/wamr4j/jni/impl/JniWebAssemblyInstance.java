@@ -147,11 +147,24 @@ public final class JniWebAssemblyInstance implements WamrInstanceExtensions {
         if (globalName == null || globalName.trim().isEmpty()) {
             throw new IllegalArgumentException("Global name cannot be null or empty");
         }
-        
+
         ensureNotClosed();
-        
+
         try {
-            nativeSetGlobal(nativeHandle, globalName, value);
+            // Dispatch to typed native methods to avoid boxing/is_instance_of overhead
+            if (value instanceof Integer) {
+                nativeSetGlobalI32(nativeHandle, globalName, (Integer) value);
+            } else if (value instanceof Long) {
+                nativeSetGlobalI64(nativeHandle, globalName, (Long) value);
+            } else if (value instanceof Float) {
+                nativeSetGlobalF32(nativeHandle, globalName, (Float) value);
+            } else if (value instanceof Double) {
+                nativeSetGlobalF64(nativeHandle, globalName, (Double) value);
+            } else {
+                nativeSetGlobal(nativeHandle, globalName, value);
+            }
+        } catch (final WasmRuntimeException e) {
+            throw e;
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to set global variable: " + globalName, e);
         }
@@ -865,7 +878,51 @@ public final class JniWebAssemblyInstance implements WamrInstanceExtensions {
      * @param value the new value for the global variable
      * @throws WasmRuntimeException if the global is not found or cannot be set
      */
-    private static native void nativeSetGlobal(long instanceHandle, String globalName, Object value) 
+    private static native void nativeSetGlobal(long instanceHandle, String globalName, Object value)
+        throws WasmRuntimeException;
+
+    /**
+     * Sets a global variable to an i32 value (typed fast-path).
+     *
+     * @param instanceHandle the native instance handle
+     * @param globalName the name of the global variable
+     * @param value the i32 value
+     * @throws WasmRuntimeException if the global is not found or cannot be set
+     */
+    private static native void nativeSetGlobalI32(long instanceHandle, String globalName, int value)
+        throws WasmRuntimeException;
+
+    /**
+     * Sets a global variable to an i64 value (typed fast-path).
+     *
+     * @param instanceHandle the native instance handle
+     * @param globalName the name of the global variable
+     * @param value the i64 value
+     * @throws WasmRuntimeException if the global is not found or cannot be set
+     */
+    private static native void nativeSetGlobalI64(long instanceHandle, String globalName, long value)
+        throws WasmRuntimeException;
+
+    /**
+     * Sets a global variable to an f32 value (typed fast-path).
+     *
+     * @param instanceHandle the native instance handle
+     * @param globalName the name of the global variable
+     * @param value the f32 value
+     * @throws WasmRuntimeException if the global is not found or cannot be set
+     */
+    private static native void nativeSetGlobalF32(long instanceHandle, String globalName, float value)
+        throws WasmRuntimeException;
+
+    /**
+     * Sets a global variable to an f64 value (typed fast-path).
+     *
+     * @param instanceHandle the native instance handle
+     * @param globalName the name of the global variable
+     * @param value the f64 value
+     * @throws WasmRuntimeException if the global is not found or cannot be set
+     */
+    private static native void nativeSetGlobalF64(long instanceHandle, String globalName, double value)
         throws WasmRuntimeException;
 
     /**
