@@ -128,6 +128,14 @@ pub struct WasmValueFFI {
     pub data: [u8; 8],     // Union-like storage for all value types
 }
 
+impl WasmValueFFI {
+    /// Create a new WasmValueFFI from value type and raw data bytes.
+    #[inline(always)]
+    pub fn new(value_type: c_int, data: [u8; 8]) -> Self {
+        Self { value_type, _padding: 0, data }
+    }
+}
+
 /// FFI type constants for WebAssembly values
 pub const WASM_TYPE_I32: c_int = 0;
 pub const WASM_TYPE_I64: c_int = 1;

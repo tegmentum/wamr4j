@@ -28,7 +28,7 @@ use crate::runtime::{
     runtime_init, runtime_get_version,
     module_compile,
     instance_create,
-    function_lookup, function_call,
+    function_lookup, ensure_thread_env, get_and_clear_exception, wasm_type_to_kind,
     memory_get, memory_grow,
     memory_page_count, memory_max_page_count, memory_is_shared,
     memory_get_by_index, memory_base_address, memory_bytes_per_page, memory_enlarge,
@@ -86,6 +86,7 @@ use crate::types::{
     WasmValue, WasmType, HostCallbackFn, NativeRegistration,
 };
 use crate::bindings::{
+    self,
     WASM_IMPORT_EXPORT_KIND_FUNC,
     WASM_IMPORT_EXPORT_KIND_TABLE,
     WASM_IMPORT_EXPORT_KIND_GLOBAL,
@@ -246,7 +247,11 @@ pub extern "C" fn wamr_function_lookup(
     }
 }
 
-/// Call a WebAssembly function with arguments
+/// Call a WebAssembly function with arguments.
+///
+/// Optimized path: converts directly between WasmValueFFI and WasmValT without
+/// intermediate WasmValue enum allocations, and uses stack arrays for small
+/// argument/result counts to avoid heap allocation entirely.
 #[no_mangle]
 pub extern "C" fn wamr_function_call(
     function: *mut c_void,
@@ -266,35 +271,100 @@ pub extern "C" fn wamr_function_call(
     unsafe {
         let function_ref = &*(function as *const WamrFunction);
 
-        let arg_slice = if arg_count > 0 && !args.is_null() {
-            std::slice::from_raw_parts(args, arg_count as usize)
+        if !function_ref.is_valid() {
+            write_error_to_buffer("Function handle is invalid", error_buf, error_buf_size);
+            return -1;
+        }
+
+        if function_ref.exec_env.is_null() {
+            write_error_to_buffer("No execution environment", error_buf, error_buf_size);
+            return -1;
+        }
+
+        ensure_thread_env();
+
+        let argc = arg_count as usize;
+        let result_count = function_ref.result_types.len();
+
+        // Stack buffer for up to 8 args/results (covers vast majority of WASM calls)
+        const STACK_LIMIT: usize = 8;
+
+        // Convert WasmValueFFI -> WasmValT directly (no intermediate WasmValue enum)
+        let mut args_stack = [bindings::WasmValT::zeroed(0); STACK_LIMIT];
+        let mut args_heap: Vec<bindings::WasmValT>;
+        let wamr_args: &mut [bindings::WasmValT] = if argc <= STACK_LIMIT {
+            &mut args_stack[..argc]
         } else {
-            &[]
+            args_heap = vec![bindings::WasmValT::zeroed(0); argc];
+            &mut args_heap
         };
 
-        let wasm_args: Vec<WasmValue> = arg_slice.iter().map(|v| wasm_value_from_ffi(v)).collect();
-
-        match function_call(function_ref, function_ref.exec_env, &wasm_args) {
-            Ok(wasm_results) => {
-                // Convert results back to FFI format
-                let result_count = std::cmp::min(wasm_results.len(), result_capacity as usize);
-                
-                if result_count > 0 && !results.is_null() {
-                    let result_slice = std::slice::from_raw_parts_mut(results, result_count);
-                    for (i, wasm_val) in wasm_results.iter().take(result_count).enumerate() {
-                        result_slice[i] = wasm_value_to_ffi(wasm_val);
-                    }
-                }
-                
-                result_count as c_int
-            }
-            Err(e) => {
-                let error_msg = format!("{}", e);
-                write_error_to_buffer(&error_msg, error_buf, error_buf_size);
-                -1
+        if argc > 0 && !args.is_null() {
+            let arg_slice = std::slice::from_raw_parts(args, argc);
+            for (i, ffi_val) in arg_slice.iter().enumerate() {
+                wamr_args[i] = wasm_value_ffi_to_val_t(ffi_val);
             }
         }
+
+        // Allocate result slots directly as WasmValT
+        let mut results_stack = [bindings::WasmValT::zeroed(0); STACK_LIMIT];
+        let mut results_heap: Vec<bindings::WasmValT>;
+        let wamr_results: &mut [bindings::WasmValT] = if result_count <= STACK_LIMIT {
+            for (i, t) in function_ref.result_types.iter().enumerate() {
+                results_stack[i] = bindings::WasmValT::zeroed(wasm_type_to_kind(t));
+            }
+            &mut results_stack[..result_count]
+        } else {
+            results_heap = function_ref.result_types.iter()
+                .map(|t| bindings::WasmValT::zeroed(wasm_type_to_kind(t)))
+                .collect();
+            &mut results_heap
+        };
+
+        let success = bindings::wasm_runtime_call_wasm_a(
+            function_ref.exec_env,
+            function_ref.handle,
+            wamr_results.len() as u32,
+            wamr_results.as_mut_ptr(),
+            wamr_args.len() as u32,
+            wamr_args.as_mut_ptr(),
+        );
+
+        if !success {
+            let error_msg = get_and_clear_exception(function_ref.instance_handle);
+            set_last_error(error_msg.clone());
+            write_error_to_buffer(&error_msg, error_buf, error_buf_size);
+            return -1;
+        }
+
+        // Convert results directly WasmValT -> WasmValueFFI (no intermediate WasmValue)
+        let out_count = std::cmp::min(result_count, result_capacity as usize);
+        if out_count > 0 && !results.is_null() {
+            let result_slice = std::slice::from_raw_parts_mut(results, out_count);
+            for (i, val) in wamr_results.iter().take(out_count).enumerate() {
+                result_slice[i] = val_t_to_wasm_value_ffi(val);
+            }
+        }
+
+        out_count as c_int
     }
+}
+
+/// Convert WasmValueFFI directly to WasmValT without intermediate WasmValue enum.
+/// Both structs have identical type constants (0-3) and data layout ([u8; 8]).
+#[inline(always)]
+fn wasm_value_ffi_to_val_t(ffi: &WasmValueFFI) -> bindings::WasmValT {
+    bindings::WasmValT {
+        kind: ffi.value_type as u8,
+        _paddings: [0; 7],
+        data: ffi.data,
+    }
+}
+
+/// Convert WasmValT directly to WasmValueFFI without intermediate WasmValue enum.
+#[inline(always)]
+fn val_t_to_wasm_value_ffi(val: &bindings::WasmValT) -> WasmValueFFI {
+    WasmValueFFI::new(val.kind as c_int, val.data)
 }
 
 /// Get function signature information
@@ -2419,5 +2489,253 @@ fn read_string_array(arr: *const *const c_char, count: c_int) -> Vec<String> {
             }
         })
         .collect()
+}
+
+// =============================================================================
+// Typed Fast-Path FFI Invocation — 0 Arena allocations, 0 WasmValueFFI marshalling
+// =============================================================================
+
+/// Helper: validate function handle and call WAMR with stack-allocated args/results.
+/// Returns -1 on error (writes to error_buf), 0 on success.
+#[inline(always)]
+unsafe fn ffi_fast_call(
+    function: *mut c_void,
+    args: &mut [bindings::WasmValT],
+    results: &mut [bindings::WasmValT],
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    if function.is_null() {
+        write_error_to_buffer("Invalid function handle", error_buf, error_buf_size);
+        return -1;
+    }
+
+    let function_ref = &*(function as *const WamrFunction);
+    if !function_ref.is_valid() {
+        write_error_to_buffer("Function handle is invalid", error_buf, error_buf_size);
+        return -1;
+    }
+    if function_ref.exec_env.is_null() {
+        write_error_to_buffer("No execution environment", error_buf, error_buf_size);
+        return -1;
+    }
+
+    ensure_thread_env();
+
+    let success = bindings::wasm_runtime_call_wasm_a(
+        function_ref.exec_env,
+        function_ref.handle,
+        results.len() as u32,
+        results.as_mut_ptr(),
+        args.len() as u32,
+        args.as_mut_ptr(),
+    );
+
+    if !success {
+        let error_msg = get_and_clear_exception(function_ref.instance_handle);
+        set_last_error(error_msg.clone());
+        write_error_to_buffer(&error_msg, error_buf, error_buf_size);
+        return -1;
+    }
+
+    0
+}
+
+/// () -> void: returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_v_v(
+    function: *mut c_void,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    unsafe {
+        ffi_fast_call(function, &mut [], &mut [], error_buf, error_buf_size)
+    }
+}
+
+/// () -> i32: returns 0 on success, -1 on error. Result written to result_ptr.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_v_i(
+    function: *mut c_void,
+    result_ptr: *mut c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I32)];
+    unsafe {
+        let rc = ffi_fast_call(function, &mut [], &mut results, error_buf, error_buf_size);
+        if rc == 0 && !result_ptr.is_null() {
+            *result_ptr = results[0].as_i32();
+        }
+        rc
+    }
+}
+
+/// (i32) -> void: returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_i_v(
+    function: *mut c_void,
+    arg0: c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    let mut args = [bindings::WasmValT::i32(arg0)];
+    unsafe {
+        ffi_fast_call(function, &mut args, &mut [], error_buf, error_buf_size)
+    }
+}
+
+/// (i32) -> i32: returns 0 on success, -1 on error. Result written to result_ptr.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_i_i(
+    function: *mut c_void,
+    arg0: c_int,
+    result_ptr: *mut c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    let mut args = [bindings::WasmValT::i32(arg0)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I32)];
+    unsafe {
+        let rc = ffi_fast_call(function, &mut args, &mut results, error_buf, error_buf_size);
+        if rc == 0 && !result_ptr.is_null() {
+            *result_ptr = results[0].as_i32();
+        }
+        rc
+    }
+}
+
+/// (i32, i32) -> void: returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_ii_v(
+    function: *mut c_void,
+    arg0: c_int,
+    arg1: c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    let mut args = [bindings::WasmValT::i32(arg0), bindings::WasmValT::i32(arg1)];
+    unsafe {
+        ffi_fast_call(function, &mut args, &mut [], error_buf, error_buf_size)
+    }
+}
+
+/// (i32, i32) -> i32: returns 0 on success, -1 on error. Result written to result_ptr.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_ii_i(
+    function: *mut c_void,
+    arg0: c_int,
+    arg1: c_int,
+    result_ptr: *mut c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    let mut args = [bindings::WasmValT::i32(arg0), bindings::WasmValT::i32(arg1)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I32)];
+    unsafe {
+        let rc = ffi_fast_call(function, &mut args, &mut results, error_buf, error_buf_size);
+        if rc == 0 && !result_ptr.is_null() {
+            *result_ptr = results[0].as_i32();
+        }
+        rc
+    }
+}
+
+/// (i32, i32, i32) -> i32: returns 0 on success, -1 on error. Result written to result_ptr.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_iii_i(
+    function: *mut c_void,
+    arg0: c_int,
+    arg1: c_int,
+    arg2: c_int,
+    result_ptr: *mut c_int,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    let mut args = [
+        bindings::WasmValT::i32(arg0),
+        bindings::WasmValT::i32(arg1),
+        bindings::WasmValT::i32(arg2),
+    ];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I32)];
+    unsafe {
+        let rc = ffi_fast_call(function, &mut args, &mut results, error_buf, error_buf_size);
+        if rc == 0 && !result_ptr.is_null() {
+            *result_ptr = results[0].as_i32();
+        }
+        rc
+    }
+}
+
+/// (i64) -> i64: returns 0 on success, -1 on error. Result written to result_ptr.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_j_j(
+    function: *mut c_void,
+    arg0: c_long,
+    result_ptr: *mut c_long,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    let mut args = [bindings::WasmValT::i64(arg0 as i64)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I64)];
+    unsafe {
+        let rc = ffi_fast_call(function, &mut args, &mut results, error_buf, error_buf_size);
+        if rc == 0 && !result_ptr.is_null() {
+            *result_ptr = results[0].as_i64() as c_long;
+        }
+        rc
+    }
+}
+
+/// (i64, i64) -> i64: returns 0 on success, -1 on error. Result written to result_ptr.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_jj_j(
+    function: *mut c_void,
+    arg0: c_long,
+    arg1: c_long,
+    result_ptr: *mut c_long,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    let mut args = [bindings::WasmValT::i64(arg0 as i64), bindings::WasmValT::i64(arg1 as i64)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_I64)];
+    unsafe {
+        let rc = ffi_fast_call(function, &mut args, &mut results, error_buf, error_buf_size);
+        if rc == 0 && !result_ptr.is_null() {
+            *result_ptr = results[0].as_i64() as c_long;
+        }
+        rc
+    }
+}
+
+/// (f64, f64) -> f64: returns 0 on success, -1 on error. Result written to result_ptr.
+#[no_mangle]
+pub extern "C" fn wamr_function_call_dd_d(
+    function: *mut c_void,
+    arg0: f64,
+    arg1: f64,
+    result_ptr: *mut f64,
+    error_buf: *mut c_char,
+    error_buf_size: c_int,
+) -> c_int {
+    clear_last_error();
+    let mut args = [bindings::WasmValT::f64(arg0), bindings::WasmValT::f64(arg1)];
+    let mut results = [bindings::WasmValT::zeroed(bindings::WASM_F64)];
+    unsafe {
+        let rc = ffi_fast_call(function, &mut args, &mut results, error_buf, error_buf_size);
+        if rc == 0 && !result_ptr.is_null() {
+            *result_ptr = results[0].as_f64();
+        }
+        rc
+    }
 }
 

@@ -96,6 +96,7 @@ pub const WASM_FUNCREF: u8 = 129;
 
 /// Typed value for the call_wasm_a API.
 /// Layout: 1-byte kind + 7-byte padding + 8-byte union = 16 bytes total.
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct WasmValT {
     /// Value kind (WASM_I32, WASM_I64, WASM_F32, WASM_F64)
