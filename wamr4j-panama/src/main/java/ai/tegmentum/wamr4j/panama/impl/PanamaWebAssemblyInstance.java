@@ -28,6 +28,8 @@ import java.lang.invoke.MethodHandle;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
@@ -58,6 +60,12 @@ public final class PanamaWebAssemblyInstance implements WamrInstanceExtensions {
     // Host function registration handles and their arena (null if no imports)
     private final List<MemorySegment> registrationHandles;
     private final Arena registrationArena;
+
+    // Pre-allocated buffers for global get/set operations (avoids per-call Arena overhead)
+    private final Arena globalArena;
+    private final MemorySegment globalValueTypePtr;   // int for type output
+    private final MemorySegment globalValueBuffer;    // 8 bytes for i64/f64
+    private final Map<String, MemorySegment> globalNameCache = new ConcurrentHashMap<>();
 
     // Lazily cached MethodHandles for native calls
     private static final class Handles {
@@ -362,6 +370,10 @@ public final class PanamaWebAssemblyInstance implements WamrInstanceExtensions {
         this.nativeHandle = nativeHandle;
         this.registrationHandles = new ArrayList<>(registrationHandles);
         this.registrationArena = registrationArena;
+        // Pre-allocate reusable buffers for global get/set (eliminates per-call Arena overhead)
+        this.globalArena = Arena.ofConfined();
+        this.globalValueTypePtr = globalArena.allocate(ValueLayout.JAVA_INT);
+        this.globalValueBuffer = globalArena.allocate(8);
         LOGGER.fine("Created Panama WebAssembly instance with handle: " + nativeHandle);
     }
 
@@ -445,30 +457,27 @@ public final class PanamaWebAssemblyInstance implements WamrInstanceExtensions {
             throw new WasmRuntimeException("Native function 'wamr_get_global' not available");
         }
 
-        try (final Arena arena = Arena.ofConfined()) {
-            final MemorySegment nameBuffer = arena.allocateFrom(globalName);
-            final MemorySegment valueTypePtr = arena.allocate(ValueLayout.JAVA_INT);
-            final MemorySegment valueBuffer = arena.allocate(8); // 8 bytes for i64/f64
-            final int valueSize = 8;
+        try {
+            final MemorySegment nameBuffer = getCachedGlobalName(globalName);
 
             final int result = (int) Handles.GET_GLOBAL.invoke(
-                nativeHandle, nameBuffer, valueTypePtr, valueBuffer, valueSize);
+                nativeHandle, nameBuffer, globalValueTypePtr, globalValueBuffer, 8);
 
             if (result != 0) {
                 throw new WasmRuntimeException("Failed to get global variable: " + globalName);
             }
 
-            final int valueType = valueTypePtr.get(ValueLayout.JAVA_INT, 0);
+            final int valueType = globalValueTypePtr.get(ValueLayout.JAVA_INT, 0);
 
             switch (valueType) {
                 case WasmTypes.I32:
-                    return valueBuffer.get(ValueLayout.JAVA_INT, 0);
+                    return globalValueBuffer.get(ValueLayout.JAVA_INT, 0);
                 case WasmTypes.I64:
-                    return valueBuffer.get(ValueLayout.JAVA_LONG, 0);
+                    return globalValueBuffer.get(ValueLayout.JAVA_LONG, 0);
                 case WasmTypes.F32:
-                    return valueBuffer.get(ValueLayout.JAVA_FLOAT, 0);
+                    return globalValueBuffer.get(ValueLayout.JAVA_FLOAT, 0);
                 case WasmTypes.F64:
-                    return valueBuffer.get(ValueLayout.JAVA_DOUBLE, 0);
+                    return globalValueBuffer.get(ValueLayout.JAVA_DOUBLE, 0);
                 default:
                     throw new WasmRuntimeException("Unsupported global type: " + valueType);
             }
@@ -494,24 +503,23 @@ public final class PanamaWebAssemblyInstance implements WamrInstanceExtensions {
             throw new WasmRuntimeException("Native function 'wamr_set_global' not available");
         }
 
-        try (final Arena arena = Arena.ofConfined()) {
-            final MemorySegment nameBuffer = arena.allocateFrom(globalName);
-            final MemorySegment valueBuffer = arena.allocate(8); // 8 bytes for i64/f64
+        try {
+            final MemorySegment nameBuffer = getCachedGlobalName(globalName);
 
-            // Determine type and write value
+            // Determine type and write value to pre-allocated buffer
             final int valueType;
             if (value instanceof Integer) {
                 valueType = WasmTypes.I32;
-                valueBuffer.set(ValueLayout.JAVA_INT, 0, (Integer) value);
+                globalValueBuffer.set(ValueLayout.JAVA_INT, 0, (Integer) value);
             } else if (value instanceof Long) {
                 valueType = WasmTypes.I64;
-                valueBuffer.set(ValueLayout.JAVA_LONG, 0, (Long) value);
+                globalValueBuffer.set(ValueLayout.JAVA_LONG, 0, (Long) value);
             } else if (value instanceof Float) {
                 valueType = WasmTypes.F32;
-                valueBuffer.set(ValueLayout.JAVA_FLOAT, 0, (Float) value);
+                globalValueBuffer.set(ValueLayout.JAVA_FLOAT, 0, (Float) value);
             } else if (value instanceof Double) {
                 valueType = WasmTypes.F64;
-                valueBuffer.set(ValueLayout.JAVA_DOUBLE, 0, (Double) value);
+                globalValueBuffer.set(ValueLayout.JAVA_DOUBLE, 0, (Double) value);
             } else {
                 throw new IllegalArgumentException(
                     "Unsupported global value type: " + value.getClass().getName() +
@@ -519,7 +527,7 @@ public final class PanamaWebAssemblyInstance implements WamrInstanceExtensions {
             }
 
             final int result = (int) Handles.SET_GLOBAL.invoke(
-                nativeHandle, nameBuffer, valueType, valueBuffer);
+                nativeHandle, nameBuffer, valueType, globalValueBuffer);
 
             if (result != 0) {
                 throw new WasmRuntimeException("Failed to set global variable: " + globalName);
@@ -529,6 +537,17 @@ public final class PanamaWebAssemblyInstance implements WamrInstanceExtensions {
         } catch (final Throwable e) {
             throw new WasmRuntimeException("Unexpected error setting global: " + globalName, e);
         }
+    }
+
+    /**
+     * Returns a cached C string for the given global name, allocating from the instance's
+     * long-lived arena on first use.
+     *
+     * @param name the global variable name
+     * @return a MemorySegment containing the null-terminated C string
+     */
+    private MemorySegment getCachedGlobalName(final String name) {
+        return globalNameCache.computeIfAbsent(name, k -> globalArena.allocateFrom(k));
     }
 
     @Override
@@ -1060,6 +1079,14 @@ public final class PanamaWebAssemblyInstance implements WamrInstanceExtensions {
                     }
                 }
                 childTables.clear();
+            }
+
+            // Clean up pre-allocated global buffers and name cache
+            globalNameCache.clear();
+            try {
+                globalArena.close();
+            } catch (final Exception e) {
+                LOGGER.warning("Error closing global arena: " + e.getMessage());
             }
 
             final MemorySegment handle = nativeHandle;
