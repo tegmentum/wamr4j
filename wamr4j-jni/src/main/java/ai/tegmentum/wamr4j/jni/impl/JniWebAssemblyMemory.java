@@ -40,9 +40,12 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
     
     // Native memory handle
     private volatile long nativeHandle;
-    
+
     // Parent instance reference
     private final JniWebAssemblyInstance parentInstance;
+
+    // Cached ByteBuffer for typed read/write operations (avoids per-call JNI crossing)
+    private volatile ByteBuffer cachedBuffer;
 
     /**
      * Creates a new JNI WebAssembly memory wrapper.
@@ -73,13 +76,19 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (length <= 0) {
             throw new IllegalArgumentException("Length must be positive: " + length);
         }
-        
+
         ensureValid();
-        
+
         try {
-            return nativeReadMemory(nativeHandle, offset, length);
-        } catch (final WasmRuntimeException e) {
-            throw e; // Re-throw WebAssembly exceptions as-is
+            final byte[] result = new byte[length];
+            // Use a duplicate of the cached buffer for thread-safe absolute positioning
+            final ByteBuffer view = ensureBuffer().duplicate();
+            view.position(offset);
+            view.get(result, 0, length);
+            return result;
+        } catch (final IndexOutOfBoundsException | java.nio.BufferUnderflowException e) {
+            throw new WasmRuntimeException("Memory access out of bounds at offset " + offset
+                + ", length " + length, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error reading memory at offset " + offset, e);
         }
@@ -94,13 +103,16 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (data == null) {
             throw new IllegalArgumentException("Data cannot be null");
         }
-        
+
         ensureValid();
-        
+
         try {
-            nativeWriteMemory(nativeHandle, offset, data);
-        } catch (final WasmRuntimeException e) {
-            throw e; // Re-throw WebAssembly exceptions as-is
+            final ByteBuffer view = ensureBuffer().duplicate();
+            view.position(offset);
+            view.put(data, 0, data.length);
+        } catch (final IndexOutOfBoundsException | java.nio.BufferOverflowException e) {
+            throw new WasmRuntimeException("Memory access out of bounds at offset " + offset
+                + ", length " + data.length, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error writing memory at offset " + offset, e);
         }
@@ -111,13 +123,13 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
-        
+
         ensureValid();
-        
+
         try {
-            return nativeReadInt32(nativeHandle, offset);
-        } catch (final WasmRuntimeException e) {
-            throw e;
+            return ensureBuffer().getInt(offset);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds reading int32 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error reading int32 at offset " + offset, e);
         }
@@ -128,13 +140,13 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
-        
+
         ensureValid();
-        
+
         try {
-            nativeWriteInt32(nativeHandle, offset, value);
-        } catch (final WasmRuntimeException e) {
-            throw e;
+            ensureBuffer().putInt(offset, value);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds writing int32 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error writing int32 at offset " + offset, e);
         }
@@ -145,13 +157,13 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
-        
+
         ensureValid();
-        
+
         try {
-            return nativeReadInt64(nativeHandle, offset);
-        } catch (final WasmRuntimeException e) {
-            throw e;
+            return ensureBuffer().getLong(offset);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds reading int64 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error reading int64 at offset " + offset, e);
         }
@@ -162,13 +174,13 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
-        
+
         ensureValid();
-        
+
         try {
-            nativeWriteInt64(nativeHandle, offset, value);
-        } catch (final WasmRuntimeException e) {
-            throw e;
+            ensureBuffer().putLong(offset, value);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds writing int64 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error writing int64 at offset " + offset, e);
         }
@@ -179,13 +191,13 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
-        
+
         ensureValid();
-        
+
         try {
-            return nativeReadFloat32(nativeHandle, offset);
-        } catch (final WasmRuntimeException e) {
-            throw e;
+            return ensureBuffer().getFloat(offset);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds reading float32 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error reading float32 at offset " + offset, e);
         }
@@ -196,13 +208,13 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
-        
+
         ensureValid();
-        
+
         try {
-            nativeWriteFloat32(nativeHandle, offset, value);
-        } catch (final WasmRuntimeException e) {
-            throw e;
+            ensureBuffer().putFloat(offset, value);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds writing float32 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error writing float32 at offset " + offset, e);
         }
@@ -213,13 +225,13 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
-        
+
         ensureValid();
-        
+
         try {
-            return nativeReadFloat64(nativeHandle, offset);
-        } catch (final WasmRuntimeException e) {
-            throw e;
+            return ensureBuffer().getDouble(offset);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds reading float64 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error reading float64 at offset " + offset, e);
         }
@@ -230,13 +242,13 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset cannot be negative: " + offset);
         }
-        
+
         ensureValid();
-        
+
         try {
-            nativeWriteFloat64(nativeHandle, offset, value);
-        } catch (final WasmRuntimeException e) {
-            throw e;
+            ensureBuffer().putDouble(offset, value);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds writing float64 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Unexpected error writing float64 at offset " + offset, e);
         }
@@ -292,11 +304,15 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
         if (pages < 0) {
             throw new IllegalArgumentException("Pages cannot be negative: " + pages);
         }
-        
+
         ensureValid();
-        
+
         try {
-            return nativeGrowMemory(nativeHandle, pages);
+            final int result = nativeGrowMemory(nativeHandle, pages);
+            if (result >= 0) {
+                cachedBuffer = null; // Invalidate cached buffer after successful grow
+            }
+            return result;
         } catch (final Exception e) {
             LOGGER.fine("Memory growth failed: " + e.getMessage());
             return -1;
@@ -306,17 +322,37 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public ByteBuffer asByteBuffer() {
         ensureValid();
-        
+
+        final ByteBuffer cached = cachedBuffer;
+        if (cached != null) {
+            return cached;
+        }
+
         try {
             final ByteBuffer buffer = nativeGetMemoryBuffer(nativeHandle);
             if (buffer != null) {
                 // WebAssembly uses little-endian byte order
                 buffer.order(ByteOrder.LITTLE_ENDIAN);
+                cachedBuffer = buffer;
             }
             return buffer;
         } catch (final Exception e) {
             throw new IllegalStateException("Failed to get memory buffer", e);
         }
+    }
+
+    /**
+     * Returns the cached ByteBuffer, creating it on first access.
+     * Used by typed read/write methods to avoid per-call JNI crossings.
+     *
+     * @return the cached DirectByteBuffer with little-endian byte order
+     */
+    private ByteBuffer ensureBuffer() {
+        final ByteBuffer cached = cachedBuffer;
+        if (cached != null) {
+            return cached;
+        }
+        return asByteBuffer();
     }
 
     @Override
@@ -349,7 +385,11 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
             throw new IllegalArgumentException("Pages cannot be negative: " + incPages);
         }
         ensureValid();
-        return nativeEnlarge(nativeHandle, incPages);
+        final boolean result = nativeEnlarge(nativeHandle, incPages);
+        if (result) {
+            cachedBuffer = null; // Invalidate cached buffer after successful enlarge
+        }
+        return result;
     }
 
     @Override
@@ -362,6 +402,7 @@ public final class JniWebAssemblyMemory implements WebAssemblyMemory {
      * Called by the parent instance during cleanup.
      */
     void close() {
+        cachedBuffer = null;
         final long handle = nativeHandle;
         nativeHandle = 0L;
         if (handle != 0L) {

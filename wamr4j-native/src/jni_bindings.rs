@@ -19,8 +19,9 @@
 //! This module provides JNI function exports that correspond to the native
 //! methods declared in the Java JNI implementation classes.
 
-use jni::objects::{JClass, JObject, JByteArray, JString, JObjectArray, JValue};
-use jni::sys::{jlong, jlongArray, jstring, jint, jfloat, jdouble, jboolean, jobject, jobjectArray, jbyteArray, JNI_VERSION_1_8};
+use jni::objects::{JClass, JObject, JByteArray, JString, JObjectArray, JValue, JMethodID, JStaticMethodID, GlobalRef};
+use jni::signature::ReturnType;
+use jni::sys::{jlong, jlongArray, jstring, jint, jfloat, jdouble, jboolean, jobject, jobjectArray, jbyteArray, jvalue, jmethodID, JNI_VERSION_1_8};
 use jni::{JNIEnv, JavaVM};
 use once_cell::sync::OnceCell;
 use std::ffi::CStr;
@@ -37,6 +38,71 @@ use crate::types::{WamrRuntime, WamrModule, WamrInstance, WamrFunction, WamrMemo
 
 /// Global JavaVM reference - set during JNI_OnLoad
 static JAVA_VM: OnceCell<JavaVM> = OnceCell::new();
+
+/// Cached JNI class references and method IDs for boxing/unboxing.
+/// Eliminates per-call FindClass + GetMethodID overhead for wrapper types.
+struct JniClassCache {
+    integer_class: GlobalRef,
+    integer_value_of: jmethodID,    // static: Integer.valueOf(int) -> Integer
+    integer_int_value: jmethodID,   // instance: Integer.intValue() -> int
+    long_class: GlobalRef,
+    long_value_of: jmethodID,
+    long_long_value: jmethodID,
+    float_class: GlobalRef,
+    float_value_of: jmethodID,
+    float_float_value: jmethodID,
+    double_class: GlobalRef,
+    double_value_of: jmethodID,
+    double_double_value: jmethodID,
+}
+
+// Safety: GlobalRef is Send+Sync. Raw jmethodID pointers are stable for the
+// lifetime of their class. For bootstrap classes (Integer, Long, Float, Double)
+// this is the entire JVM lifetime, per the JNI specification.
+unsafe impl Send for JniClassCache {}
+unsafe impl Sync for JniClassCache {}
+
+static CLASS_CACHE: OnceCell<JniClassCache> = OnceCell::new();
+
+/// Returns the cached class/method ID cache, initializing on first call.
+fn get_class_cache(env: &mut JNIEnv) -> &'static JniClassCache {
+    CLASS_CACHE.get_or_init(|| {
+        let integer_class = env.find_class("java/lang/Integer").expect("Integer class");
+        let integer_value_of = env.get_static_method_id(
+            &integer_class, "valueOf", "(I)Ljava/lang/Integer;").expect("Integer.valueOf").into_raw();
+        let integer_int_value = env.get_method_id(
+            &integer_class, "intValue", "()I").expect("Integer.intValue").into_raw();
+        let integer_class = env.new_global_ref(integer_class).expect("Integer GlobalRef");
+
+        let long_class = env.find_class("java/lang/Long").expect("Long class");
+        let long_value_of = env.get_static_method_id(
+            &long_class, "valueOf", "(J)Ljava/lang/Long;").expect("Long.valueOf").into_raw();
+        let long_long_value = env.get_method_id(
+            &long_class, "longValue", "()J").expect("Long.longValue").into_raw();
+        let long_class = env.new_global_ref(long_class).expect("Long GlobalRef");
+
+        let float_class = env.find_class("java/lang/Float").expect("Float class");
+        let float_value_of = env.get_static_method_id(
+            &float_class, "valueOf", "(F)Ljava/lang/Float;").expect("Float.valueOf").into_raw();
+        let float_float_value = env.get_method_id(
+            &float_class, "floatValue", "()F").expect("Float.floatValue").into_raw();
+        let float_class = env.new_global_ref(float_class).expect("Float GlobalRef");
+
+        let double_class = env.find_class("java/lang/Double").expect("Double class");
+        let double_value_of = env.get_static_method_id(
+            &double_class, "valueOf", "(D)Ljava/lang/Double;").expect("Double.valueOf").into_raw();
+        let double_double_value = env.get_method_id(
+            &double_class, "doubleValue", "()D").expect("Double.doubleValue").into_raw();
+        let double_class = env.new_global_ref(double_class).expect("Double GlobalRef");
+
+        JniClassCache {
+            integer_class, integer_value_of, integer_int_value,
+            long_class, long_value_of, long_long_value,
+            float_class, float_value_of, float_float_value,
+            double_class, double_value_of, double_double_value,
+        }
+    })
+}
 
 /// JNI_OnLoad - Called when the native library is loaded
 #[no_mangle]
@@ -919,7 +985,7 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
         Err(_) => return ptr::null_mut(),
     };
 
-    let c_name = match std::ffi::CString::new(name.clone()) {
+    let c_name = match std::ffi::CString::new(name) {
         Ok(s) => s,
         Err(_) => return ptr::null_mut(),
     };
@@ -954,7 +1020,7 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
         Err(_) => return,
     };
 
-    let c_name = match std::ffi::CString::new(name.clone()) {
+    let c_name = match std::ffi::CString::new(name) {
         Ok(s) => s,
         Err(_) => return,
     };
@@ -3279,61 +3345,127 @@ fn throw_wasm_exception(env: &mut JNIEnv, msg: &str) -> Result<(), jni::errors::
     env.throw_new("ai/tegmentum/wamr4j/exception/WasmRuntimeException", msg)
 }
 
-/// Check if a JObject is an instance of a class
+/// Check if a JObject is an instance of a class using cached class references.
 fn is_instance_of(env: &mut JNIEnv, obj: &JObject, class_name: &str) -> bool {
-    env.find_class(class_name)
-        .and_then(|cls| env.is_instance_of(obj, &cls))
-        .unwrap_or(false)
+    let cache = get_class_cache(env);
+    let class_ref = match class_name {
+        "java/lang/Integer" => &cache.integer_class,
+        "java/lang/Long" => &cache.long_class,
+        "java/lang/Float" => &cache.float_class,
+        "java/lang/Double" => &cache.double_class,
+        _ => return env.find_class(class_name)
+            .and_then(|cls| env.is_instance_of(obj, &cls))
+            .unwrap_or(false),
+    };
+    // Safety: GlobalRef to a JClass can be used with is_instance_of
+    let class: &JClass = unsafe { std::mem::transmute(class_ref.as_obj()) };
+    env.is_instance_of(obj, class).unwrap_or(false)
 }
 
 // =============================================================================
-// Boxing/Unboxing Helpers
+// Boxing/Unboxing Helpers (use cached class refs + method IDs)
 // =============================================================================
 
 fn box_integer(env: &mut JNIEnv, val: i32) -> jobject {
-    env.new_object("java/lang/Integer", "(I)V", &[JValue::Int(val)])
-        .map(|o| o.into_raw())
-        .unwrap_or(ptr::null_mut())
+    let cache = get_class_cache(env);
+    let mid = unsafe { JStaticMethodID::from_raw(cache.integer_value_of) };
+    unsafe {
+        env.call_static_method_unchecked(
+            &cache.integer_class, mid, ReturnType::Object,
+            &[jvalue { i: val }],
+        )
+    }
+    .and_then(|v| v.l())
+    .map(|o| o.into_raw())
+    .unwrap_or(ptr::null_mut())
 }
 
 fn box_long(env: &mut JNIEnv, val: i64) -> jobject {
-    env.new_object("java/lang/Long", "(J)V", &[JValue::Long(val)])
-        .map(|o| o.into_raw())
-        .unwrap_or(ptr::null_mut())
+    let cache = get_class_cache(env);
+    let mid = unsafe { JStaticMethodID::from_raw(cache.long_value_of) };
+    unsafe {
+        env.call_static_method_unchecked(
+            &cache.long_class, mid, ReturnType::Object,
+            &[jvalue { j: val }],
+        )
+    }
+    .and_then(|v| v.l())
+    .map(|o| o.into_raw())
+    .unwrap_or(ptr::null_mut())
 }
 
 fn box_float(env: &mut JNIEnv, val: f32) -> jobject {
-    env.new_object("java/lang/Float", "(F)V", &[JValue::Float(val)])
-        .map(|o| o.into_raw())
-        .unwrap_or(ptr::null_mut())
+    let cache = get_class_cache(env);
+    let mid = unsafe { JStaticMethodID::from_raw(cache.float_value_of) };
+    unsafe {
+        env.call_static_method_unchecked(
+            &cache.float_class, mid, ReturnType::Object,
+            &[jvalue { f: val }],
+        )
+    }
+    .and_then(|v| v.l())
+    .map(|o| o.into_raw())
+    .unwrap_or(ptr::null_mut())
 }
 
 fn box_double(env: &mut JNIEnv, val: f64) -> jobject {
-    env.new_object("java/lang/Double", "(D)V", &[JValue::Double(val)])
-        .map(|o| o.into_raw())
-        .unwrap_or(ptr::null_mut())
+    let cache = get_class_cache(env);
+    let mid = unsafe { JStaticMethodID::from_raw(cache.double_value_of) };
+    unsafe {
+        env.call_static_method_unchecked(
+            &cache.double_class, mid, ReturnType::Object,
+            &[jvalue { d: val }],
+        )
+    }
+    .and_then(|v| v.l())
+    .map(|o| o.into_raw())
+    .unwrap_or(ptr::null_mut())
 }
 
 fn unbox_integer(env: &mut JNIEnv, obj: &JObject) -> i32 {
-    env.call_method(obj, "intValue", "()I", &[])
-        .and_then(|v| v.i())
-        .unwrap_or(0)
+    let cache = get_class_cache(env);
+    let mid = unsafe { JMethodID::from_raw(cache.integer_int_value) };
+    unsafe {
+        env.call_method_unchecked(
+            obj, mid, ReturnType::Primitive(jni::signature::Primitive::Int), &[],
+        )
+    }
+    .and_then(|v| v.i())
+    .unwrap_or(0)
 }
 
 fn unbox_long(env: &mut JNIEnv, obj: &JObject) -> i64 {
-    env.call_method(obj, "longValue", "()J", &[])
-        .and_then(|v| v.j())
-        .unwrap_or(0)
+    let cache = get_class_cache(env);
+    let mid = unsafe { JMethodID::from_raw(cache.long_long_value) };
+    unsafe {
+        env.call_method_unchecked(
+            obj, mid, ReturnType::Primitive(jni::signature::Primitive::Long), &[],
+        )
+    }
+    .and_then(|v| v.j())
+    .unwrap_or(0)
 }
 
 fn unbox_float(env: &mut JNIEnv, obj: &JObject) -> f32 {
-    env.call_method(obj, "floatValue", "()F", &[])
-        .and_then(|v| v.f())
-        .unwrap_or(0.0)
+    let cache = get_class_cache(env);
+    let mid = unsafe { JMethodID::from_raw(cache.float_float_value) };
+    unsafe {
+        env.call_method_unchecked(
+            obj, mid, ReturnType::Primitive(jni::signature::Primitive::Float), &[],
+        )
+    }
+    .and_then(|v| v.f())
+    .unwrap_or(0.0)
 }
 
 fn unbox_double(env: &mut JNIEnv, obj: &JObject) -> f64 {
-    env.call_method(obj, "doubleValue", "()D", &[])
-        .and_then(|v| v.d())
-        .unwrap_or(0.0)
+    let cache = get_class_cache(env);
+    let mid = unsafe { JMethodID::from_raw(cache.double_double_value) };
+    unsafe {
+        env.call_method_unchecked(
+            obj, mid, ReturnType::Primitive(jni::signature::Primitive::Double), &[],
+        )
+    }
+    .and_then(|v| v.d())
+    .unwrap_or(0.0)
 }
