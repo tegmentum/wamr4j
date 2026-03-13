@@ -341,20 +341,7 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
             throw new IllegalStateException("WebAssembly memory has been closed");
         }
     }
-    
-    private void validateOffset(final long offset, final int size) throws WasmRuntimeException {
-        if (offset < 0) {
-            throw new IllegalArgumentException("Memory offset cannot be negative: " + offset);
-        }
-        
-        final long memorySize = size();
-        if (offset + size > memorySize) {
-            throw new WasmRuntimeException(
-                String.format("Memory access out of bounds: offset=%d, size=%d, memorySize=%d", 
-                    offset, size, memorySize));
-        }
-    }
-    
+
     @Override
     public byte[] read(final int offset, final int length) throws WasmRuntimeException {
         if (offset < 0) {
@@ -365,13 +352,15 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
         }
 
         ensureNotClosed();
-        validateOffset(offset, length);
 
         final byte[] result = new byte[length];
         try {
             final ByteBuffer buffer = asByteBuffer();
             buffer.get(offset, result, 0, length);
             return result;
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds at offset " + offset
+                + ", length " + length, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to read " + length + " bytes at offset " + offset, e);
         }
@@ -387,11 +376,13 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
         }
 
         ensureNotClosed();
-        validateOffset(offset, data.length);
 
         try {
             final ByteBuffer buffer = asByteBuffer();
             buffer.put(offset, data, 0, data.length);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds at offset " + offset
+                + ", length " + data.length, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to write " + data.length + " bytes at offset " + offset, e);
         }

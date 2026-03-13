@@ -1047,6 +1047,134 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     }
 }
 
+/// Set a global variable to an i32 value (typed fast-path, no boxing overhead)
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetGlobalI32<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    global_name: JString<'local>,
+    value: jint,
+) {
+    if instance_handle == 0 || global_name.is_null() {
+        return;
+    }
+
+    let name: String = match env.get_string(&global_name) {
+        Ok(s) => s.into(),
+        Err(_) => return,
+    };
+
+    let c_name = match std::ffi::CString::new(name) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    let wasm_val = WasmValue::I32(value);
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if let Err(e) = runtime::global_set(instance_ref.handle, c_name.as_ptr(), &wasm_val) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
+/// Set a global variable to an i64 value (typed fast-path)
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetGlobalI64<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    global_name: JString<'local>,
+    value: jlong,
+) {
+    if instance_handle == 0 || global_name.is_null() {
+        return;
+    }
+
+    let name: String = match env.get_string(&global_name) {
+        Ok(s) => s.into(),
+        Err(_) => return,
+    };
+
+    let c_name = match std::ffi::CString::new(name) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    let wasm_val = WasmValue::I64(value);
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if let Err(e) = runtime::global_set(instance_ref.handle, c_name.as_ptr(), &wasm_val) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
+/// Set a global variable to an f32 value (typed fast-path)
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetGlobalF32<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    global_name: JString<'local>,
+    value: jfloat,
+) {
+    if instance_handle == 0 || global_name.is_null() {
+        return;
+    }
+
+    let name: String = match env.get_string(&global_name) {
+        Ok(s) => s.into(),
+        Err(_) => return,
+    };
+
+    let c_name = match std::ffi::CString::new(name) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    let wasm_val = WasmValue::F32(value);
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if let Err(e) = runtime::global_set(instance_ref.handle, c_name.as_ptr(), &wasm_val) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
+/// Set a global variable to an f64 value (typed fast-path)
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetGlobalF64<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    global_name: JString<'local>,
+    value: jdouble,
+) {
+    if instance_handle == 0 || global_name.is_null() {
+        return;
+    }
+
+    let name: String = match env.get_string(&global_name) {
+        Ok(s) => s.into(),
+        Err(_) => return,
+    };
+
+    let c_name = match std::ffi::CString::new(name) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    let wasm_val = WasmValue::F64(value as f64);
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+        if let Err(e) = runtime::global_set(instance_ref.handle, c_name.as_ptr(), &wasm_val) {
+            let _ = throw_wasm_exception(&mut env, &format!("{}", e));
+        }
+    }
+}
+
 /// Get names of all exported functions from an instance
 #[no_mangle]
 pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetFunctionNames<'local>(
