@@ -20,6 +20,13 @@
     <name>WAMR4J Integration Tests</name>
     <description>Integration tests and WebAssembly test suites for WAMR4J implementations</description>
 
+    <!-- Properties -->
+    <properties>
+        <maven.compiler.source>22</maven.compiler.source>
+        <maven.compiler.target>22</maven.compiler.target>
+        <maven.compiler.release>22</maven.compiler.release>
+    </properties>
+
     <!-- Dependencies -->
     <dependencies>
         <!-- API Dependencies -->
@@ -142,11 +149,45 @@
             </build>
         </profile>
 
-        <!-- Panama Only Tests (Java 23+) -->
+        <!-- Skip compilation and tests on Java < 22 -->
+        <profile>
+            <id>pre-java22</id>
+            <activation>
+                <jdk>(,22)</jdk>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <skipMain>true</skipMain>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Panama Only Tests (Java 22+) -->
         <profile>
             <id>panama-only</id>
             <activation>
-                <jdk>[23,)</jdk>
+                <jdk>[22,)</jdk>
             </activation>
             <build>
                 <plugins>
@@ -154,7 +195,7 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
                         <configuration>
-                            <argLine>@{argLine} --enable-native-access=ALL-UNNAMED --enable-preview</argLine>
+                            <argLine>@{argLine} --enable-native-access=ALL-UNNAMED</argLine>
                             <systemPropertyVariables>
                                 <wamr4j.runtime>panama</wamr4j.runtime>
                                 <java.library.path>${project.build.directory}/native-libs</java.library.path>

@@ -18,7 +18,7 @@
 
     <!-- Project Information -->
     <name>WAMR4J Panama Implementation</name>
-    <description>Panama Foreign Function Interface bindings for WAMR WebAssembly runtime (Java 23+ required)</description>
+    <description>Panama Foreign Function Interface bindings for WAMR WebAssembly runtime (Java 22+ required)</description>
 
     <!-- Dependencies -->
     <dependencies>
@@ -90,11 +90,11 @@
     </build>
 
     <profiles>
-        <!-- Skip compilation and tests on Java < 23 (Panama FFI requires Java 23+) -->
+        <!-- Skip compilation and tests on Java < 22 (Panama FFM API requires Java 22+) -->
         <profile>
-            <id>pre-java23</id>
+            <id>pre-java22</id>
             <activation>
-                <jdk>(,23)</jdk>
+                <jdk>(,22)</jdk>
             </activation>
             <build>
                 <resources>
@@ -126,16 +126,16 @@
             </build>
         </profile>
 
-        <!-- Java 23+ Profile -->
+        <!-- Java 22+ Profile -->
         <profile>
-            <id>java23+</id>
+            <id>java22+</id>
             <activation>
-                <jdk>[23,)</jdk>
+                <jdk>[22,)</jdk>
             </activation>
             <properties>
-                <maven.compiler.source>23</maven.compiler.source>
-                <maven.compiler.target>23</maven.compiler.target>
-                <maven.compiler.release>23</maven.compiler.release>
+                <maven.compiler.source>22</maven.compiler.source>
+                <maven.compiler.target>22</maven.compiler.target>
+                <maven.compiler.release>22</maven.compiler.release>
             </properties>
         </profile>
     </profiles>
