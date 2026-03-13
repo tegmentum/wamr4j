@@ -21,8 +21,6 @@ import ai.tegmentum.wamr4j.WebAssemblyFunction;
 import ai.tegmentum.wamr4j.WebAssemblyInstance;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -42,8 +40,9 @@ import org.openjdk.jmh.infra.Blackhole;
  * JMH benchmarks for function call overhead comparison.
  *
  * <p>This benchmark suite measures the raw overhead of calling WebAssembly
- * functions with different parameter counts and types to assess JNI vs Panama
- * calling conventions.
+ * functions with different parameter counts to assess JNI vs Panama
+ * calling conventions. Functions are trivial (identity, add) so the
+ * benchmark measures call dispatch overhead, not WASM execution time.
  *
  * @since 1.0.0
  */
@@ -64,50 +63,40 @@ public class FunctionCallBenchmark {
     private WebAssemblyFunction jniNoArgs;
     private WebAssemblyFunction jniOneArg;
     private WebAssemblyFunction jniTwoArgs;
-    private WebAssemblyFunction jniFourArgs;
-    private WebAssemblyFunction jniEightArgs;
     private WebAssemblyFunction panamaNoArgs;
     private WebAssemblyFunction panamaOneArg;
     private WebAssemblyFunction panamaTwoArgs;
-    private WebAssemblyFunction panamaFourArgs;
-    private WebAssemblyFunction panamaEightArgs;
 
     @Setup(Level.Trial)
     public void setupTrial() {
-        final byte[] callModule = createFunctionCallModule();
+        final byte[] wasmBytes = createFunctionCallModule();
 
         try {
             // Setup JNI runtime
             System.setProperty("wamr4j.runtime", "jni");
             jniRuntime = RuntimeFactory.createRuntime();
-            jniModule = jniRuntime.compile(callModule);
+            jniModule = jniRuntime.compile(wasmBytes);
             jniInstance = jniModule.instantiate();
             jniNoArgs = jniInstance.getFunction("no_args");
             jniOneArg = jniInstance.getFunction("one_arg");
             jniTwoArgs = jniInstance.getFunction("two_args");
-            jniFourArgs = jniInstance.getFunction("four_args");
-            jniEightArgs = jniInstance.getFunction("eight_args");
 
             // Setup Panama runtime (if available)
             System.setProperty("wamr4j.runtime", "panama");
             try {
                 panamaRuntime = RuntimeFactory.createRuntime();
-                panamaModule = panamaRuntime.compile(callModule);
+                panamaModule = panamaRuntime.compile(wasmBytes);
                 panamaInstance = panamaModule.instantiate();
                 panamaNoArgs = panamaInstance.getFunction("no_args");
                 panamaOneArg = panamaInstance.getFunction("one_arg");
                 panamaTwoArgs = panamaInstance.getFunction("two_args");
-                panamaFourArgs = panamaInstance.getFunction("four_args");
-                panamaEightArgs = panamaInstance.getFunction("eight_args");
             } catch (final Exception e) {
                 panamaRuntime = null;
             }
-
-            // Reset to auto-detection
-            System.clearProperty("wamr4j.runtime");
-
         } catch (final Exception e) {
             throw new RuntimeException("Function call benchmark setup failed", e);
+        } finally {
+            System.clearProperty("wamr4j.runtime");
         }
     }
 
@@ -134,281 +123,91 @@ public class FunctionCallBenchmark {
     }
 
     @Benchmark
-    public void benchmarkJniNoArgs(final Blackhole bh) {
+    public void benchmarkJniNoArgs(final Blackhole bh) throws Exception {
         if (jniNoArgs == null) {
             return;
         }
-
-        try {
-            final Object result = jniNoArgs.invoke();
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("JNI no args benchmark failed", e);
-        }
+        bh.consume(jniNoArgs.invoke());
     }
 
     @Benchmark
-    public void benchmarkPanamaNoArgs(final Blackhole bh) {
+    public void benchmarkPanamaNoArgs(final Blackhole bh) throws Exception {
         if (panamaNoArgs == null) {
             return;
         }
-
-        try {
-            final Object result = panamaNoArgs.invoke();
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("Panama no args benchmark failed", e);
-        }
+        bh.consume(panamaNoArgs.invoke());
     }
 
     @Benchmark
-    public void benchmarkJniOneArg(final Blackhole bh) {
+    public void benchmarkJniOneArg(final Blackhole bh) throws Exception {
         if (jniOneArg == null) {
             return;
         }
-
-        try {
-            final Object result = jniOneArg.invoke(42);
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("JNI one arg benchmark failed", e);
-        }
+        bh.consume(jniOneArg.invoke(42));
     }
 
     @Benchmark
-    public void benchmarkPanamaOneArg(final Blackhole bh) {
+    public void benchmarkPanamaOneArg(final Blackhole bh) throws Exception {
         if (panamaOneArg == null) {
             return;
         }
-
-        try {
-            final Object result = panamaOneArg.invoke(42);
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("Panama one arg benchmark failed", e);
-        }
+        bh.consume(panamaOneArg.invoke(42));
     }
 
     @Benchmark
-    public void benchmarkJniTwoArgs(final Blackhole bh) {
+    public void benchmarkJniTwoArgs(final Blackhole bh) throws Exception {
         if (jniTwoArgs == null) {
             return;
         }
-
-        try {
-            final Object result = jniTwoArgs.invoke(42, 24);
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("JNI two args benchmark failed", e);
-        }
+        bh.consume(jniTwoArgs.invoke(42, 24));
     }
 
     @Benchmark
-    public void benchmarkPanamaTwoArgs(final Blackhole bh) {
+    public void benchmarkPanamaTwoArgs(final Blackhole bh) throws Exception {
         if (panamaTwoArgs == null) {
             return;
         }
-
-        try {
-            final Object result = panamaTwoArgs.invoke(42, 24);
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("Panama two args benchmark failed", e);
-        }
+        bh.consume(panamaTwoArgs.invoke(42, 24));
     }
 
-    @Benchmark
-    public void benchmarkJniFourArgs(final Blackhole bh) {
-        if (jniFourArgs == null) {
-            return;
-        }
-
-        try {
-            final Object result = jniFourArgs.invoke(10, 20, 30, 40);
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("JNI four args benchmark failed", e);
-        }
-    }
-
-    @Benchmark
-    public void benchmarkPanamaFourArgs(final Blackhole bh) {
-        if (panamaFourArgs == null) {
-            return;
-        }
-
-        try {
-            final Object result = panamaFourArgs.invoke(10, 20, 30, 40);
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("Panama four args benchmark failed", e);
-        }
-    }
-
-    @Benchmark
-    public void benchmarkJniEightArgs(final Blackhole bh) {
-        if (jniEightArgs == null) {
-            return;
-        }
-
-        try {
-            final Object result = jniEightArgs.invoke(1, 2, 3, 4, 5, 6, 7, 8);
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("JNI eight args benchmark failed", e);
-        }
-    }
-
-    @Benchmark
-    public void benchmarkPanamaEightArgs(final Blackhole bh) {
-        if (panamaEightArgs == null) {
-            return;
-        }
-
-        try {
-            final Object result = panamaEightArgs.invoke(1, 2, 3, 4, 5, 6, 7, 8);
-            bh.consume(result);
-        } catch (final Exception e) {
-            throw new RuntimeException("Panama eight args benchmark failed", e);
-        }
-    }
-
+    /**
+     * Creates a WASM module with three exported functions:
+     * <ul>
+     *   <li>{@code no_args: () -> i32} — returns constant 42</li>
+     *   <li>{@code one_arg: (i32) -> i32} — returns the argument</li>
+     *   <li>{@code two_args: (i32, i32) -> i32} — returns arg0 + arg1</li>
+     * </ul>
+     */
     private byte[] createFunctionCallModule() {
-        try {
-            final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        return new byte[] {
+            // WASM header
+            0x00, 0x61, 0x73, 0x6d,  // magic "\0asm"
+            0x01, 0x00, 0x00, 0x00,  // version 1
 
-            // WASM magic number and version
-            baos.write(new byte[] {0x00, 0x61, 0x73, 0x6d}); // magic
-            baos.write(new byte[] {0x01, 0x00, 0x00, 0x00}); // version
+            // === Type section (id=1), size=16 ===
+            0x01, 0x10,
+            0x03,                    // 3 types
+            0x60, 0x00, 0x01, 0x7f,                    // type 0: () -> i32
+            0x60, 0x01, 0x7f, 0x01, 0x7f,              // type 1: (i32) -> i32
+            0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f,        // type 2: (i32, i32) -> i32
 
-            // Type section: 5 function types
-            baos.write(new byte[] {0x01}); // type section
-            baos.write(new byte[] {0x1e}); // section size
-            baos.write(new byte[] {0x05}); // 5 types
+            // === Function section (id=3), size=4 ===
+            0x03, 0x04,
+            0x03, 0x00, 0x01, 0x02,  // 3 functions: types 0, 1, 2
 
-            // Type 0: () -> i32
-            baos.write(new byte[] {0x60, 0x00, 0x01, 0x7f});
+            // === Export section (id=7), size=32 ===
+            0x07, 0x20,
+            0x03,                    // 3 exports
+            0x07, 0x6e, 0x6f, 0x5f, 0x61, 0x72, 0x67, 0x73, 0x00, 0x00, // "no_args" -> func 0
+            0x07, 0x6f, 0x6e, 0x65, 0x5f, 0x61, 0x72, 0x67, 0x00, 0x01, // "one_arg" -> func 1
+            0x08, 0x74, 0x77, 0x6f, 0x5f, 0x61, 0x72, 0x67, 0x73, 0x00, 0x02, // "two_args" -> func 2
 
-            // Type 1: (i32) -> i32
-            baos.write(new byte[] {0x60, 0x01, 0x7f, 0x01, 0x7f});
-
-            // Type 2: (i32, i32) -> i32
-            baos.write(new byte[] {0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f});
-
-            // Type 3: (i32, i32, i32, i32) -> i32
-            baos.write(new byte[] {0x60, 0x04, 0x7f, 0x7f, 0x7f, 0x7f, 0x01, 0x7f});
-
-            // Type 4: (i32, i32, i32, i32, i32, i32, i32, i32) -> i32
-            baos.write(
-                    new byte[] {0x60, 0x08, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x01,
-                            0x7f});
-
-            // Function section: 5 functions
-            baos.write(new byte[] {0x03}); // function section
-            baos.write(new byte[] {0x06}); // section size
-            baos.write(new byte[] {0x05}); // 5 functions
-            baos.write(new byte[] {0x00, 0x01, 0x02, 0x03, 0x04}); // function types
-
-            // Export section: export all 5 functions
-            baos.write(new byte[] {0x07}); // export section
-            baos.write(new byte[] {0x3f}); // section size
-            baos.write(new byte[] {0x05}); // 5 exports
-
-            // Export "no_args"
-            baos.write(new byte[] {0x07}); // name length
-            baos.write("no_args".getBytes());
-            baos.write(new byte[] {0x00, 0x00}); // function 0
-
-            // Export "one_arg"
-            baos.write(new byte[] {0x07}); // name length
-            baos.write("one_arg".getBytes());
-            baos.write(new byte[] {0x00, 0x01}); // function 1
-
-            // Export "two_args"
-            baos.write(new byte[] {0x08}); // name length
-            baos.write("two_args".getBytes());
-            baos.write(new byte[] {0x00, 0x02}); // function 2
-
-            // Export "four_args"
-            baos.write(new byte[] {0x09}); // name length
-            baos.write("four_args".getBytes());
-            baos.write(new byte[] {0x00, 0x03}); // function 3
-
-            // Export "eight_args"
-            baos.write(new byte[] {0x0a}); // name length
-            baos.write("eight_args".getBytes());
-            baos.write(new byte[] {0x00, 0x04}); // function 4
-
-            // Code section: function bodies
-            baos.write(new byte[] {0x0a}); // code section
-            baos.write(new byte[] {0x3e}); // section size
-            baos.write(new byte[] {0x05}); // 5 functions
-
-            // Function 0: no_args() -> 42
-            baos.write(new byte[] {
-                0x04, // body size
-                0x00, // local count
-                0x41, 0x2a, // i32.const 42
-                0x0b // end
-            });
-
-            // Function 1: one_arg(a) -> a
-            baos.write(new byte[] {
-                0x04, // body size
-                0x00, // local count
-                0x20, 0x00, // local.get 0
-                0x0b // end
-            });
-
-            // Function 2: two_args(a, b) -> a + b
-            baos.write(new byte[] {
-                0x07, // body size
-                0x00, // local count
-                0x20, 0x00, // local.get 0
-                0x20, 0x01, // local.get 1
-                0x6a, // i32.add
-                0x0b // end
-            });
-
-            // Function 3: four_args(a, b, c, d) -> a + b + c + d
-            baos.write(new byte[] {
-                0x0d, // body size
-                0x00, // local count
-                0x20, 0x00, // local.get 0
-                0x20, 0x01, // local.get 1
-                0x6a, // i32.add
-                0x20, 0x02, // local.get 2
-                0x6a, // i32.add
-                0x20, 0x03, // local.get 3
-                0x6a, // i32.add
-                0x0b // end
-            });
-
-            // Function 4: eight_args(a-h) -> sum of all
-            baos.write(new byte[] {
-                0x19, // body size
-                0x00, // local count
-                0x20, 0x00, // local.get 0
-                0x20, 0x01, // local.get 1
-                0x6a, // i32.add
-                0x20, 0x02, // local.get 2
-                0x6a, // i32.add
-                0x20, 0x03, // local.get 3
-                0x6a, // i32.add
-                0x20, 0x04, // local.get 4
-                0x6a, // i32.add
-                0x20, 0x05, // local.get 5
-                0x6a, // i32.add
-                0x20, 0x06, // local.get 6
-                0x6a, // i32.add
-                0x20, 0x07, // local.get 7
-                0x6a, // i32.add
-                0x0b // end
-            });
-
-            return baos.toByteArray();
-        } catch (final IOException e) {
-            throw new RuntimeException("Failed to create function call module", e);
-        }
+            // === Code section (id=10), size=19 ===
+            0x0a, 0x13,
+            0x03,                    // 3 function bodies
+            0x04, 0x00, 0x41, 0x2a, 0x0b,                          // body 0: i32.const 42, end
+            0x04, 0x00, 0x20, 0x00, 0x0b,                          // body 1: local.get 0, end
+            0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b,        // body 2: local.get 0, local.get 1, i32.add, end
+        };
     }
 }

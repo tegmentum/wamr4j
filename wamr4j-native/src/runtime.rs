@@ -535,7 +535,7 @@ fn wasm_value_to_val_t(value: &WasmValue) -> bindings::WasmValT {
 }
 
 /// Convert WasmType to the kind byte for a zeroed WasmValT result slot.
-fn wasm_type_to_kind(t: &WasmType) -> u8 {
+pub(crate) fn wasm_type_to_kind(t: &WasmType) -> u8 {
     match t {
         WasmType::I32 => bindings::WASM_I32,
         WasmType::I64 => bindings::WASM_I64,
