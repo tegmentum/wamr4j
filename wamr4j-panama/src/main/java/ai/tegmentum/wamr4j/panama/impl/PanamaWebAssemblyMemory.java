@@ -174,10 +174,11 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public int readInt32(final int offset) throws WasmRuntimeException {
         ensureNotClosed();
-        validateOffset(offset, 4);
-        
+
         try {
             return asByteBuffer().getInt(offset);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds reading int32 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to read int32 at offset " + offset, e);
         }
@@ -186,10 +187,11 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public void writeInt32(final int offset, final int value) throws WasmRuntimeException {
         ensureNotClosed();
-        validateOffset(offset, 4);
-        
+
         try {
             asByteBuffer().putInt(offset, value);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds writing int32 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to write int32 at offset " + offset, e);
         }
@@ -198,10 +200,11 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public long readInt64(final int offset) throws WasmRuntimeException {
         ensureNotClosed();
-        validateOffset(offset, 8);
-        
+
         try {
             return asByteBuffer().getLong(offset);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds reading int64 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to read int64 at offset " + offset, e);
         }
@@ -210,10 +213,11 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public void writeInt64(final int offset, final long value) throws WasmRuntimeException {
         ensureNotClosed();
-        validateOffset(offset, 8);
-        
+
         try {
             asByteBuffer().putLong(offset, value);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds writing int64 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to write int64 at offset " + offset, e);
         }
@@ -222,10 +226,11 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public float readFloat32(final int offset) throws WasmRuntimeException {
         ensureNotClosed();
-        validateOffset(offset, 4);
-        
+
         try {
             return asByteBuffer().getFloat(offset);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds reading float32 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to read float32 at offset " + offset, e);
         }
@@ -234,10 +239,11 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public void writeFloat32(final int offset, final float value) throws WasmRuntimeException {
         ensureNotClosed();
-        validateOffset(offset, 4);
-        
+
         try {
             asByteBuffer().putFloat(offset, value);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds writing float32 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to write float32 at offset " + offset, e);
         }
@@ -246,10 +252,11 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public double readFloat64(final int offset) throws WasmRuntimeException {
         ensureNotClosed();
-        validateOffset(offset, 8);
-        
+
         try {
             return asByteBuffer().getDouble(offset);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds reading float64 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to read float64 at offset " + offset, e);
         }
@@ -258,10 +265,11 @@ public final class PanamaWebAssemblyMemory implements WebAssemblyMemory {
     @Override
     public void writeFloat64(final int offset, final double value) throws WasmRuntimeException {
         ensureNotClosed();
-        validateOffset(offset, 8);
-        
+
         try {
             asByteBuffer().putDouble(offset, value);
+        } catch (final IndexOutOfBoundsException e) {
+            throw new WasmRuntimeException("Memory access out of bounds writing float64 at offset " + offset, e);
         } catch (final Exception e) {
             throw new WasmRuntimeException("Failed to write float64 at offset " + offset, e);
         }
