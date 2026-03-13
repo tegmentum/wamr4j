@@ -22,6 +22,9 @@
 
     <!-- Properties -->
     <properties>
+        <maven.compiler.source>22</maven.compiler.source>
+        <maven.compiler.target>22</maven.compiler.target>
+        <maven.compiler.release>22</maven.compiler.release>
         <jmh.generator>default</jmh.generator>
         <uberjar.name>benchmarks</uberjar.name>
     </properties>
@@ -39,13 +42,11 @@
             <artifactId>wamr4j-jni</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- Panama module disabled due to compilation errors - needs API sync
         <dependency>
             <groupId>ai.tegmentum.wamr4j</groupId>
             <artifactId>wamr4j-panama</artifactId>
             <version>${project.version}</version>
         </dependency>
-        -->
 
         <!-- Native Library Dependency -->
         <dependency>
@@ -117,6 +118,25 @@
                 </executions>
             </plugin>
 
+            <!-- Compiler Plugin: enable annotation processing for JMH -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgs>
+                        <arg>-Xlint:all,-processing</arg>
+                        <arg>-proc:full</arg>
+                    </compilerArgs>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.openjdk.jmh</groupId>
+                            <artifactId>jmh-generator-annprocess</artifactId>
+                            <version>${jmh.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
             <!-- Configure test execution -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -125,13 +145,42 @@
                     <systemPropertyVariables>
                         <java.library.path>${project.build.directory}/native-libs</java.library.path>
                     </systemPropertyVariables>
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
         </plugins>
     </build>
 
-    <!-- JMH Execution Profile -->
+    <!-- Profiles -->
     <profiles>
+        <!-- Skip compilation and tests on Java < 22 -->
+        <profile>
+            <id>pre-java22</id>
+            <activation>
+                <jdk>(,22)</jdk>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <skipMain>true</skipMain>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- JMH Execution Profile -->
         <profile>
             <id>benchmark</id>
             <build>
@@ -151,6 +200,7 @@
                                     <classpathScope>test</classpathScope>
                                     <executable>java</executable>
                                     <arguments>
+                                        <argument>--enable-native-access=ALL-UNNAMED</argument>
                                         <argument>-classpath</argument>
                                         <classpath/>
                                         <argument>org.openjdk.jmh.Main</argument>
