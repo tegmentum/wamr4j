@@ -21,7 +21,7 @@
 //! and handle memory management safely across the FFI boundary.
 
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int, c_long, c_uchar, c_void};
+use std::os::raw::{c_char, c_int, c_uchar, c_void};
 use std::ptr;
 
 use crate::runtime::{
@@ -127,7 +127,7 @@ pub extern "C" fn wamr_runtime_destroy(runtime: *mut c_void) {
 pub extern "C" fn wamr_module_compile(
     runtime: *mut c_void,
     wasm_bytes: *const c_uchar,
-    length: c_long,
+    length: i64,
     error_buf: *mut c_char,
     error_buf_size: c_int,
 ) -> *mut c_void {
@@ -172,8 +172,8 @@ pub extern "C" fn wamr_module_destroy(module: *mut c_void) {
 #[no_mangle]
 pub extern "C" fn wamr_instance_create(
     module: *mut c_void,
-    stack_size: c_long,
-    heap_size: c_long,
+    stack_size: i64,
+    heap_size: i64,
     error_buf: *mut c_char,
     error_buf_size: c_int,
 ) -> *mut c_void {
@@ -445,7 +445,7 @@ pub extern "C" fn wamr_memory_get(instance: *mut c_void) -> *mut c_void {
 }
 
 // Get memory size in bytes
-ffi_getter_fn!(wamr_memory_size, WamrMemory, c_long, -1, |r: &WamrMemory| r.size as c_long);
+ffi_getter_fn!(wamr_memory_size, WamrMemory, i64, -1, |r: &WamrMemory| r.size as i64);
 
 // Get memory data pointer
 ffi_getter_fn!(wamr_memory_data, WamrMemory, *mut c_void, ptr::null_mut(),
@@ -453,7 +453,7 @@ ffi_getter_fn!(wamr_memory_data, WamrMemory, *mut c_void, ptr::null_mut(),
 
 /// Grow memory by specified pages
 #[no_mangle]
-pub extern "C" fn wamr_memory_grow(memory: *mut c_void, pages: c_long) -> c_int {
+pub extern "C" fn wamr_memory_grow(memory: *mut c_void, pages: i64) -> c_int {
     clear_last_error();
     if memory.is_null() || pages < 0 {
         return -1;
@@ -469,12 +469,12 @@ pub extern "C" fn wamr_memory_grow(memory: *mut c_void, pages: c_long) -> c_int 
 }
 
 // Get current page count
-ffi_getter_fn!(wamr_memory_page_count, WamrMemory, c_long, -1,
-    |r: &WamrMemory| memory_page_count(r) as c_long);
+ffi_getter_fn!(wamr_memory_page_count, WamrMemory, i64, -1,
+    |r: &WamrMemory| memory_page_count(r) as i64);
 
 // Get maximum page count
-ffi_getter_fn!(wamr_memory_max_page_count, WamrMemory, c_long, -1,
-    |r: &WamrMemory| memory_max_page_count(r) as c_long);
+ffi_getter_fn!(wamr_memory_max_page_count, WamrMemory, i64, -1,
+    |r: &WamrMemory| memory_max_page_count(r) as i64);
 
 // Check if memory is shared
 ffi_bool_fn!(wamr_memory_is_shared, WamrMemory, memory_is_shared, 0);
@@ -495,12 +495,12 @@ ffi_getter_fn!(wamr_memory_base_address, WamrMemory, *mut c_void, ptr::null_mut(
     |r: &WamrMemory| memory_base_address(r));
 
 // Get bytes per page for a memory instance
-ffi_getter_fn!(wamr_memory_bytes_per_page, WamrMemory, c_long, -1,
-    |r: &WamrMemory| memory_bytes_per_page(r) as c_long);
+ffi_getter_fn!(wamr_memory_bytes_per_page, WamrMemory, i64, -1,
+    |r: &WamrMemory| memory_bytes_per_page(r) as i64);
 
 /// Enlarge a specific memory instance by pages
 #[no_mangle]
-pub extern "C" fn wamr_memory_enlarge_inst(memory: *mut c_void, inc_pages: c_long) -> c_int {
+pub extern "C" fn wamr_memory_enlarge_inst(memory: *mut c_void, inc_pages: i64) -> c_int {
     clear_last_error();
     if memory.is_null() || inc_pages < 0 {
         return -1;
@@ -516,9 +516,9 @@ pub extern "C" fn wamr_memory_enlarge_inst(memory: *mut c_void, inc_pages: c_lon
 #[no_mangle]
 pub extern "C" fn wamr_module_malloc(
     instance: *mut c_void,
-    size: c_long,
+    size: i64,
     native_addr_out: *mut *mut c_void,
-) -> c_long {
+) -> i64 {
     clear_last_error();
     if instance.is_null() || size <= 0 {
         return 0;
@@ -530,7 +530,7 @@ pub extern "C" fn wamr_module_malloc(
                 if !native_addr_out.is_null() {
                     *native_addr_out = native_ptr;
                 }
-                app_offset as c_long
+                app_offset as i64
             }
             Err(_) => 0,
         }
@@ -539,7 +539,7 @@ pub extern "C" fn wamr_module_malloc(
 
 /// Free memory previously allocated by wamr_module_malloc
 #[no_mangle]
-pub extern "C" fn wamr_module_free(instance: *mut c_void, ptr: c_long) {
+pub extern "C" fn wamr_module_free(instance: *mut c_void, ptr: i64) {
     clear_last_error();
     if instance.is_null() || ptr <= 0 {
         return;
@@ -556,8 +556,8 @@ pub extern "C" fn wamr_module_free(instance: *mut c_void, ptr: c_long) {
 pub extern "C" fn wamr_module_dup_data(
     instance: *mut c_void,
     data: *const c_uchar,
-    size: c_long,
-) -> c_long {
+    size: i64,
+) -> i64 {
     clear_last_error();
     if instance.is_null() || data.is_null() || size <= 0 {
         return 0;
@@ -566,7 +566,7 @@ pub extern "C" fn wamr_module_dup_data(
         let instance_ref = &*(instance as *const WamrInstance);
         let slice = std::slice::from_raw_parts(data, size as usize);
         match module_dup_data(instance_ref, slice) {
-            Ok(offset) => offset as c_long,
+            Ok(offset) => offset as i64,
             Err(_) => 0,
         }
     }
@@ -576,8 +576,8 @@ pub extern "C" fn wamr_module_dup_data(
 #[no_mangle]
 pub extern "C" fn wamr_validate_app_addr(
     instance: *mut c_void,
-    app_offset: c_long,
-    size: c_long,
+    app_offset: i64,
+    size: i64,
 ) -> c_int {
     clear_last_error();
     if instance.is_null() {
@@ -593,7 +593,7 @@ pub extern "C" fn wamr_validate_app_addr(
 #[no_mangle]
 pub extern "C" fn wamr_validate_app_str_addr(
     instance: *mut c_void,
-    app_str_offset: c_long,
+    app_str_offset: i64,
 ) -> c_int {
     clear_last_error();
     if instance.is_null() {
@@ -610,7 +610,7 @@ pub extern "C" fn wamr_validate_app_str_addr(
 pub extern "C" fn wamr_validate_native_addr(
     instance: *mut c_void,
     native_ptr: *mut c_void,
-    size: c_long,
+    size: i64,
 ) -> c_int {
     clear_last_error();
     if instance.is_null() {
@@ -626,7 +626,7 @@ pub extern "C" fn wamr_validate_native_addr(
 #[no_mangle]
 pub extern "C" fn wamr_addr_app_to_native(
     instance: *mut c_void,
-    app_offset: c_long,
+    app_offset: i64,
 ) -> *mut c_void {
     clear_last_error();
     if instance.is_null() {
@@ -643,14 +643,14 @@ pub extern "C" fn wamr_addr_app_to_native(
 pub extern "C" fn wamr_addr_native_to_app(
     instance: *mut c_void,
     native_ptr: *mut c_void,
-) -> c_long {
+) -> i64 {
     clear_last_error();
     if instance.is_null() {
         return 0;
     }
     unsafe {
         let instance_ref = &*(instance as *const WamrInstance);
-        addr_native_to_app(instance_ref, native_ptr) as c_long
+        addr_native_to_app(instance_ref, native_ptr) as i64
     }
 }
 
@@ -2407,9 +2407,9 @@ pub extern "C" fn wamr_module_set_wasi_args_ex(
     env_count: c_int,
     argv: *const *const c_char,
     argc: c_int,
-    stdinfd: c_long,
-    stdoutfd: c_long,
-    stderrfd: c_long,
+    stdinfd: i64,
+    stdoutfd: i64,
+    stderrfd: i64,
 ) -> c_int {
     if module.is_null() {
         return -1;
@@ -2456,9 +2456,9 @@ pub extern "C" fn wamr_module_set_wasi_args_ex(
 #[no_mangle]
 pub extern "C" fn wamr_get_native_addr_range(
     instance: *mut c_void,
-    native_ptr: c_long,
-    start_out: *mut c_long,
-    end_out: *mut c_long,
+    native_ptr: i64,
+    start_out: *mut i64,
+    end_out: *mut i64,
 ) -> c_int {
     if instance.is_null() || start_out.is_null() || end_out.is_null() {
         return -1;
@@ -2467,8 +2467,8 @@ pub extern "C" fn wamr_get_native_addr_range(
     match get_native_addr_range(inst, native_ptr as *mut u8) {
         Some((start, end)) => {
             unsafe {
-                *start_out = start as c_long;
-                *end_out = end as c_long;
+                *start_out = start as i64;
+                *end_out = end as i64;
             }
             0
         }
@@ -2680,8 +2680,8 @@ pub extern "C" fn wamr_function_call_iii_i(
 #[no_mangle]
 pub extern "C" fn wamr_function_call_j_j(
     function: *mut c_void,
-    arg0: c_long,
-    result_ptr: *mut c_long,
+    arg0: i64,
+    result_ptr: *mut i64,
     error_buf: *mut c_char,
     error_buf_size: c_int,
 ) -> c_int {
@@ -2691,7 +2691,7 @@ pub extern "C" fn wamr_function_call_j_j(
     unsafe {
         let rc = ffi_fast_call(function, &mut args, &mut results, error_buf, error_buf_size);
         if rc == 0 && !result_ptr.is_null() {
-            *result_ptr = results[0].as_i64() as c_long;
+            *result_ptr = results[0].as_i64() as i64;
         }
         rc
     }
@@ -2701,9 +2701,9 @@ pub extern "C" fn wamr_function_call_j_j(
 #[no_mangle]
 pub extern "C" fn wamr_function_call_jj_j(
     function: *mut c_void,
-    arg0: c_long,
-    arg1: c_long,
-    result_ptr: *mut c_long,
+    arg0: i64,
+    arg1: i64,
+    result_ptr: *mut i64,
     error_buf: *mut c_char,
     error_buf_size: c_int,
 ) -> c_int {
@@ -2713,7 +2713,7 @@ pub extern "C" fn wamr_function_call_jj_j(
     unsafe {
         let rc = ffi_fast_call(function, &mut args, &mut results, error_buf, error_buf_size);
         if rc == 0 && !result_ptr.is_null() {
-            *result_ptr = results[0].as_i64() as c_long;
+            *result_ptr = results[0].as_i64() as i64;
         }
         rc
     }
