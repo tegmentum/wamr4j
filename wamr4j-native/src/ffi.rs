@@ -332,8 +332,9 @@ pub extern "C" fn wamr_function_call(
 
         if !success {
             let error_msg = get_and_clear_exception(function_ref.instance_handle);
-            set_last_error(error_msg.clone());
-            write_error_to_buffer(&error_msg, error_buf, error_buf_size);
+            let wrapped = format!("Function execution failed: {}", error_msg);
+            set_last_error(wrapped.clone());
+            write_error_to_buffer(&wrapped, error_buf, error_buf_size);
             return -1;
         }
 
@@ -2533,8 +2534,9 @@ unsafe fn ffi_fast_call(
 
     if !success {
         let error_msg = get_and_clear_exception(function_ref.instance_handle);
-        set_last_error(error_msg.clone());
-        write_error_to_buffer(&error_msg, error_buf, error_buf_size);
+        let wrapped = format!("Function execution failed: {}", error_msg);
+        set_last_error(wrapped.clone());
+        write_error_to_buffer(&wrapped, error_buf, error_buf_size);
         return -1;
     }
 
