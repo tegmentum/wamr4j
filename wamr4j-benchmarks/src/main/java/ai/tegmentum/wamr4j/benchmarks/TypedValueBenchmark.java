@@ -23,6 +23,8 @@ import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -339,6 +341,172 @@ public class TypedValueBenchmark {
             bh.consume(42);
         } catch (final Exception e) {
             throw new RuntimeException("Panama global set i32 failed", e);
+        }
+    }
+
+    // =========================================================================
+    // Batch vs Loop comparison benchmarks
+    // =========================================================================
+
+    /**
+     * Benchmarks JNI batch getGlobals for 4 globals in a single crossing.
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkJniBatchGetGlobals4(final Blackhole bh) {
+        if (jniInstance == null) {
+            return;
+        }
+        try {
+            bh.consume(jniInstance.getGlobals("g_i32", "g_i64", "g_f32", "g_f64"));
+        } catch (final Exception e) {
+            throw new RuntimeException("JNI batch get globals failed", e);
+        }
+    }
+
+    /**
+     * Benchmarks JNI loop getGlobal for 4 globals (4 individual crossings).
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkJniLoopGetGlobals4(final Blackhole bh) {
+        if (jniInstance == null) {
+            return;
+        }
+        try {
+            bh.consume(jniInstance.getGlobal("g_i32"));
+            bh.consume(jniInstance.getGlobal("g_i64"));
+            bh.consume(jniInstance.getGlobal("g_f32"));
+            bh.consume(jniInstance.getGlobal("g_f64"));
+        } catch (final Exception e) {
+            throw new RuntimeException("JNI loop get globals failed", e);
+        }
+    }
+
+    /**
+     * Benchmarks Panama batch getGlobals for 4 globals in a single crossing.
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkPanamaBatchGetGlobals4(final Blackhole bh) {
+        if (panamaInstance == null) {
+            return;
+        }
+        try {
+            bh.consume(panamaInstance.getGlobals("g_i32", "g_i64", "g_f32", "g_f64"));
+        } catch (final Exception e) {
+            throw new RuntimeException("Panama batch get globals failed", e);
+        }
+    }
+
+    /**
+     * Benchmarks Panama loop getGlobal for 4 globals (4 individual crossings).
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkPanamaLoopGetGlobals4(final Blackhole bh) {
+        if (panamaInstance == null) {
+            return;
+        }
+        try {
+            bh.consume(panamaInstance.getGlobal("g_i32"));
+            bh.consume(panamaInstance.getGlobal("g_i64"));
+            bh.consume(panamaInstance.getGlobal("g_f32"));
+            bh.consume(panamaInstance.getGlobal("g_f64"));
+        } catch (final Exception e) {
+            throw new RuntimeException("Panama loop get globals failed", e);
+        }
+    }
+
+    /**
+     * Benchmarks JNI batch setGlobals for 4 globals in a single crossing.
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkJniBatchSetGlobals4(final Blackhole bh) {
+        if (jniInstance == null) {
+            return;
+        }
+        try {
+            final Map<String, Object> globals = new LinkedHashMap<>();
+            globals.put("g_i32", 42);
+            globals.put("g_i64", 100L);
+            globals.put("g_f32", 3.14f);
+            globals.put("g_f64", 2.718);
+            jniInstance.setGlobals(globals);
+            bh.consume(globals);
+        } catch (final Exception e) {
+            throw new RuntimeException("JNI batch set globals failed", e);
+        }
+    }
+
+    /**
+     * Benchmarks JNI loop setGlobal for 4 globals (4 individual crossings).
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkJniLoopSetGlobals4(final Blackhole bh) {
+        if (jniInstance == null) {
+            return;
+        }
+        try {
+            jniInstance.setGlobal("g_i32", 42);
+            jniInstance.setGlobal("g_i64", 100L);
+            jniInstance.setGlobal("g_f32", 3.14f);
+            jniInstance.setGlobal("g_f64", 2.718);
+            bh.consume(42);
+        } catch (final Exception e) {
+            throw new RuntimeException("JNI loop set globals failed", e);
+        }
+    }
+
+    /**
+     * Benchmarks Panama batch setGlobals for 4 globals in a single crossing.
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkPanamaBatchSetGlobals4(final Blackhole bh) {
+        if (panamaInstance == null) {
+            return;
+        }
+        try {
+            final Map<String, Object> globals = new LinkedHashMap<>();
+            globals.put("g_i32", 42);
+            globals.put("g_i64", 100L);
+            globals.put("g_f32", 3.14f);
+            globals.put("g_f64", 2.718);
+            panamaInstance.setGlobals(globals);
+            bh.consume(globals);
+        } catch (final Exception e) {
+            throw new RuntimeException("Panama batch set globals failed", e);
+        }
+    }
+
+    /**
+     * Benchmarks Panama loop setGlobal for 4 globals (4 individual crossings).
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkPanamaLoopSetGlobals4(final Blackhole bh) {
+        if (panamaInstance == null) {
+            return;
+        }
+        try {
+            panamaInstance.setGlobal("g_i32", 42);
+            panamaInstance.setGlobal("g_i64", 100L);
+            panamaInstance.setGlobal("g_f32", 3.14f);
+            panamaInstance.setGlobal("g_f64", 2.718);
+            bh.consume(42);
+        } catch (final Exception e) {
+            throw new RuntimeException("Panama loop set globals failed", e);
         }
     }
 

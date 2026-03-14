@@ -539,6 +539,125 @@ public final class PanamaWebAssemblyInstance implements WamrInstanceExtensions {
         }
     }
 
+    @Override
+    public Map<String, Object> getGlobals(final String... globalNames) throws WasmRuntimeException {
+        if (globalNames == null) {
+            throw new IllegalArgumentException("Global names array cannot be null");
+        }
+        if (globalNames.length == 0) {
+            return new java.util.LinkedHashMap<>();
+        }
+
+        ensureNotClosed();
+
+        if (Handles.GET_GLOBAL == null) {
+            throw new WasmRuntimeException("Native function 'wamr_get_global' not available");
+        }
+
+        try {
+            final Map<String, Object> result = new java.util.LinkedHashMap<>();
+            for (final String name : globalNames) {
+                if (name == null || name.trim().isEmpty()) {
+                    throw new IllegalArgumentException("Global name cannot be null or empty");
+                }
+                final MemorySegment nameBuffer = getCachedGlobalName(name);
+
+                final int rc = (int) Handles.GET_GLOBAL.invoke(
+                    nativeHandle, nameBuffer, globalValueTypePtr, globalValueBuffer, 8);
+
+                if (rc != 0) {
+                    throw new WasmRuntimeException("Failed to get global variable: " + name);
+                }
+
+                final int valueType = globalValueTypePtr.get(ValueLayout.JAVA_INT, 0);
+
+                switch (valueType) {
+                    case WasmTypes.I32:
+                        result.put(name, globalValueBuffer.get(ValueLayout.JAVA_INT, 0));
+                        break;
+                    case WasmTypes.I64:
+                        result.put(name, globalValueBuffer.get(ValueLayout.JAVA_LONG, 0));
+                        break;
+                    case WasmTypes.F32:
+                        result.put(name, globalValueBuffer.get(ValueLayout.JAVA_FLOAT, 0));
+                        break;
+                    case WasmTypes.F64:
+                        result.put(name, globalValueBuffer.get(ValueLayout.JAVA_DOUBLE, 0));
+                        break;
+                    default:
+                        throw new WasmRuntimeException("Unsupported global type: " + valueType);
+                }
+            }
+            return result;
+        } catch (final WasmRuntimeException e) {
+            throw e;
+        } catch (final Throwable e) {
+            throw new WasmRuntimeException("Unexpected error in batch get globals", e);
+        }
+    }
+
+    @Override
+    public void setGlobals(final Map<String, Object> globals) throws WasmRuntimeException {
+        if (globals == null) {
+            throw new IllegalArgumentException("Globals map cannot be null");
+        }
+        if (globals.isEmpty()) {
+            return;
+        }
+
+        ensureNotClosed();
+
+        if (Handles.SET_GLOBAL == null) {
+            throw new WasmRuntimeException("Native function 'wamr_set_global' not available");
+        }
+
+        try {
+            for (final Map.Entry<String, Object> entry : globals.entrySet()) {
+                final String name = entry.getKey();
+                final Object value = entry.getValue();
+
+                if (name == null || name.trim().isEmpty()) {
+                    throw new IllegalArgumentException("Global name cannot be null or empty");
+                }
+                if (value == null) {
+                    throw new IllegalArgumentException("Global value cannot be null");
+                }
+
+                final MemorySegment nameBuffer = getCachedGlobalName(name);
+
+                final int valueType;
+                if (value instanceof Integer) {
+                    valueType = WasmTypes.I32;
+                    globalValueBuffer.set(ValueLayout.JAVA_INT, 0, (Integer) value);
+                } else if (value instanceof Long) {
+                    valueType = WasmTypes.I64;
+                    globalValueBuffer.set(ValueLayout.JAVA_LONG, 0, (Long) value);
+                } else if (value instanceof Float) {
+                    valueType = WasmTypes.F32;
+                    globalValueBuffer.set(ValueLayout.JAVA_FLOAT, 0, (Float) value);
+                } else if (value instanceof Double) {
+                    valueType = WasmTypes.F64;
+                    globalValueBuffer.set(ValueLayout.JAVA_DOUBLE, 0, (Double) value);
+                } else {
+                    throw new IllegalArgumentException(
+                        "Unsupported global value type: " + value.getClass().getName()
+                        + ". Expected Integer, Long, Float, or Double.");
+                }
+
+                final int rc = (int) Handles.SET_GLOBAL.invoke(
+                    nativeHandle, nameBuffer, valueType, globalValueBuffer);
+
+                if (rc != 0) {
+                    throw new WasmRuntimeException("Failed to set global variable: " + name);
+                }
+            }
+        } catch (final WasmRuntimeException e) {
+            throw e;
+        } catch (final Throwable e) {
+            throw new WasmRuntimeException("Unexpected error in batch set globals", e);
+        }
+    }
+
     /**
      * Returns a cached C string for the given global name, allocating from the instance's
      * long-lived arena on first use.

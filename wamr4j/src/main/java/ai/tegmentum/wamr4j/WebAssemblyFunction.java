@@ -66,6 +66,29 @@ public interface WebAssemblyFunction {
     Object invoke(Object... args) throws WasmRuntimeException;
 
     /**
+     * Invokes this function multiple times with different argument sets in a single batch.
+     *
+     * <p>This amortizes JNI/FFI crossing overhead by performing all invocations in one native call.
+     * On error, the first failing invocation throws and remaining calls are skipped (fail-fast).
+     *
+     * @param argSets the argument arrays for each invocation
+     * @return an array of results, one per invocation (null entries for void functions)
+     * @throws WasmRuntimeException if any invocation fails
+     * @throws IllegalArgumentException if argSets is null
+     * @throws IllegalStateException if the parent instance has been closed
+     */
+    default Object[] invokeMultiple(final Object[]... argSets) throws WasmRuntimeException {
+        if (argSets == null) {
+            throw new IllegalArgumentException("Argument sets array cannot be null");
+        }
+        final Object[] results = new Object[argSets.length];
+        for (int i = 0; i < argSets.length; i++) {
+            results[i] = invoke(argSets[i]);
+        }
+        return results;
+    }
+
+    /**
      * Returns the signature of this function.
      *
      * <p>The signature describes the parameter types and return type of the function, which is

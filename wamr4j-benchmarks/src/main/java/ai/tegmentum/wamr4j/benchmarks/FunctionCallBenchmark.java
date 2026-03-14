@@ -170,6 +170,88 @@ public class FunctionCallBenchmark {
         bh.consume(panamaTwoArgs.invoke(42, 24));
     }
 
+    // =========================================================================
+    // Batch invoke vs loop comparison benchmarks
+    // =========================================================================
+
+    /**
+     * Benchmarks JNI batch invokeMultiple for 10 invocations in a single crossing.
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkJniBatchInvoke10(final Blackhole bh) throws Exception {
+        if (jniTwoArgs == null) {
+            return;
+        }
+        bh.consume(jniTwoArgs.invokeMultiple(
+            new Object[]{1, 2}, new Object[]{3, 4}, new Object[]{5, 6},
+            new Object[]{7, 8}, new Object[]{9, 10}, new Object[]{11, 12},
+            new Object[]{13, 14}, new Object[]{15, 16}, new Object[]{17, 18},
+            new Object[]{19, 20}));
+    }
+
+    /**
+     * Benchmarks JNI loop invoke for 10 individual invocations (10 crossings).
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkJniLoopInvoke10(final Blackhole bh) throws Exception {
+        if (jniTwoArgs == null) {
+            return;
+        }
+        bh.consume(jniTwoArgs.invoke(1, 2));
+        bh.consume(jniTwoArgs.invoke(3, 4));
+        bh.consume(jniTwoArgs.invoke(5, 6));
+        bh.consume(jniTwoArgs.invoke(7, 8));
+        bh.consume(jniTwoArgs.invoke(9, 10));
+        bh.consume(jniTwoArgs.invoke(11, 12));
+        bh.consume(jniTwoArgs.invoke(13, 14));
+        bh.consume(jniTwoArgs.invoke(15, 16));
+        bh.consume(jniTwoArgs.invoke(17, 18));
+        bh.consume(jniTwoArgs.invoke(19, 20));
+    }
+
+    /**
+     * Benchmarks Panama batch invokeMultiple for 10 invocations in a single crossing.
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkPanamaBatchInvoke10(final Blackhole bh) throws Exception {
+        if (panamaTwoArgs == null) {
+            return;
+        }
+        bh.consume(panamaTwoArgs.invokeMultiple(
+            new Object[]{1, 2}, new Object[]{3, 4}, new Object[]{5, 6},
+            new Object[]{7, 8}, new Object[]{9, 10}, new Object[]{11, 12},
+            new Object[]{13, 14}, new Object[]{15, 16}, new Object[]{17, 18},
+            new Object[]{19, 20}));
+    }
+
+    /**
+     * Benchmarks Panama loop invoke for 10 individual invocations (10 crossings).
+     *
+     * @param bh the JMH blackhole to prevent dead code elimination
+     */
+    @Benchmark
+    public void benchmarkPanamaLoopInvoke10(final Blackhole bh) throws Exception {
+        if (panamaTwoArgs == null) {
+            return;
+        }
+        bh.consume(panamaTwoArgs.invoke(1, 2));
+        bh.consume(panamaTwoArgs.invoke(3, 4));
+        bh.consume(panamaTwoArgs.invoke(5, 6));
+        bh.consume(panamaTwoArgs.invoke(7, 8));
+        bh.consume(panamaTwoArgs.invoke(9, 10));
+        bh.consume(panamaTwoArgs.invoke(11, 12));
+        bh.consume(panamaTwoArgs.invoke(13, 14));
+        bh.consume(panamaTwoArgs.invoke(15, 16));
+        bh.consume(panamaTwoArgs.invoke(17, 18));
+        bh.consume(panamaTwoArgs.invoke(19, 20));
+    }
+
     /**
      * Creates a WASM module with three exported functions:
      * <ul>
