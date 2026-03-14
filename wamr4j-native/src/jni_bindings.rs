@@ -1175,6 +1175,160 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_
     }
 }
 
+/// Batch get multiple global variables in a single JNI crossing.
+/// Returns Object[] of boxed values (fail-fast on first error).
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetGlobals<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    names: JObjectArray<'local>,
+) -> jobjectArray {
+    if instance_handle == 0 || names.is_null() {
+        return ptr::null_mut();
+    }
+
+    let count = match env.get_array_length(&names) {
+        Ok(len) => len as usize,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    // Create result Object[] array
+    let object_class = match env.find_class("java/lang/Object") {
+        Ok(cls) => cls,
+        Err(_) => return ptr::null_mut(),
+    };
+    let result_array = match env.new_object_array(count as i32, &object_class, JObject::null()) {
+        Ok(arr) => arr,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+
+        for i in 0..count {
+            // Extract name string
+            let name_obj: JObject = match env.get_object_array_element(&names, i as i32) {
+                Ok(o) => o,
+                Err(_) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Failed to read global name at index {}", i));
+                    return ptr::null_mut();
+                }
+            };
+            let name_jstr = JString::from(name_obj);
+            let name: String = match env.get_string(&name_jstr) {
+                Ok(s) => s.into(),
+                Err(_) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Invalid string at index {}", i));
+                    return ptr::null_mut();
+                }
+            };
+            let c_name = match std::ffi::CString::new(name.clone()) {
+                Ok(s) => s,
+                Err(_) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Invalid global name: {}", name));
+                    return ptr::null_mut();
+                }
+            };
+
+            // Get global value
+            match runtime::global_get(instance_ref.handle, c_name.as_ptr()) {
+                Ok(wasm_val) => {
+                    let boxed = wasm_value_to_jobject(&mut env, &wasm_val);
+                    let boxed_obj = JObject::from_raw(boxed);
+                    if env.set_object_array_element(&result_array, i as i32, &boxed_obj).is_err() {
+                        let _ = throw_wasm_exception(&mut env, &format!("Failed to store result for global: {}", name));
+                        return ptr::null_mut();
+                    }
+                }
+                Err(e) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Failed to get global '{}': {}", name, e));
+                    return ptr::null_mut();
+                }
+            }
+        }
+    }
+
+    result_array.into_raw()
+}
+
+/// Batch set multiple global variables in a single JNI crossing.
+/// Takes parallel String[] names and Object[] values arrays (fail-fast on first error).
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeSetGlobals<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    instance_handle: jlong,
+    names: JObjectArray<'local>,
+    values: JObjectArray<'local>,
+) {
+    if instance_handle == 0 || names.is_null() || values.is_null() {
+        return;
+    }
+
+    let count = match env.get_array_length(&names) {
+        Ok(len) => len as usize,
+        Err(_) => return,
+    };
+
+    unsafe {
+        let instance_ref = &*(instance_handle as *const WamrInstance);
+
+        for i in 0..count {
+            // Extract name
+            let name_obj: JObject = match env.get_object_array_element(&names, i as i32) {
+                Ok(o) => o,
+                Err(_) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Failed to read global name at index {}", i));
+                    return;
+                }
+            };
+            let name_jstr = JString::from(name_obj);
+            let name: String = match env.get_string(&name_jstr) {
+                Ok(s) => s.into(),
+                Err(_) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Invalid string at index {}", i));
+                    return;
+                }
+            };
+            let c_name = match std::ffi::CString::new(name.clone()) {
+                Ok(s) => s,
+                Err(_) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Invalid global name: {}", name));
+                    return;
+                }
+            };
+
+            // Extract value and determine type
+            let value_obj: JObject = match env.get_object_array_element(&values, i as i32) {
+                Ok(o) => o,
+                Err(_) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Failed to read value at index {}", i));
+                    return;
+                }
+            };
+
+            let wasm_val = if is_instance_of(&mut env, &value_obj, "java/lang/Integer") {
+                WasmValue::I32(unbox_integer(&mut env, &value_obj))
+            } else if is_instance_of(&mut env, &value_obj, "java/lang/Long") {
+                WasmValue::I64(unbox_long(&mut env, &value_obj))
+            } else if is_instance_of(&mut env, &value_obj, "java/lang/Float") {
+                WasmValue::F32(unbox_float(&mut env, &value_obj))
+            } else if is_instance_of(&mut env, &value_obj, "java/lang/Double") {
+                WasmValue::F64(unbox_double(&mut env, &value_obj))
+            } else {
+                let _ = throw_wasm_exception(&mut env, &format!("Unsupported value type for global '{}'", name));
+                return;
+            };
+
+            if let Err(e) = runtime::global_set(instance_ref.handle, c_name.as_ptr(), &wasm_val) {
+                let _ = throw_wasm_exception(&mut env, &format!("Failed to set global '{}': {}", name, e));
+                return;
+            }
+        }
+    }
+}
+
 /// Get names of all exported functions from an instance
 #[no_mangle]
 pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyInstance_nativeGetFunctionNames<'local>(
@@ -2361,6 +2515,87 @@ pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_
         }
         results[0].as_f64()
     }
+}
+
+/// Batch invoke: call the same function multiple times with different arg sets.
+/// Takes Object[][] (array of Object[]) and returns Object[] of results (fail-fast).
+#[no_mangle]
+pub extern "system" fn Java_ai_tegmentum_wamr4j_jni_impl_JniWebAssemblyFunction_nativeInvokeMultiple<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    function_handle: jlong,
+    arg_sets: JObjectArray<'local>,
+) -> jobjectArray {
+    if function_handle == 0 {
+        let _ = throw_wasm_exception(&mut env, "Invalid function handle");
+        return ptr::null_mut();
+    }
+
+    if arg_sets.is_null() {
+        let _ = throw_wasm_exception(&mut env, "Argument sets array cannot be null");
+        return ptr::null_mut();
+    }
+
+    let count = match env.get_array_length(&arg_sets) {
+        Ok(len) => len as usize,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    // Create result Object[] array
+    let object_class = match env.find_class("java/lang/Object") {
+        Ok(cls) => cls,
+        Err(_) => return ptr::null_mut(),
+    };
+    let result_array = match env.new_object_array(count as i32, &object_class, JObject::null()) {
+        Ok(arr) => arr,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    unsafe {
+        let function_ref = &*(function_handle as *const WamrFunction);
+
+        for i in 0..count {
+            // Extract arg set (Object[])
+            let args_obj: JObject = match env.get_object_array_element(&arg_sets, i as i32) {
+                Ok(o) => o,
+                Err(_) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Failed to read arg set at index {}", i));
+                    return ptr::null_mut();
+                }
+            };
+            let args = JObjectArray::from(args_obj);
+
+            // Convert Java Object[] to Vec<WasmValue>
+            let wasm_args = match convert_args_to_wasm(&mut env, &args, &function_ref.param_types) {
+                Ok(a) => a,
+                Err(msg) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Invocation {}: {}", i, msg));
+                    return ptr::null_mut();
+                }
+            };
+
+            // Call the function
+            match runtime::function_call(function_ref, function_ref.exec_env, &wasm_args) {
+                Ok(results) => {
+                    let result_obj = if results.is_empty() {
+                        JObject::null()
+                    } else {
+                        JObject::from_raw(wasm_value_to_jobject(&mut env, &results[0]))
+                    };
+                    if env.set_object_array_element(&result_array, i as i32, &result_obj).is_err() {
+                        let _ = throw_wasm_exception(&mut env, &format!("Failed to store result at index {}", i));
+                        return ptr::null_mut();
+                    }
+                }
+                Err(e) => {
+                    let _ = throw_wasm_exception(&mut env, &format!("Invocation {} failed: {}", i, e));
+                    return ptr::null_mut();
+                }
+            }
+        }
+    }
+
+    result_array.into_raw()
 }
 
 /// Get the function signature

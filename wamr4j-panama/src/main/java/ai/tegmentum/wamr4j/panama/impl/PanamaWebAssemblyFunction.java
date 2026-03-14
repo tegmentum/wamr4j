@@ -419,6 +419,30 @@ public final class PanamaWebAssemblyFunction implements WebAssemblyFunction {
         return path;
     }
 
+    @Override
+    public Object[] invokeMultiple(final Object[]... argSets) throws WasmRuntimeException {
+        if (argSets == null) {
+            throw new IllegalArgumentException("Argument sets array cannot be null");
+        }
+        if (argSets.length == 0) {
+            return new Object[0];
+        }
+
+        ensureNotClosed();
+
+        try {
+            final Object[] results = new Object[argSets.length];
+            for (int i = 0; i < argSets.length; i++) {
+                results[i] = invokeFastPath(argSets[i]);
+            }
+            return results;
+        } catch (final WasmRuntimeException e) {
+            throw e;
+        } catch (final Throwable e) {
+            throw new WasmRuntimeException("Unexpected error in batch invoke: " + name, e);
+        }
+    }
+
     void close() {
         if (closed.compareAndSet(false, true)) {
             final MemorySegment handle = nativeHandle;

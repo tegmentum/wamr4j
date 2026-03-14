@@ -23,7 +23,9 @@ import ai.tegmentum.wamr4j.WebAssemblyMemory;
 import ai.tegmentum.wamr4j.WebAssemblyTable;
 import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
@@ -171,9 +173,56 @@ public final class JniWebAssemblyInstance implements WamrInstanceExtensions {
     }
 
     @Override
+    public Map<String, Object> getGlobals(final String... globalNames) throws WasmRuntimeException {
+        if (globalNames == null) {
+            throw new IllegalArgumentException("Global names array cannot be null");
+        }
+        if (globalNames.length == 0) {
+            return new LinkedHashMap<>();
+        }
+
+        ensureNotClosed();
+
+        try {
+            final Object[] values = nativeGetGlobals(nativeHandle, globalNames);
+            final Map<String, Object> result = new LinkedHashMap<>();
+            for (int i = 0; i < globalNames.length; i++) {
+                result.put(globalNames[i], values[i]);
+            }
+            return result;
+        } catch (final WasmRuntimeException e) {
+            throw e;
+        } catch (final Exception e) {
+            throw new WasmRuntimeException("Failed to batch get globals", e);
+        }
+    }
+
+    @Override
+    public void setGlobals(final Map<String, Object> globals) throws WasmRuntimeException {
+        if (globals == null) {
+            throw new IllegalArgumentException("Globals map cannot be null");
+        }
+        if (globals.isEmpty()) {
+            return;
+        }
+
+        ensureNotClosed();
+
+        try {
+            final String[] names = globals.keySet().toArray(new String[0]);
+            final Object[] values = globals.values().toArray(new Object[0]);
+            nativeSetGlobals(nativeHandle, names, values);
+        } catch (final WasmRuntimeException e) {
+            throw e;
+        } catch (final Exception e) {
+            throw new WasmRuntimeException("Failed to batch set globals", e);
+        }
+    }
+
+    @Override
     public String[] getFunctionNames() {
         ensureNotClosed();
-        
+
         try {
             final String[] functions = nativeGetFunctionNames(nativeHandle);
             return functions != null ? functions : new String[0];
@@ -923,6 +972,28 @@ public final class JniWebAssemblyInstance implements WamrInstanceExtensions {
      * @throws WasmRuntimeException if the global is not found or cannot be set
      */
     private static native void nativeSetGlobalF64(long instanceHandle, String globalName, double value)
+        throws WasmRuntimeException;
+
+    /**
+     * Batch gets multiple global variable values in a single JNI crossing.
+     *
+     * @param instanceHandle the native instance handle
+     * @param globalNames the names of the global variables
+     * @return array of global variable values in the same order as names
+     * @throws WasmRuntimeException if any global is not found (fail-fast)
+     */
+    private static native Object[] nativeGetGlobals(long instanceHandle, String[] globalNames)
+        throws WasmRuntimeException;
+
+    /**
+     * Batch sets multiple global variable values in a single JNI crossing.
+     *
+     * @param instanceHandle the native instance handle
+     * @param globalNames the names of the global variables
+     * @param values the values to set (must be boxed Integer, Long, Float, or Double)
+     * @throws WasmRuntimeException if any global is not found or cannot be set (fail-fast)
+     */
+    private static native void nativeSetGlobals(long instanceHandle, String[] globalNames, Object[] values)
         throws WasmRuntimeException;
 
     /**

@@ -183,6 +183,27 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
         return nativeHandle != 0L && parentInstance.isValid();
     }
 
+    @Override
+    public Object[] invokeMultiple(final Object[]... argSets) throws WasmRuntimeException {
+        if (argSets == null) {
+            throw new IllegalArgumentException("Argument sets array cannot be null");
+        }
+        if (!isValid()) {
+            throw new IllegalStateException("Function is no longer valid - parent instance has been closed");
+        }
+        if (argSets.length == 0) {
+            return new Object[0];
+        }
+
+        try {
+            return nativeInvokeMultiple(nativeHandle, argSets);
+        } catch (final WasmRuntimeException e) {
+            throw e;
+        } catch (final Exception e) {
+            throw new WasmRuntimeException("Unexpected error in batch invoke: " + functionName, e);
+        }
+    }
+
     /**
      * Destroys the native function handle, freeing the Rust Box wrapper.
      * Called by the parent instance during cleanup.
@@ -225,6 +246,17 @@ public final class JniWebAssemblyFunction implements WebAssemblyFunction {
      * @return the function signature
      */
     private static native FunctionSignature nativeGetFunctionSignature(long functionHandle);
+
+    /**
+     * Batch invokes a function multiple times with different argument sets in a single JNI crossing.
+     *
+     * @param functionHandle the native function handle
+     * @param argSets array of argument arrays, one per invocation
+     * @return array of results, one per invocation
+     * @throws WasmRuntimeException if any invocation fails (fail-fast)
+     */
+    private static native Object[] nativeInvokeMultiple(long functionHandle, Object[][] argSets)
+        throws WasmRuntimeException;
 
     // =========================================================================
     // Typed primitive fast-path native methods — 1 JNI crossing, 0 allocations

@@ -16,6 +16,8 @@
 package ai.tegmentum.wamr4j;
 
 import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Represents an instantiated WebAssembly module with its own execution state.
@@ -93,6 +95,50 @@ public interface WebAssemblyInstance extends AutoCloseable {
      * @throws IllegalStateException if the instance has been closed
      */
     void setGlobal(String globalName, Object value) throws WasmRuntimeException;
+
+    /**
+     * Retrieves multiple global variables in a single batch operation.
+     *
+     * <p>This amortizes JNI/FFI crossing overhead by performing all lookups in one native call.
+     * Results are returned in insertion order matching the input names.
+     *
+     * @param globalNames the names of the exported global variables, must not be null or empty
+     * @return a map of global name to value in the order requested
+     * @throws WasmRuntimeException if any global is not found (fail-fast: stops at first error)
+     * @throws IllegalArgumentException if globalNames is null
+     * @throws IllegalStateException if the instance has been closed
+     */
+    default Map<String, Object> getGlobals(final String... globalNames) throws WasmRuntimeException {
+        if (globalNames == null) {
+            throw new IllegalArgumentException("Global names array cannot be null");
+        }
+        final Map<String, Object> result = new LinkedHashMap<>();
+        for (final String name : globalNames) {
+            result.put(name, getGlobal(name));
+        }
+        return result;
+    }
+
+    /**
+     * Sets multiple global variables in a single batch operation.
+     *
+     * <p>This amortizes JNI/FFI crossing overhead by performing all updates in one native call.
+     * Operations are applied in iteration order; on error the first failing global throws
+     * and remaining globals are skipped.
+     *
+     * @param globals a map of global name to value, must not be null
+     * @throws WasmRuntimeException if any global is not found, immutable, or has invalid value
+     * @throws IllegalArgumentException if globals is null
+     * @throws IllegalStateException if the instance has been closed
+     */
+    default void setGlobals(final Map<String, Object> globals) throws WasmRuntimeException {
+        if (globals == null) {
+            throw new IllegalArgumentException("Globals map cannot be null");
+        }
+        for (final Map.Entry<String, Object> entry : globals.entrySet()) {
+            setGlobal(entry.getKey(), entry.getValue());
+        }
+    }
 
     /**
      * Returns the names of all functions exported by this instance.
