@@ -282,12 +282,6 @@ See [`wamr4j-tests/TEST_COVERAGE_REPORT.md`](wamr4j-tests/TEST_COVERAGE_REPORT.m
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-## Support
-
-- **GitHub Issues**: [Report bugs and request features](https://github.com/tegmentum-ai/wamr4j/issues)
-- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/tegmentum-ai/wamr4j/discussions)
-- **Documentation**: All guides and API docs are available in this repository
-
 ## Related Projects
 
 - **[WAMR](https://github.com/bytecodealliance/wamr)**: WebAssembly Micro Runtime (native implementation)
