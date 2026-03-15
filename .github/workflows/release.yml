@@ -305,6 +305,13 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Install native module locally
+        run: |
+          ./mvnw install -B -P skip-native \
+            -pl wamr4j-native \
+            -DskipTests \
+            -Drevision=${{ steps.version.outputs.version }}
+
       - name: Deploy to Maven Central
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
@@ -312,7 +319,7 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           ./mvnw deploy -B -P release \
-            -pl '!wamr4j-native,!wamr4j-benchmarks,!wamr4j-tests' \
+            -pl wamr4j,wamr4j-jni,wamr4j-panama \
             -DskipTests \
             -Drevision=${{ steps.version.outputs.version }}
 
@@ -333,7 +340,7 @@ jobs:
           </settings>
           SETTINGS
           ./mvnw deploy -B \
-            -pl '!wamr4j-native,!wamr4j-benchmarks,!wamr4j-tests' \
+            -pl wamr4j,wamr4j-jni,wamr4j-panama \
             -DskipTests \
             -Drevision=${{ steps.version.outputs.version }} \
             -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }} \
@@ -343,7 +350,7 @@ jobs:
       - name: Package release artifacts
         run: |
           ./mvnw package -B -P release \
-            -pl '!wamr4j-native,!wamr4j-benchmarks,!wamr4j-tests' \
+            -pl wamr4j,wamr4j-jni,wamr4j-panama \
             -DskipTests \
             -Drevision=${{ steps.version.outputs.version }}
 
