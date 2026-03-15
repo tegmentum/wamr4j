@@ -197,13 +197,10 @@ jobs:
              wamr4j-panama/src/main/resources/META-INF/native/linux-x86_64/
 
       - name: Checkstyle
-        run: ./mvnw checkstyle:check -B -P skip-native -pl '!wamr4j-benchmarks,!wamr4j-tests/fuzz'
-
-      - name: Spotless
-        run: ./mvnw spotless:check -B -P skip-native -pl '!wamr4j-benchmarks,!wamr4j-tests/fuzz'
+        run: ./mvnw checkstyle:check -B -P skip-native -pl wamr4j
 
       - name: SpotBugs
-        run: ./mvnw compile spotbugs:check -B -P skip-native -pl '!wamr4j-benchmarks,!wamr4j-tests/fuzz,!wamr4j-native'
+        run: ./mvnw compile spotbugs:check -B -P skip-native -pl wamr4j
 
       - name: Javadoc
         run: ./mvnw javadoc:jar -B -P release,skip-native -pl wamr4j,wamr4j-jni,wamr4j-panama
