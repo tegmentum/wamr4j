@@ -282,12 +282,7 @@ See [`wamr4j-tests/TEST_COVERAGE_REPORT.md`](wamr4j-tests/TEST_COVERAGE_REPORT.m
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
-## Related Projects
+## Acknowledgments
 
-- **[WAMR](https://github.com/bytecodealliance/wamr)**: WebAssembly Micro Runtime (native implementation)
-- **[Wasmtime Java](https://github.com/kawamuray/wasmtime-java)**: Java bindings for Wasmtime
-- **[GraalWasm](https://www.graalvm.org/latest/reference-manual/wasm/)**: WebAssembly support in GraalVM
-
----
-
-**Ready to get started?** Check out our [Development Guide](DEVELOPMENT.md) and dive in!
+- [WAMR](https://github.com/bytecodealliance/wamr) and the [Bytecode Alliance](https://bytecodealliance.org/) for the WebAssembly Micro Runtime
+- The Java and Rust communities
