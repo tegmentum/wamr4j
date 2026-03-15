@@ -203,7 +203,7 @@ jobs:
         run: ./mvnw compile spotbugs:check -B -P skip-native -pl wamr4j -Dspotbugs.threshold=Medium
 
       - name: Javadoc
-        run: ./mvnw javadoc:jar -B -P release,skip-native -pl wamr4j,wamr4j-jni,wamr4j-panama
+        run: ./mvnw compile javadoc:jar -B -P release,skip-native -pl wamr4j,wamr4j-jni,wamr4j-panama -am
 
   # Publish -- requires manual approval via GitHub environment
   publish:
