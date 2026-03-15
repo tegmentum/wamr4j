@@ -305,21 +305,15 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Set release version
+        run: |
+          ./mvnw versions:set -DnewVersion=${{ steps.version.outputs.version }} -DgenerateBackupPoms=false -B
+
       - name: Install all modules locally
         run: |
           ./mvnw install -B -P skip-native \
             -pl '!wamr4j-benchmarks,!wamr4j-tests,!wamr4j-tests/fuzz' \
-            -DskipTests \
-            -Drevision=${{ steps.version.outputs.version }}
-
-      - name: Replace child POMs with flattened versions
-        run: |
-          for module in wamr4j wamr4j-jni wamr4j-panama wamr4j-native; do
-            if [ -f "$module/.flattened-pom.xml" ]; then
-              echo "Replacing $module/pom.xml with flattened version"
-              cp "$module/.flattened-pom.xml" "$module/pom.xml"
-            fi
-          done
+            -DskipTests
 
       - name: Deploy to Maven Central
         env:
@@ -329,8 +323,7 @@ jobs:
         run: |
           ./mvnw deploy -B -P release \
             -pl wamr4j,wamr4j-jni,wamr4j-panama \
-            -DskipTests \
-            -Drevision=${{ steps.version.outputs.version }}
+            -DskipTests
 
       - name: Deploy to GitHub Packages
         env:
@@ -351,7 +344,6 @@ jobs:
           ./mvnw deploy -B \
             -pl wamr4j,wamr4j-jni,wamr4j-panama \
             -DskipTests \
-            -Drevision=${{ steps.version.outputs.version }} \
             -DaltDeploymentRepository=github::https://maven.pkg.github.com/${{ github.repository }} \
             -Dgpg.skip=true \
             -s ~/.m2/settings-github.xml
@@ -360,8 +352,7 @@ jobs:
         run: |
           ./mvnw package -B -P release \
             -pl wamr4j,wamr4j-jni,wamr4j-panama \
-            -DskipTests \
-            -Drevision=${{ steps.version.outputs.version }}
+            -DskipTests
 
       - name: Create checksums
         run: |
