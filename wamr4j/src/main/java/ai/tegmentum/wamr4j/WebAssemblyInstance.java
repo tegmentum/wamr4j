@@ -15,9 +15,10 @@
  */
 package ai.tegmentum.wamr4j;
 
-import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import ai.tegmentum.wamr4j.exception.WasmRuntimeException;
 
 /**
  * Represents an instantiated WebAssembly module with its own execution state.

@@ -50,7 +50,7 @@ public final class NativePlatform {
      *
      * @return one of {@code "linux"}, {@code "darwin"}, {@code "windows"}, or {@code "unknown"}
      */
-    public static String getNormalizedOS() {
+    public static String getNormalizedOs() {
         if (OS_NAME.contains("windows")) {
             return "windows";
         } else if (OS_NAME.contains("mac") || OS_NAME.contains("darwin")) {
@@ -96,7 +96,7 @@ public final class NativePlatform {
      * @return the platform name, e.g. {@code "darwin-aarch64"} or {@code "linux-x86_64"}
      */
     public static String getPlatformName() {
-        return getNormalizedOS() + "-" + getNormalizedArchitecture();
+        return getNormalizedOs() + "-" + getNormalizedArchitecture();
     }
 
     /**
@@ -112,7 +112,8 @@ public final class NativePlatform {
             final String version = System.getProperty("java.version");
             if (version.startsWith("1.")) {
                 // Java 8 and below use 1.x format
-                return Integer.parseInt(version.substring(2, 3));
+                final int legacyVersionDigitEnd = 3;
+                return Integer.parseInt(version.substring(2, legacyVersionDigitEnd));
             } else {
                 // Java 9+ use x.y.z, x-ea, or x+build format
                 int endIndex = version.length();
@@ -141,7 +142,7 @@ public final class NativePlatform {
      * @return the platform-specific file name (e.g. {@code "libwamr4j_native.dylib"})
      */
     public static String getLibraryFileName(final String libraryName) {
-        final String os = getNormalizedOS();
+        final String os = getNormalizedOs();
         switch (os) {
             case "windows":
                 return libraryName + ".dll";
@@ -190,7 +191,7 @@ public final class NativePlatform {
      */
     public static Path extractLibraryFromResources(final Class<?> anchor, final String resourcePath)
             throws IOException {
-        try (final InputStream stream = anchor.getResourceAsStream(resourcePath)) {
+        try (InputStream stream = anchor.getResourceAsStream(resourcePath)) {
             if (stream == null) {
                 LOGGER.fine("Resource not found: " + resourcePath);
                 return null;

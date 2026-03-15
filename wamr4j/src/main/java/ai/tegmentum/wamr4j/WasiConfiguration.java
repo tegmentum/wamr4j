@@ -56,7 +56,11 @@ public final class WasiConfiguration {
      * @return this configuration for chaining
      */
     public WasiConfiguration setArgs(final String... args) {
-        this.args = args != null ? args.clone() : new String[0];
+        if (args != null) {
+            this.args = args.clone();
+        } else {
+            this.args = new String[0];
+        }
         return this;
     }
 
@@ -69,7 +73,11 @@ public final class WasiConfiguration {
      * @return this configuration for chaining
      */
     public WasiConfiguration setEnvVars(final String... envVars) {
-        this.envVars = envVars != null ? envVars.clone() : new String[0];
+        if (envVars != null) {
+            this.envVars = envVars.clone();
+        } else {
+            this.envVars = new String[0];
+        }
         return this;
     }
 
@@ -82,7 +90,11 @@ public final class WasiConfiguration {
      * @return this configuration for chaining
      */
     public WasiConfiguration setPreopens(final String... preopens) {
-        this.preopens = preopens != null ? preopens.clone() : new String[0];
+        if (preopens != null) {
+            this.preopens = preopens.clone();
+        } else {
+            this.preopens = new String[0];
+        }
         return this;
     }
 
@@ -95,7 +107,11 @@ public final class WasiConfiguration {
      * @return this configuration for chaining
      */
     public WasiConfiguration setMappedDirs(final String... mappedDirs) {
-        this.mappedDirs = mappedDirs != null ? mappedDirs.clone() : new String[0];
+        if (mappedDirs != null) {
+            this.mappedDirs = mappedDirs.clone();
+        } else {
+            this.mappedDirs = new String[0];
+        }
         return this;
     }
 
@@ -108,7 +124,11 @@ public final class WasiConfiguration {
      * @return this configuration for chaining
      */
     public WasiConfiguration setAddrPool(final String... addrPool) {
-        this.addrPool = addrPool != null ? addrPool.clone() : new String[0];
+        if (addrPool != null) {
+            this.addrPool = addrPool.clone();
+        } else {
+            this.addrPool = new String[0];
+        }
         return this;
     }
 
@@ -119,7 +139,11 @@ public final class WasiConfiguration {
      * @return this configuration for chaining
      */
     public WasiConfiguration setNsLookupPool(final String... nsLookupPool) {
-        this.nsLookupPool = nsLookupPool != null ? nsLookupPool.clone() : new String[0];
+        if (nsLookupPool != null) {
+            this.nsLookupPool = nsLookupPool.clone();
+        } else {
+            this.nsLookupPool = new String[0];
+        }
         return this;
     }
 

@@ -78,6 +78,7 @@ public final class HostFunction {
      *
      * @param signature the function's type signature, must not be null
      * @param callback the callback to invoke when the function is called, must not be null
+     * @throws IllegalArgumentException if signature or callback is null
      */
     public HostFunction(final FunctionSignature signature, final Callback callback) {
         if (signature == null) {

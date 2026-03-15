@@ -36,11 +36,11 @@ class NativePlatformTest {
             Arrays.asList("x86_64", "aarch64", "x86", "arm", "unknown");
 
     @Test
-    void testGetNormalizedOSReturnsKnownValue() {
-        final String os = NativePlatform.getNormalizedOS();
+    void testGetNormalizedOsReturnsKnownValue() {
+        final String os = NativePlatform.getNormalizedOs();
         System.out.println("Detected OS: " + os);
         assertThat(os)
-                .as("getNormalizedOS() should return a known OS identifier")
+                .as("getNormalizedOs() should return a known OS identifier")
                 .isNotNull()
                 .isIn(KNOWN_OS_VALUES);
     }
@@ -76,17 +76,17 @@ class NativePlatformTest {
 
     @Test
     void testGetPlatformNameConsistency() {
-        final String expected = NativePlatform.getNormalizedOS()
+        final String expected = NativePlatform.getNormalizedOs()
                 + "-" + NativePlatform.getNormalizedArchitecture();
         assertThat(NativePlatform.getPlatformName())
-                .as("getPlatformName() should equal getNormalizedOS() + '-' + getNormalizedArchitecture()")
+                .as("getPlatformName() should equal getNormalizedOs() + '-' + getNormalizedArchitecture()")
                 .isEqualTo(expected);
     }
 
     @Test
-    void testGetLibraryFileNameForCurrentOS() {
+    void testGetLibraryFileNameForCurrentOs() {
         final String fileName = NativePlatform.getLibraryFileName("wamr4j_native");
-        final String os = NativePlatform.getNormalizedOS();
+        final String os = NativePlatform.getNormalizedOs();
         System.out.println("Library file name for OS '" + os + "': " + fileName);
 
         assertThat(fileName).isNotNull().isNotEmpty();
@@ -116,7 +116,7 @@ class NativePlatformTest {
 
     @Test
     void testGetLibraryFileNameWithDifferentNames() {
-        final String os = NativePlatform.getNormalizedOS();
+        final String os = NativePlatform.getNormalizedOs();
 
         final String result = NativePlatform.getLibraryFileName("mylib");
         switch (os) {

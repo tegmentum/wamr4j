@@ -111,7 +111,7 @@ public interface WebAssemblyTable {
      * @throws IllegalStateException if the parent instance has been closed
      */
     Object callIndirect(int elementIndex, Object[] args, int[] resultTypeOrdinals)
-        throws WasmRuntimeException;
+            throws WasmRuntimeException;
 
     /**
      * Checks if the parent instance is still valid.
