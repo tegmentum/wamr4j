@@ -72,26 +72,6 @@ try (WebAssemblyRuntime runtime = WebAssemblyRuntime.create()) {
 
 WAMR4J follows a multi-runtime architecture with automatic runtime selection:
 
-```
-┌─────────────────┐    ┌──────────────────┐
-│   Your App      │────│   wamr4j API     │  ← Public interface (Java 11+)
-└─────────────────┘    └──────────────────┘
-                                │
-                    ┌───────────┴───────────┐
-                    │                       │
-          ┌─────────▼────────┐    ┌────────▼─────────┐
-          │  wamr4j-jni      │    │  wamr4j-panama   │  ← Private implementations
-          │  (Java 11+)      │    │  (Java 23+)      │
-          └─────────┬────────┘    └────────┬─────────┘
-                    │                      │
-                    └──────────┬───────────┘
-                               │
-                    ┌─────────▼─────────┐
-                    │  wamr4j-native    │  ← Shared Rust library
-                    │  (WAMR binding)   │
-                    └───────────────────┘
-```
-
 ### Module Structure
 
 - **`wamr4j`**: Public API interfaces and factory (users only interact with this)
