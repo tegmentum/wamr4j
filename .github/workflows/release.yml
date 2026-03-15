@@ -312,18 +312,14 @@ jobs:
             -DskipTests \
             -Drevision=${{ steps.version.outputs.version }}
 
-      - name: Replace POMs with flattened versions
+      - name: Replace child POMs with flattened versions
         run: |
-          for module in wamr4j wamr4j-jni wamr4j-panama; do
+          for module in wamr4j wamr4j-jni wamr4j-panama wamr4j-native; do
             if [ -f "$module/.flattened-pom.xml" ]; then
               echo "Replacing $module/pom.xml with flattened version"
               cp "$module/.flattened-pom.xml" "$module/pom.xml"
             fi
           done
-          # Also flatten the parent POM
-          if [ -f ".flattened-pom.xml" ]; then
-            cp .flattened-pom.xml pom.xml
-          fi
 
       - name: Deploy to Maven Central
         env:
