@@ -219,7 +219,7 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '23'
           distribution: 'temurin'
           server-id: central
           server-username: MAVEN_CENTRAL_USERNAME
