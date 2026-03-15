@@ -1,9 +1,8 @@
-# WAMR4J - WebAssembly Micro Runtime for Java
+# WAMR4J
 
-[![Maven Central](https://img.shields.io/maven-central/v/ai.tegmentum/wamr4j.svg)](https://central.sonatype.com/search?q=ai.tegmentum.wamr4j)
-[![Java Version](https://img.shields.io/badge/Java-11%2B-blue.svg)](https://openjdk.org/projects/jdk/11/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![Build Status](https://github.com/tegmentum-ai/wamr4j/workflows/CI/badge.svg)](https://github.com/tegmentum-ai/wamr4j/actions)
+[![Build Status](https://github.com/tegmentum/wamr4j/actions/workflows/ci.yml/badge.svg)](https://github.com/tegmentum/wamr4j/actions)
+[![Maven Central](https://img.shields.io/maven-central/v/ai.tegmentum.wamr4j/wamr4j)](https://central.sonatype.com/artifact/ai.tegmentum.wamr4j/wamr4j)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 **WAMR4J** provides unified Java bindings for the [WAMR (WebAssembly Micro Runtime)](https://github.com/bytecodealliance/wamr), offering both JNI and Panama Foreign Function API implementations with a common interface that abstracts engine-specific details.
 
