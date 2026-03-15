@@ -183,6 +183,31 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase: GPG_PASSPHRASE
 
+      - name: Verify secrets are configured
+        run: |
+          errors=0
+          if [ -z "${{ secrets.MAVEN_CENTRAL_USERNAME }}" ]; then
+            echo "::error::MAVEN_CENTRAL_USERNAME secret is not set"
+            errors=$((errors + 1))
+          fi
+          if [ -z "${{ secrets.MAVEN_CENTRAL_PASSWORD }}" ]; then
+            echo "::error::MAVEN_CENTRAL_PASSWORD secret is not set"
+            errors=$((errors + 1))
+          fi
+          if [ -z "${{ secrets.GPG_PRIVATE_KEY }}" ]; then
+            echo "::error::GPG_PRIVATE_KEY secret is not set"
+            errors=$((errors + 1))
+          fi
+          if [ -z "${{ secrets.GPG_PASSPHRASE }}" ]; then
+            echo "::error::GPG_PASSPHRASE secret is not set"
+            errors=$((errors + 1))
+          fi
+          if [ $errors -gt 0 ]; then
+            echo "::error::$errors required secret(s) missing. Configure them in Settings > Secrets > Actions."
+            exit 1
+          fi
+          echo "All required secrets are configured"
+
       - name: Cache Maven
         uses: actions/cache@v4
         with:

@@ -8,7 +8,7 @@
     <!-- Project Coordinates -->
     <groupId>ai.tegmentum.wamr4j</groupId>
     <artifactId>wamr4j-parent</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <!-- Project Information -->
@@ -26,6 +26,36 @@
         </license>
     </licenses>
 
+    <!-- Developer Information -->
+    <developers>
+        <developer>
+            <id>wamr4j-team</id>
+            <name>WAMR4J Development Team</name>
+            <organization>Tegmentum AI</organization>
+        </developer>
+    </developers>
+
+    <!-- Source Control -->
+    <scm>
+        <connection>scm:git:git://github.com/tegmentum/wamr4j.git</connection>
+        <developerConnection>scm:git:ssh://github.com:tegmentum/wamr4j.git</developerConnection>
+        <url>https://github.com/tegmentum/wamr4j/tree/main</url>
+    </scm>
+
+    <!-- Issue Tracking -->
+    <issueManagement>
+        <system>GitHub</system>
+        <url>https://github.com/tegmentum/wamr4j/issues</url>
+    </issueManagement>
+
+    <!-- Distribution -->
+    <distributionManagement>
+        <snapshotRepository>
+            <id>central</id>
+            <url>https://central.sonatype.com/repository/snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
+
     <!-- Modules -->
     <modules>
         <module>wamr4j</module>
@@ -39,6 +69,11 @@
 
     <!-- Properties -->
     <properties>
+        <!-- Version Configuration -->
+        <wamr.version>2.4.4</wamr.version>
+        <wamr4j.version>1.0.0</wamr4j.version>
+        <revision>${wamr.version}-${wamr4j.version}</revision>
+
         <!-- Build Configuration -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -536,6 +571,33 @@
                     </configuration>
                 </plugin>
 
+                <!-- Flatten Plugin for CI-friendly versioning -->
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>flatten-maven-plugin</artifactId>
+                    <version>1.6.0</version>
+                    <configuration>
+                        <updatePomFile>true</updatePomFile>
+                        <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>flatten</id>
+                            <phase>process-resources</phase>
+                            <goals>
+                                <goal>flatten</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>flatten.clean</id>
+                            <phase>clean</phase>
+                            <goals>
+                                <goal>clean</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
             </plugins>
         </pluginManagement>
 
@@ -545,6 +607,12 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+
+            <!-- CI-friendly version flattening -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
             </plugin>
 
             <!-- Test Plugins -->
