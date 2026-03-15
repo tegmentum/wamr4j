@@ -208,8 +208,7 @@ java -jar wamr4j-benchmarks/target/benchmarks.jar -wi 10 -i 20 -f 3
 | Linux    | ARM64       | Yes         | Yes             | Stable  |
 | macOS    | x86_64      | Yes         | Yes             | Stable  |
 | macOS    | ARM64 (M1+) | Yes         | Yes             | Stable  |
-| Windows  | x86_64      | Yes         | Yes             | Beta    |
-| Windows  | ARM64       | --          | --             | Planned |
+| Windows  | x86_64      | Yes         | Yes             | Stable  |
 
 ## Testing
 
