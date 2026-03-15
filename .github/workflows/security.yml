@@ -85,7 +85,7 @@ jobs:
           languages: java
 
       - name: Build for CodeQL
-        run: ./mvnw compile -B -pl wamr4j,wamr4j-jni -P skip-native -DskipTests
+        run: ./mvnw compile -B -pl wamr4j,wamr4j-jni,wamr4j-panama -P skip-native -DskipTests -am
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
