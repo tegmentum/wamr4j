@@ -139,26 +139,6 @@ cd wamr4j
 ./mvnw clean install
 ```
 
-## IDE Support
-
-### IntelliJ IDEA (Recommended)
-
-The project includes comprehensive IntelliJ IDEA configuration:
-
-1. **Open Project**: `File > Open > Select wamr4j directory`
-2. **Automatic Configuration**: Code style, compiler settings, and run configurations are pre-configured
-3. **Available Run Configurations**:
-   - **Build All**: Complete project compilation
-   - **Test All**: Execute all test suites
-   - **Static Analysis**: Run code quality checks
-   - **Package All**: Build distribution packages
-
-### Eclipse IDE
-
-Complete Eclipse setup guide available at [`eclipse/ECLIPSE_SETUP.md`](eclipse/ECLIPSE_SETUP.md).
-
-**Quick setup**: `File > Import > Existing Maven Projects > Browse to wamr4j directory`
-
 ## Code Quality
 
 WAMR4J maintains high code quality standards:
