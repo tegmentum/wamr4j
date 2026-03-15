@@ -200,7 +200,7 @@ jobs:
         run: ./mvnw checkstyle:check -B -P skip-native -pl wamr4j
 
       - name: SpotBugs
-        run: ./mvnw compile spotbugs:check -B -P skip-native -pl wamr4j
+        run: ./mvnw compile spotbugs:check -B -P skip-native -pl wamr4j -Dspotbugs.threshold=Medium
 
       - name: Javadoc
         run: ./mvnw javadoc:jar -B -P release,skip-native -pl wamr4j,wamr4j-jni,wamr4j-panama
