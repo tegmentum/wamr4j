@@ -278,27 +278,6 @@ See [`wamr4j-tests/TEST_COVERAGE_REPORT.md`](wamr4j-tests/TEST_COVERAGE_REPORT.m
 - **[API Documentation](https://tegmentum-ai.github.io/wamr4j/)**: Generated Javadoc
 - **[Eclipse Setup Guide](eclipse/ECLIPSE_SETUP.md)**: Eclipse IDE configuration
 
-## Contributing
-
-We welcome contributions! Please see our [development guide](DEVELOPMENT.md) for details.
-
-### Quick Contribution Checklist
-
-- [ ] Fork and clone the repository
-- [ ] Create a feature branch: `git checkout -b feature/amazing-feature`
-- [ ] Follow coding standards: `./mvnw spotless:apply`
-- [ ] Add tests for new functionality
-- [ ] Ensure all tests pass: `./mvnw test`
-- [ ] Verify code quality: `./mvnw checkstyle:check spotbugs:check`
-- [ ] Create pull request with descriptive title and description
-
-### Development Priorities
-
-1. **Defensive Programming**: Prevent JVM crashes at all costs
-2. **Performance**: Optimize for speed while maintaining safety
-3. **API Fidelity**: Correctly implement native runtime APIs
-4. **Test Coverage**: Comprehensive testing of all functionality
-
 ## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
