@@ -161,10 +161,57 @@ jobs:
           fi
           exit $EC
 
+  # Quality checks before publication
+  quality:
+    name: Quality Gate
+    needs: build-native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-quality-${{ hashFiles('**/pom.xml') }}
+          restore-keys: m2-quality-
+
+      - name: Download native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux-x86_64
+          path: wamr4j-native/src/main/resources/META-INF/native/linux-x86_64/
+
+      - name: Copy native library
+        run: |
+          mkdir -p wamr4j-jni/src/main/resources/META-INF/native/linux-x86_64/
+          mkdir -p wamr4j-panama/src/main/resources/META-INF/native/linux-x86_64/
+          cp wamr4j-native/src/main/resources/META-INF/native/linux-x86_64/* \
+             wamr4j-jni/src/main/resources/META-INF/native/linux-x86_64/
+          cp wamr4j-native/src/main/resources/META-INF/native/linux-x86_64/* \
+             wamr4j-panama/src/main/resources/META-INF/native/linux-x86_64/
+
+      - name: Checkstyle
+        run: ./mvnw checkstyle:check -B -P skip-native -pl '!wamr4j-benchmarks,!wamr4j-tests/fuzz'
+
+      - name: Spotless
+        run: ./mvnw spotless:check -B -P skip-native -pl '!wamr4j-benchmarks,!wamr4j-tests/fuzz'
+
+      - name: SpotBugs
+        run: ./mvnw compile spotbugs:check -B -P skip-native -pl '!wamr4j-benchmarks,!wamr4j-tests/fuzz,!wamr4j-native'
+
+      - name: Javadoc
+        run: ./mvnw javadoc:jar -B -P release,skip-native -pl wamr4j,wamr4j-jni,wamr4j-panama
+
   # Publish -- requires manual approval via GitHub environment
   publish:
     name: Publish
-    needs: test
+    needs: [test, quality]
     runs-on: ubuntu-latest
     environment: production
     permissions:
