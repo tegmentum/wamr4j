@@ -58,11 +58,11 @@ public interface WebAssemblyMemory {
      * <p>This method performs bounds checking to ensure the read operation is within the valid
      * memory range.
      *
-     * @param offset the byte offset to read from, must be >= 0
-     * @param length the number of bytes to read, must be > 0
+     * @param offset the byte offset to read from, must be {@code >= 0}
+     * @param length the number of bytes to read, must be {@code > 0}
      * @return a new byte array containing the read data
      * @throws WasmRuntimeException if the read operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0 or length <= 0
+     * @throws IllegalArgumentException if {@code offset < 0} or {@code length <= 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     byte[] read(int offset, int length) throws WasmRuntimeException;
@@ -73,10 +73,10 @@ public interface WebAssemblyMemory {
      * <p>This method performs bounds checking to ensure the write operation is within the valid
      * memory range.
      *
-     * @param offset the byte offset to write to, must be >= 0
+     * @param offset the byte offset to write to, must be {@code >= 0}
      * @param data the data to write, must not be null
      * @throws WasmRuntimeException if the write operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0 or data is null
+     * @throws IllegalArgumentException if {@code offset < 0} or data is null
      * @throws IllegalStateException if the parent instance has been closed
      */
     void write(int offset, byte[] data) throws WasmRuntimeException;
@@ -86,10 +86,10 @@ public interface WebAssemblyMemory {
      *
      * <p>The integer is read in little-endian byte order, which is the WebAssembly standard.
      *
-     * @param offset the byte offset to read from, must be >= 0
+     * @param offset the byte offset to read from, must be {@code >= 0}
      * @return the 32-bit integer value
      * @throws WasmRuntimeException if the read operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0
+     * @throws IllegalArgumentException if {@code offset < 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     int readInt32(int offset) throws WasmRuntimeException;
@@ -99,10 +99,10 @@ public interface WebAssemblyMemory {
      *
      * <p>The integer is written in little-endian byte order, which is the WebAssembly standard.
      *
-     * @param offset the byte offset to write to, must be >= 0
+     * @param offset the byte offset to write to, must be {@code >= 0}
      * @param value the 32-bit integer value to write
      * @throws WasmRuntimeException if the write operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0
+     * @throws IllegalArgumentException if {@code offset < 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     void writeInt32(int offset, int value) throws WasmRuntimeException;
@@ -112,10 +112,10 @@ public interface WebAssemblyMemory {
      *
      * <p>The integer is read in little-endian byte order, which is the WebAssembly standard.
      *
-     * @param offset the byte offset to read from, must be >= 0
+     * @param offset the byte offset to read from, must be {@code >= 0}
      * @return the 64-bit integer value
      * @throws WasmRuntimeException if the read operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0
+     * @throws IllegalArgumentException if {@code offset < 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     long readInt64(int offset) throws WasmRuntimeException;
@@ -125,10 +125,10 @@ public interface WebAssemblyMemory {
      *
      * <p>The integer is written in little-endian byte order, which is the WebAssembly standard.
      *
-     * @param offset the byte offset to write to, must be >= 0
+     * @param offset the byte offset to write to, must be {@code >= 0}
      * @param value the 64-bit integer value to write
      * @throws WasmRuntimeException if the write operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0
+     * @throws IllegalArgumentException if {@code offset < 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     void writeInt64(int offset, long value) throws WasmRuntimeException;
@@ -136,10 +136,10 @@ public interface WebAssemblyMemory {
     /**
      * Reads a 32-bit floating-point number from memory at the specified offset.
      *
-     * @param offset the byte offset to read from, must be >= 0
+     * @param offset the byte offset to read from, must be {@code >= 0}
      * @return the floating-point value
      * @throws WasmRuntimeException if the read operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0
+     * @throws IllegalArgumentException if {@code offset < 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     float readFloat32(int offset) throws WasmRuntimeException;
@@ -147,10 +147,10 @@ public interface WebAssemblyMemory {
     /**
      * Writes a 32-bit floating-point number to memory at the specified offset.
      *
-     * @param offset the byte offset to write to, must be >= 0
+     * @param offset the byte offset to write to, must be {@code >= 0}
      * @param value the floating-point value to write
      * @throws WasmRuntimeException if the write operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0
+     * @throws IllegalArgumentException if {@code offset < 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     void writeFloat32(int offset, float value) throws WasmRuntimeException;
@@ -158,10 +158,10 @@ public interface WebAssemblyMemory {
     /**
      * Reads a 64-bit floating-point number from memory at the specified offset.
      *
-     * @param offset the byte offset to read from, must be >= 0
+     * @param offset the byte offset to read from, must be {@code >= 0}
      * @return the floating-point value
      * @throws WasmRuntimeException if the read operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0
+     * @throws IllegalArgumentException if {@code offset < 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     double readFloat64(int offset) throws WasmRuntimeException;
@@ -169,10 +169,10 @@ public interface WebAssemblyMemory {
     /**
      * Writes a 64-bit floating-point number to memory at the specified offset.
      *
-     * @param offset the byte offset to write to, must be >= 0
+     * @param offset the byte offset to write to, must be {@code >= 0}
      * @param value the floating-point value to write
      * @throws WasmRuntimeException if the write operation is out of bounds
-     * @throws IllegalArgumentException if offset < 0
+     * @throws IllegalArgumentException if {@code offset < 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     void writeFloat64(int offset, double value) throws WasmRuntimeException;
@@ -180,7 +180,7 @@ public interface WebAssemblyMemory {
     /**
      * Returns the current size of memory in bytes.
      *
-     * @return the memory size in bytes, always >= 0
+     * @return the memory size in bytes, always {@code >= 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     int size();
@@ -190,7 +190,7 @@ public interface WebAssemblyMemory {
      *
      * <p>WebAssembly memory is measured in pages of 64KB each.
      *
-     * @return the memory size in pages, always >= 0
+     * @return the memory size in pages, always {@code >= 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     int pageCount();
@@ -222,9 +222,9 @@ public interface WebAssemblyMemory {
      * <p>Memory growth may fail if there is insufficient system memory or if the maximum memory
      * limit would be exceeded.
      *
-     * @param pages the number of pages to grow by, must be >= 0
+     * @param pages the number of pages to grow by, must be {@code >= 0}
      * @return the previous size in pages, or -1 if growth failed
-     * @throws IllegalArgumentException if pages < 0
+     * @throws IllegalArgumentException if {@code pages < 0}
      * @throws IllegalStateException if the parent instance has been closed
      */
     int grow(int pages);

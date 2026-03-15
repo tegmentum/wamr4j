@@ -365,7 +365,7 @@ public interface WamrInstanceExtensions extends WebAssemblyInstance {
     /**
      * Sets a context value on this instance for the given key.
      *
-     * @param key the context key handle (from {@link WebAssemblyRuntime#createContextKey()})
+     * @param key the context key handle (from {@link WamrRuntimeExtensions#createContextKey()})
      * @param ctx the context value (as a long/pointer)
      * @throws IllegalStateException if the instance has been closed
      */
