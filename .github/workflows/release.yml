@@ -305,10 +305,10 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Install native module locally
+      - name: Install all modules locally
         run: |
           ./mvnw install -B -P skip-native \
-            -pl wamr4j-native \
+            -pl '!wamr4j-benchmarks,!wamr4j-tests,!wamr4j-tests/fuzz' \
             -DskipTests \
             -Drevision=${{ steps.version.outputs.version }}
 
