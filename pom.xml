@@ -110,7 +110,7 @@
 
         <!-- Testing Dependencies -->
         <junit.version>5.10.1</junit.version>
-        <assertj.version>3.25.1</assertj.version>
+        <assertj.version>3.27.7</assertj.version>
 
         <!-- JMH Benchmarking -->
         <jmh.version>1.37</jmh.version>
