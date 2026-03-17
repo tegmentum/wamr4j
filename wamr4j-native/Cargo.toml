@@ -16,7 +16,7 @@ libc = "0.2"
 once_cell = "1.19"
 
 [build-dependencies]
-cc = "1.0"
+cc = "1.2"
 cmake = "0.1"
 bindgen = { version = "0.68", optional = true }
 
