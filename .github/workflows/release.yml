@@ -48,7 +48,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake
 
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -114,7 +114,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Cache Maven
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository
           key: m2-test-${{ matrix.java }}-${{ hashFiles('**/pom.xml') }}
@@ -175,7 +175,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Cache Maven
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository
           key: m2-quality-${{ hashFiles('**/pom.xml') }}
@@ -253,7 +253,7 @@ jobs:
           echo "All required secrets are configured"
 
       - name: Cache Maven
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository
           key: m2-publish-${{ hashFiles('**/pom.xml') }}
