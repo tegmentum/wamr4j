@@ -92,8 +92,21 @@ jobs:
       - name: Install cmake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
+      - name: Build native library
+        working-directory: wamr4j-native
+        run: cargo build --release
+
+      - name: Copy native library
+        run: |
+          mkdir -p wamr4j-jni/src/main/resources/META-INF/native/linux-x86_64/
+          mkdir -p wamr4j-panama/src/main/resources/META-INF/native/linux-x86_64/
+          cp wamr4j-native/target/release/libwamr4j_native.so \
+             wamr4j-jni/src/main/resources/META-INF/native/linux-x86_64/
+          cp wamr4j-native/target/release/libwamr4j_native.so \
+             wamr4j-panama/src/main/resources/META-INF/native/linux-x86_64/
+
       - name: Build project
-        run: ./mvnw compile test-compile -B -DskipTests -Djacoco.skip=true
+        run: ./mvnw install -B -P skip-native -DskipTests -Djacoco.skip=true
 
       - name: Run Java fuzz tests (60s)
         run: ./mvnw verify -P fuzz -pl wamr4j-tests/fuzz -Dfuzz.duration=60 -Djacoco.skip=true
