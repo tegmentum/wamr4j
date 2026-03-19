@@ -151,6 +151,7 @@ jobs:
       - name: Run fuzzer
         working-directory: wamr4j-native
         run: |
+          mkdir -p fuzz/corpus/${{ matrix.target }}
           echo "Fuzzing ${{ matrix.target }} for ${{ steps.duration.outputs.seconds }}s"
           cargo +nightly fuzz run ${{ matrix.target }} \
             fuzz/corpus/${{ matrix.target }} \
@@ -191,8 +192,21 @@ jobs:
       - name: Install cmake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
+      - name: Build native library
+        working-directory: wamr4j-native
+        run: cargo build --release
+
+      - name: Copy native library
+        run: |
+          mkdir -p wamr4j-jni/src/main/resources/META-INF/native/linux-x86_64/
+          mkdir -p wamr4j-panama/src/main/resources/META-INF/native/linux-x86_64/
+          cp wamr4j-native/target/release/libwamr4j_native.so \
+             wamr4j-jni/src/main/resources/META-INF/native/linux-x86_64/
+          cp wamr4j-native/target/release/libwamr4j_native.so \
+             wamr4j-panama/src/main/resources/META-INF/native/linux-x86_64/
+
       - name: Build project
-        run: ./mvnw compile test-compile -B -DskipTests -Djacoco.skip=true
+        run: ./mvnw install -B -P skip-native -DskipTests -Djacoco.skip=true
 
       - name: Determine fuzz duration
         id: duration
