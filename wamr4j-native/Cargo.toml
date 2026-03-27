@@ -1,6 +1,6 @@
 [package]
 name = "wamr4j-native"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "Shared native library for wamr4j JNI and Panama FFI bindings"
 license = "Apache-2.0"

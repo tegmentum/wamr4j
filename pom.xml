@@ -71,7 +71,7 @@
     <properties>
         <!-- Version Configuration -->
         <wamr.version>2.4.4</wamr.version>
-        <wamr4j.version>1.0.0</wamr4j.version>
+        <wamr4j.version>1.0.1</wamr4j.version>
         <revision>${wamr.version}-${wamr4j.version}</revision>
 
         <!-- Build Configuration -->
