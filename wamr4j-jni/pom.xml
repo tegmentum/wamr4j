@@ -29,12 +29,13 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- Native Library Dependency -->
+        <!-- Native Library Dependency (build-time only, natives are bundled in this JAR) -->
         <dependency>
             <groupId>ai.tegmentum.wamr4j</groupId>
             <artifactId>wamr4j-native</artifactId>
             <version>${project.version}</version>
             <classifier>${native.platform.classifier}</classifier>
+            <optional>true</optional>
         </dependency>
 
         <!-- Test Dependencies -->
