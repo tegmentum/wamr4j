@@ -161,7 +161,7 @@ jobs:
           restore-keys: m2-test-
 
       - name: Download native library
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: native-${{ matrix.platform }}
           path: wamr4j-native/src/main/resources/META-INF/native/${{ matrix.platform }}/
