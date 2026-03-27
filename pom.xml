@@ -105,7 +105,7 @@
         <jacoco-plugin.version>0.8.11</jacoco-plugin.version>
 
         <!-- Mutation Testing -->
-        <pitest.plugin.version>1.22.0</pitest.plugin.version>
+        <pitest.plugin.version>1.22.1</pitest.plugin.version>
         <pitest.junit5.version>1.2.1</pitest.junit5.version>
 
         <!-- Testing Dependencies -->
