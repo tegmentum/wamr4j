@@ -25,21 +25,21 @@ extern "C" {
     fn wamr_module_destroy(module: *mut c_void);
 }
 
-/// Shared runtime handle initialized once.
-static RUNTIME: LazyLock<*mut c_void> = LazyLock::new(|| {
-    let rt = unsafe { wamr_runtime_init() };
-    assert!(!rt.is_null(), "Failed to initialize WAMR runtime via FFI");
-    rt
-});
-
 // SAFETY: The runtime pointer is read-only after initialization and WAMR
 // runtime is thread-safe for module compilation operations.
+struct RuntimeHandle(*mut c_void);
 unsafe impl Send for RuntimeHandle {}
 unsafe impl Sync for RuntimeHandle {}
-struct RuntimeHandle(*mut c_void);
+
+/// Shared runtime handle initialized once.
+static RUNTIME: LazyLock<RuntimeHandle> = LazyLock::new(|| {
+    let rt = unsafe { wamr_runtime_init() };
+    assert!(!rt.is_null(), "Failed to initialize WAMR runtime via FFI");
+    RuntimeHandle(rt)
+});
 
 fuzz_target!(|data: &[u8]| {
-    let runtime = *RUNTIME;
+    let runtime = RUNTIME.0;
 
     // Skip empty input
     if data.is_empty() {
