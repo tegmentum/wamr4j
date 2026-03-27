@@ -100,17 +100,23 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cmake
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
       - name: Install cargo-audit
         run: cargo install cargo-audit
 
       - name: Update Rust dependencies
         run: cargo update
+        working-directory: wamr4j-native
 
       - name: Check build
         run: cargo check
+        working-directory: wamr4j-native
 
       - name: Audit updated dependencies
         run: cargo audit || true
+        working-directory: wamr4j-native
 
       - name: Create PR if changes exist
         run: |
@@ -123,7 +129,7 @@ jobs:
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
           git checkout -b "$branch"
-          git add Cargo.lock wamr4j-native/Cargo.toml
+          git add wamr4j-native/Cargo.lock wamr4j-native/Cargo.toml
           git commit -m "$(cat <<'EOF'
           chore: update Rust dependencies
 

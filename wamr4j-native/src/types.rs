@@ -160,6 +160,7 @@ pub struct WamrInstance {
 
 // Safety: WAMR instances are isolated and thread-safe within their execution context
 unsafe impl Send for WamrInstance {}
+unsafe impl Sync for WamrInstance {}
 
 /// WebAssembly function handle with signature information
 pub struct WamrFunction {
