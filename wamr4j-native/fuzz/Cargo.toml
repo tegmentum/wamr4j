@@ -16,8 +16,6 @@ arbitrary = { version = "1.3", features = ["derive"] }
 [dependencies.wamr4j-native]
 path = ".."
 
-[dependencies.libc]
-version = "0.2"
 
 [[bin]]
 name = "module_parse"
