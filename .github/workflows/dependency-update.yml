@@ -56,7 +56,7 @@ jobs:
 
       - name: Test updated dependencies
         run: |
-          ./mvnw compile test -B -pl '!wamr4j-native,!wamr4j-panama' -q || {
+          ./mvnw compile test -B -pl wamr4j -q || {
             echo "Tests failed with updated dependencies"
             git checkout -- pom.xml */pom.xml
             exit 1
