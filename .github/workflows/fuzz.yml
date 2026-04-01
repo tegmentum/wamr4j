@@ -250,7 +250,7 @@ jobs:
       issues: write
     steps:
       - name: Create issue for crashes
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const today = new Date().toISOString().split('T')[0];
