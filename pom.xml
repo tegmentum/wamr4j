@@ -97,7 +97,7 @@
 
         <!-- Static Analysis Plugin Versions -->
         <checkstyle-plugin.version>3.3.1</checkstyle-plugin.version>
-        <checkstyle.version>10.12.7</checkstyle.version>
+        <checkstyle.version>13.3.0</checkstyle.version>
         <spotless-plugin.version>2.43.0</spotless-plugin.version>
         <spotbugs-plugin.version>4.8.2.0</spotbugs-plugin.version>
         <spotbugs.version>4.8.2</spotbugs.version>
