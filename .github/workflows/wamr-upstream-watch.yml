@@ -1,0 +1,69 @@
+name: WAMR Upstream Watch
+
+on:
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Check upstream WAMR release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare versions and manage tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          version_cmake=wamr4j-native/wamr/build-scripts/version.cmake
+          major=$(grep -E '^set\(WAMR_VERSION_MAJOR ' "$version_cmake" | grep -oE '[0-9]+')
+          minor=$(grep -E '^set\(WAMR_VERSION_MINOR ' "$version_cmake" | grep -oE '[0-9]+')
+          patch=$(grep -E '^set\(WAMR_VERSION_PATCH ' "$version_cmake" | grep -oE '[0-9]+')
+          current="${major}.${minor}.${patch}"
+          if [ -z "$major" ] || [ -z "$minor" ] || [ -z "$patch" ]; then
+            echo "Could not parse WAMR version from $version_cmake"
+            exit 1
+          fi
+
+          # WAMR upstream tags look like "WAMR-2.4.4".
+          upstream_tag=$(gh api repos/bytecodealliance/wasm-micro-runtime/releases/latest --jq .tag_name)
+          upstream="${upstream_tag#WAMR-}"
+          echo "current=$current upstream=$upstream"
+
+          highest=$(printf '%s\n%s\n' "$current" "$upstream" | sort -V | tail -n1)
+          if [ "$highest" = "$current" ]; then
+            echo "Up to date."
+            exit 0
+          fi
+
+          label="wamr-upstream"
+          gh label create "$label" --color "0e8a16" --description "Upstream WAMR release available" --repo "$REPO" 2>/dev/null || true
+
+          title="WAMR upstream ${upstream} available (currently ${current})"
+          body=$(printf '%s\n' \
+            "Upstream \`bytecodealliance/wasm-micro-runtime\` has released **${upstream_tag}**." \
+            "" \
+            "- Current vendored copy: \`${current}\` (\`wamr4j-native/wamr/\`)" \
+            "- Upstream latest: \`${upstream}\`" \
+            "- Release notes: https://github.com/bytecodealliance/wasm-micro-runtime/releases/tag/${upstream_tag}" \
+            "" \
+            "To upgrade, re-vendor the upstream tag into \`wamr4j-native/wamr/\` and bump the version constants in \`wamr4j-native/wamr/build-scripts/version.cmake\` and \`wamr4j-native/wamr/core/version.h\`." \
+            "" \
+            "_This issue is auto-managed by \`.github/workflows/wamr-upstream-watch.yml\`._")
+
+          existing=$(gh issue list --repo "$REPO" --state open --label "$label" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --repo "$REPO" --title "$title" --body "$body"
+            echo "Updated existing issue #$existing"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body" --label "$label"
+            echo "Opened new tracking issue"
+          fi
