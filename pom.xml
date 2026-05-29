@@ -109,7 +109,7 @@
         <pitest.junit5.version>1.2.1</pitest.junit5.version>
 
         <!-- Testing Dependencies -->
-        <junit.version>5.10.1</junit.version>
+        <junit.version>6.1.0</junit.version>
         <assertj.version>3.25.1</assertj.version>
 
         <!-- JMH Benchmarking -->
