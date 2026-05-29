@@ -29,7 +29,8 @@ use crate::types::{
 use crate::bindings;
 use crate::utils::set_last_error;
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_void};
+use std::os::raw::{c_char, c_uint, c_void};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // =============================================================================
 // Signal Handler Preservation (JVM compatibility)
@@ -82,12 +83,70 @@ mod signal_guard {
 // =============================================================================
 
 /// Initialize WAMR runtime
+/// Default cap (1 GiB) on any single allocation WAMR makes.
+///
+/// A malformed module can declare an enormous section count (e.g. an
+/// `import_count` of tens of millions) which drives WAMR's loader to allocate
+/// `count * sizeof(entry)` bytes — and zero-fill it — *before* validating the
+/// count against the remaining bytes (see `load_import_section` in
+/// wasm_loader.c). A 14-byte module can thus force a multi-gigabyte allocation
+/// and OOM-kill the JVM. Capping any single allocation turns these into a
+/// graceful "allocate memory failed" load error (`CompilationFailed`) instead
+/// of a crash. Overridable via the `WAMR4J_MAX_LOAD_ALLOC_BYTES` env var.
+const DEFAULT_MAX_ALLOC_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Active single-allocation cap in bytes, consulted by the allocator hooks.
+static MAX_ALLOC_BYTES: AtomicU64 = AtomicU64::new(DEFAULT_MAX_ALLOC_BYTES);
+
+/// Allocator hook installed via `Alloc_With_Allocator`. Rejects any single
+/// allocation above `MAX_ALLOC_BYTES` (returning NULL, which WAMR handles
+/// gracefully) and otherwise delegates to the system allocator.
+extern "C" fn guarded_malloc(size: c_uint) -> *mut c_void {
+    if size as u64 > MAX_ALLOC_BYTES.load(Ordering::Relaxed) {
+        return std::ptr::null_mut();
+    }
+    unsafe { libc::malloc(size as usize) }
+}
+
+/// Allocator realloc hook — same single-allocation cap as `guarded_malloc`.
+extern "C" fn guarded_realloc(ptr: *mut c_void, size: c_uint) -> *mut c_void {
+    if size as u64 > MAX_ALLOC_BYTES.load(Ordering::Relaxed) {
+        return std::ptr::null_mut();
+    }
+    unsafe { libc::realloc(ptr, size as usize) }
+}
+
+/// Allocator free hook, paired with `guarded_malloc`/`guarded_realloc`.
+extern "C" fn guarded_free(ptr: *mut c_void) {
+    unsafe { libc::free(ptr) }
+}
+
 pub fn runtime_init() -> Result<WamrRuntime, WamrError> {
+    // Apply a configurable override for the single-allocation cap.
+    if let Ok(value) = std::env::var("WAMR4J_MAX_LOAD_ALLOC_BYTES") {
+        if let Ok(bytes) = value.parse::<u64>() {
+            if bytes > 0 {
+                MAX_ALLOC_BYTES.store(bytes, Ordering::Relaxed);
+            }
+        }
+    }
+
+    // Initialize WAMR with a custom allocator so a malformed module cannot drive
+    // an unbounded loader allocation that would OOM the JVM (see MAX_ALLOC_BYTES).
+    let mut init_args: bindings::RuntimeInitArgs = unsafe { std::mem::zeroed() };
+    init_args.mem_alloc_type = bindings::ALLOC_WITH_ALLOCATOR;
+    init_args.mem_alloc_option.allocator = bindings::MemAllocAllocator {
+        malloc_func: guarded_malloc as *mut c_void,
+        realloc_func: guarded_realloc as *mut c_void,
+        free_func: guarded_free as *mut c_void,
+        user_data: std::ptr::null_mut(),
+    };
+
     // Save JVM signal handlers before WAMR init overwrites them
     #[cfg(unix)]
     let saved_handlers = signal_guard::save_signal_handlers();
 
-    let success = unsafe { bindings::wasm_runtime_init() };
+    let success = unsafe { bindings::wasm_runtime_full_init(&mut init_args) };
 
     // Restore JVM signal handlers after WAMR init
     #[cfg(unix)]

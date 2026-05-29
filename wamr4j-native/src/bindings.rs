@@ -1040,21 +1040,23 @@ pub struct MemAllocInfo {
     pub highmark_size: c_uint,
 }
 
-/// RuntimeInitArgs for wasm_runtime_full_init.
-/// This is a simplified version — only the fields we actually set.
-/// The full struct is much larger but we zero-init unused fields.
+/// RuntimeInitArgs for wasm_runtime_full_init. Field order and size match the
+/// C `RuntimeInitArgs` in wasm_export.h exactly so the struct is correctly sized
+/// (WAMR reads the whole struct); we only set `mem_alloc_type`/`mem_alloc_option`
+/// and zero the rest via `std::mem::zeroed()`.
 #[repr(C)]
 pub struct RuntimeInitArgs {
     pub mem_alloc_type: c_uint,
     pub mem_alloc_option: MemAllocOption,
     pub native_module_name: *const c_char,
-    pub n_native_symbols: c_int,
     pub native_symbols: *mut NativeSymbol,
+    pub n_native_symbols: c_uint,
     pub max_thread_num: c_uint,
     pub ip_addr: [c_char; 128],
+    pub unused: c_int,
     pub instance_port: c_int,
-    pub platform_port: c_int,
     pub fast_jit_code_cache_size: c_uint,
+    pub gc_heap_size: c_uint,
     pub running_mode: c_uint,
     pub llvm_jit_opt_level: c_uint,
     pub llvm_jit_size_level: c_uint,
@@ -1062,17 +1064,28 @@ pub struct RuntimeInitArgs {
     pub enable_linux_perf: bool,
 }
 
-/// Memory allocation option union (simplified as struct of pointers).
+/// `mem_alloc_type_t::Alloc_With_Allocator` — route allocations through the
+/// caller-provided malloc/realloc/free hooks.
+pub const ALLOC_WITH_ALLOCATOR: c_uint = 1;
+
+/// Custom allocator hooks — the `allocator` variant of the C `union MemAllocOption`.
+/// Function-pointer signatures assume WAMR's defaults (WASM_MEM_ALLOC_WITH_USER_DATA
+/// and WASM_MEM_ALLOC_WITH_USAGE both undefined): `malloc(unsigned int size)`,
+/// `realloc(void *ptr, unsigned int size)`, `free(void *ptr)`.
 #[repr(C)]
-pub struct MemAllocOption {
-    pub pool: MemAllocPool,
+pub struct MemAllocAllocator {
+    pub malloc_func: *mut c_void,
+    pub realloc_func: *mut c_void,
+    pub free_func: *mut c_void,
+    pub user_data: *mut c_void,
 }
 
-/// Pool-based memory allocation.
+/// Memory allocation option. Models the C `union MemAllocOption`; the `allocator`
+/// variant is the largest member, so representing it directly gives the union its
+/// correct size (four pointers) and alignment.
 #[repr(C)]
-pub struct MemAllocPool {
-    pub heap_buf: *mut c_void,
-    pub heap_size: c_uint,
+pub struct MemAllocOption {
+    pub allocator: MemAllocAllocator,
 }
 
 /// Shared heap initialization arguments.

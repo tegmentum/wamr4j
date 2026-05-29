@@ -21,6 +21,7 @@ import ai.tegmentum.wamr4j.RuntimeFactory;
 import ai.tegmentum.wamr4j.WebAssemblyModule;
 import ai.tegmentum.wamr4j.WamrRuntimeExtensions;
 import ai.tegmentum.wamr4j.WebAssemblyRuntime;
+import ai.tegmentum.wamr4j.exception.WebAssemblyException;
 import ai.tegmentum.wamr4j.test.framework.WasmModuleBuilder;
 import org.junit.jupiter.api.Test;
 import java.util.logging.Logger;
@@ -317,6 +318,39 @@ class ModuleManagementTest {
             fail("Failed to create JNI module: " + e.getMessage());
         } finally {
             System.clearProperty("wamr4j.runtime");
+        }
+    }
+
+    @Test
+    void testOversizedImportCountIsRejectedNotOom() {
+        LOGGER.info("Testing malformed module with huge import_count fails gracefully (no OOM)");
+
+        // 14-byte module: valid header + an import section declaring 30,000,000
+        // imports. Without the native single-allocation cap, WAMR's loader would
+        // allocate 30_000_000 * sizeof(WASMImport) (~2.4 GB) and zero-fill it
+        // before validating the count against the remaining bytes, OOM-killing
+        // the JVM. It must instead fail to compile cleanly on both runtimes.
+        final byte[] bomb = {
+            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, // magic + version
+            0x02, 0x04, (byte) 0x80, (byte) 0x87, (byte) 0xa7, 0x0e // import section, count=30_000_000
+        };
+
+        for (final String runtime : new String[]{"jni", "panama"}) {
+            if (!RuntimeFactory.isProviderAvailable(runtime)) {
+                continue;
+            }
+            System.setProperty("wamr4j.runtime", runtime);
+            try (final WebAssemblyRuntime rt = RuntimeFactory.createRuntime()) {
+                assertThrows(WebAssemblyException.class,
+                    () -> rt.compile(bomb),
+                    runtime.toUpperCase()
+                        + ": oversized import_count must fail to compile, not OOM");
+                LOGGER.info(runtime.toUpperCase() + ": malformed import-count module rejected cleanly");
+            } catch (final Exception e) {
+                fail("Failed to create " + runtime + " runtime: " + e.getMessage());
+            } finally {
+                System.clearProperty("wamr4j.runtime");
+            }
         }
     }
 

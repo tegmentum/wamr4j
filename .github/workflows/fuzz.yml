@@ -60,7 +60,7 @@ jobs:
         run: |
           for target in module_parse func_call memory_access error_message ffi_roundtrip; do
             echo "::group::Fuzzing $target"
-            cargo +nightly fuzz run $target -- -max_total_time=60 || true
+            cargo +nightly fuzz run $target -- -max_total_time=60 -rss_limit_mb=4096 -malloc_limit_mb=2048 || true
             echo "::endgroup::"
           done
 
@@ -166,9 +166,15 @@ jobs:
         run: |
           mkdir -p fuzz/corpus/${{ matrix.target }}
           echo "Fuzzing ${{ matrix.target }} for ${{ steps.duration.outputs.seconds }}s"
+          # -rss_limit_mb=4096: the default 2048 is tripped by libFuzzer/ASAN's
+          #   own cumulative memory on long (~1h) runs, producing false-positive
+          #   OOMs unrelated to the code under test.
+          # -malloc_limit_mb=2048: still abort (with a stack trace) on any single
+          #   oversized allocation, so a genuine allocation bug is caught distinctly.
           cargo +nightly fuzz run ${{ matrix.target }} \
             fuzz/corpus/${{ matrix.target }} \
-            -- -max_total_time=${{ steps.duration.outputs.seconds }}
+            -- -max_total_time=${{ steps.duration.outputs.seconds }} \
+               -rss_limit_mb=4096 -malloc_limit_mb=2048
 
       - name: Upload crash artifacts
         if: failure()
