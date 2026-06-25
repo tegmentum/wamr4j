@@ -18,7 +18,9 @@ package ai.tegmentum.wamr4j;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -234,18 +236,44 @@ public final class RuntimeFactory {
     }
 
     private static List<RuntimeProvider> discoverAllProviders() {
-        final List<RuntimeProvider> allProviders = new ArrayList<>();
+        return collectProviders(ServiceLoader.load(RuntimeProvider.class).iterator());
+    }
 
-        try {
-            final ServiceLoader<RuntimeProvider> loader = ServiceLoader.load(RuntimeProvider.class);
-            for (final RuntimeProvider provider : loader) {
-                allProviders.add(provider);
+    /**
+     * Collects providers from a {@link ServiceLoader} iterator, skipping any that
+     * fail to load or instantiate.
+     *
+     * <p>A single provider that cannot be loaded must not prevent discovery of the
+     * remaining providers. A provider compiled for a newer Java release surfaces as
+     * a raw {@code UnsupportedClassVersionError} (a {@link LinkageError}) thrown
+     * straight from {@code Class.forName}, while a provider whose constructor fails
+     * surfaces as a {@link ServiceConfigurationError}; both are caught here.
+     * {@code ServiceLoader}'s iterator advances past the offending entry before
+     * throwing, so iteration can safely continue.
+     *
+     * <p>Package-private for testing.
+     *
+     * @param iterator the provider iterator
+     * @return the providers that loaded successfully
+     */
+    static List<RuntimeProvider> collectProviders(final Iterator<RuntimeProvider> iterator) {
+        final List<RuntimeProvider> providers = new ArrayList<>();
+
+        while (true) {
+            final RuntimeProvider provider;
+            try {
+                if (!iterator.hasNext()) {
+                    break;
+                }
+                provider = iterator.next();
+            } catch (final ServiceConfigurationError | LinkageError | RuntimeException e) {
+                LOGGER.log(Level.WARNING, "Skipping a runtime provider that failed to load", e);
+                continue;
             }
-        } catch (final Exception e) {
-            LOGGER.log(Level.WARNING, "Failed to discover runtime providers", e);
+            providers.add(provider);
         }
 
-        return allProviders;
+        return providers;
     }
 
     private static WebAssemblyRuntime createSpecificRuntime(
