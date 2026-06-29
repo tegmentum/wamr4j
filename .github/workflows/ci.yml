@@ -40,7 +40,7 @@ jobs:
             lib: wamr4j_native.dll
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -53,7 +53,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake
 
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -70,7 +70,7 @@ jobs:
           cd wamr4j-native
           cargo build --release --target ${{ matrix.target }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.platform }}
           path: wamr4j-native/.cargo-target/${{ matrix.target }}/release/${{ matrix.lib }}
@@ -82,15 +82,15 @@ jobs:
     name: Code Quality
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: '22'
           distribution: 'temurin'
 
       - name: Cache Maven
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: m2-quality-${{ hashFiles('**/pom.xml') }}
@@ -146,22 +146,22 @@ jobs:
             java: '23'
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: ${{ matrix.java }}
           distribution: 'temurin'
 
       - name: Cache Maven
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: m2-test-${{ matrix.java }}-${{ hashFiles('**/pom.xml') }}
           restore-keys: m2-test-
 
       - name: Download native library
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: native-${{ matrix.platform }}
           path: wamr4j-native/src/main/resources/META-INF/native/${{ matrix.platform }}/
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.platform }}-java${{ matrix.java }}
           path: '**/target/surefire-reports/'
