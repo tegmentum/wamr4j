@@ -82,35 +82,35 @@
         <maven.compiler.release>8</maven.compiler.release>
 
         <!-- Plugin Versions -->
-        <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
-        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
-        <maven-failsafe-plugin.version>3.2.5</maven-failsafe-plugin.version>
-        <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
-        <maven-javadoc-plugin.version>3.6.3</maven-javadoc-plugin.version>
-        <maven-jar-plugin.version>3.3.0</maven-jar-plugin.version>
-        <maven-install-plugin.version>3.1.1</maven-install-plugin.version>
-        <maven-deploy-plugin.version>3.1.1</maven-deploy-plugin.version>
-        <maven-clean-plugin.version>3.3.2</maven-clean-plugin.version>
-        <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>
+        <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+        <maven-failsafe-plugin.version>3.5.6</maven-failsafe-plugin.version>
+        <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
+        <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
+        <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
+        <maven-install-plugin.version>3.1.4</maven-install-plugin.version>
+        <maven-deploy-plugin.version>3.1.4</maven-deploy-plugin.version>
+        <maven-clean-plugin.version>3.5.0</maven-clean-plugin.version>
+        <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
         <maven-site-plugin.version>4.0.0-M13</maven-site-plugin.version>
-        <maven-project-info-reports-plugin.version>3.5.0</maven-project-info-reports-plugin.version>
+        <maven-project-info-reports-plugin.version>3.9.0</maven-project-info-reports-plugin.version>
 
         <!-- Static Analysis Plugin Versions -->
-        <checkstyle-plugin.version>3.3.1</checkstyle-plugin.version>
+        <checkstyle-plugin.version>3.6.0</checkstyle-plugin.version>
         <checkstyle.version>10.12.7</checkstyle.version>
         <spotless-plugin.version>2.43.0</spotless-plugin.version>
-        <spotbugs-plugin.version>4.8.2.0</spotbugs-plugin.version>
-        <spotbugs.version>4.8.2</spotbugs.version>
-        <findsecbugs-plugin.version>1.12.0</findsecbugs-plugin.version>
-        <jacoco-plugin.version>0.8.11</jacoco-plugin.version>
+        <spotbugs-plugin.version>4.10.3.0</spotbugs-plugin.version>
+        <spotbugs.version>4.10.3</spotbugs.version>
+        <findsecbugs-plugin.version>1.14.0</findsecbugs-plugin.version>
+        <jacoco-plugin.version>0.8.15</jacoco-plugin.version>
 
         <!-- Mutation Testing -->
-        <pitest.plugin.version>1.22.0</pitest.plugin.version>
-        <pitest.junit5.version>1.2.1</pitest.junit5.version>
+        <pitest.plugin.version>1.25.9</pitest.plugin.version>
+        <pitest.junit5.version>1.2.3</pitest.junit5.version>
 
         <!-- Testing Dependencies -->
         <junit.version>5.10.1</junit.version>
-        <assertj.version>3.25.1</assertj.version>
+        <assertj.version>3.27.7</assertj.version>
 
         <!-- JMH Benchmarking -->
         <jmh.version>1.37</jmh.version>
@@ -575,7 +575,7 @@
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>flatten-maven-plugin</artifactId>
-                    <version>1.6.0</version>
+                    <version>1.8.0</version>
                     <configuration>
                         <updatePomFile>true</updatePomFile>
                         <flattenMode>ossrh</flattenMode>
@@ -1063,7 +1063,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.1.0</version>
+                        <version>3.2.8</version>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
@@ -1083,7 +1083,7 @@
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.7.0</version>
+                        <version>0.11.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>

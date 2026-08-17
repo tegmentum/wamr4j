@@ -22,7 +22,7 @@
         <maven.compiler.source>22</maven.compiler.source>
         <maven.compiler.target>22</maven.compiler.target>
         <maven.compiler.release>22</maven.compiler.release>
-        <jazzer.version>0.22.1</jazzer.version>
+        <jazzer.version>0.30.0</jazzer.version>
         <fuzz.duration>300</fuzz.duration>
         <fuzz.runs>-1</fuzz.runs>
         <jazzer.keep_going>10</jazzer.keep_going>
